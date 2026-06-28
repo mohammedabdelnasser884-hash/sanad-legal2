@@ -507,7 +507,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);},className:"px-4 py-2.5 bg-white/5 text-slate-400 rounded-xl text-xs font-bold active:scale-95"},"إلغاء")
                     )
                 )
-            ),
+            ,
             document.body
         ),
 
@@ -901,7 +901,8 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     )
                 )
             )
-        );
+        )
+    );
 }
 
 // ══════════════════════════════════════════
