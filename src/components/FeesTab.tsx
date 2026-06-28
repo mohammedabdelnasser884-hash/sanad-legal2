@@ -822,19 +822,15 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         // ─ مودال معاينة الفاتورة (bottom sheet مضغوط) ─
         invoiceModal && createPortal(React.createElement('div',{
-            className:"fixed inset-0 z-[60] flex items-end justify-center",
-            style:{background:'rgba(0,0,0,0.6)'},
+            className:"fixed z-[60] flex items-center justify-center px-3",
+            style:{background:'rgba(0,0,0,0.6)', top:'64px', bottom:'82px', left:0, right:0},
             onClick:()=>{ const fid=invoiceModal?.fee?.id||null; setInvoiceModal(null); setDetailsFor(fid); }
         },
             React.createElement('div',{
-                className:"w-full bg-premium-card border-t border-premium-gold/30 rounded-t-2xl overflow-y-auto",
-                style:{maxHeight:'75vh'},
+                className:"w-full max-w-sm bg-premium-card border border-premium-gold/30 rounded-2xl overflow-y-auto",
+                style:{maxHeight:'100%'},
                 onClick:e=>e.stopPropagation()
             },
-                // ─ مقبض السحب ─
-                React.createElement('div',{className:"flex justify-center pt-2 pb-1"},
-                    React.createElement('div',{className:"w-10 h-1 rounded-full bg-white/15"})
-                ),
                 // ─ رأس المودال ─
                 React.createElement('div',{className:"bg-gradient-to-l from-yellow-900/30 to-amber-800/20 border-b border-premium-gold/20 px-4 py-2.5 flex items-center justify-between"},
                     React.createElement('div',{className:"flex items-center gap-2"},
