@@ -562,7 +562,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                             React.createElement('span',{className:`text-[9px] font-black px-2 py-1 rounded-full shrink-0 ${isFullyPaid?'bg-emerald-500/15 text-emerald-400':'bg-amber-500/15 text-amber-400'}`}, isFullyPaid ? '✅ مسدد' : pct+'%')
                         ),
                         // ─ مودال التفاصيل الكاملة ─
-                        detailsFor===fee.id && React.createElement('div',{
+                        detailsFor===fee.id && createPortal(React.createElement('div',{
                             className:"fixed z-50 bg-premium-card border-t border-white/10 rounded-t-3xl shadow-2xl overflow-y-auto",
                             style:{
                                 top:'calc(64px + env(safe-area-inset-top, 0px))',
@@ -756,6 +756,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         )
                     )
                     )
+                    , document.body)
                     );
                 })
               ),
