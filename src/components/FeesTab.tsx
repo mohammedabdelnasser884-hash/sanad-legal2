@@ -24,6 +24,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
     } = useFeesActions(cases, clients, country, profile);
 
     const [detailsFor, setDetailsFor] = useState(null); // معرف بطاقة الأتعاب المفتوحة تفاصيلها
+    const [printOverlay, setPrintOverlay] = useState(null); // HTML التقرير للعرض والطباعة
     // ── حالة أيقونة البحث القابلة للفتح في الهيدر ──
     const [searchOpen, setSearchOpen] = useState(false);
     const searchInputRef = useRef(null);
@@ -89,31 +90,20 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         +'<div class="sig-box"><div class="sig-line">توقيع واستلام الموكل</div></div>'
         +'</div>';
 
-    // ── سكريبت الطباعة التلقائية عند تحميل الصفحة ──
-    const autoPrintScript = '<scr'+'ipt>window.onload=function(){window.print();}<'+'/scr'+'ipt>';
-
-    // ── فتح نافذة جديدة جاهزة للطباعة (maximized) ──
-    const openPrintWindow = () => {
-        const w = window.open('', '_blank');
-        if (w) {
-            try { w.moveTo(0, 0); w.resizeTo(screen.availWidth, screen.availHeight); } catch(_){}
-        }
-        return w;
-    };
-
-    // ── كتابة الـHTML النهائي وتشغيل الطباعة ──
-    const writeAndPrint = (w, html) => {
-        if(!w) return;
-        w.document.write(html);
-        w.document.close();
+    // ── عرض التقرير في overlay داخل الصفحة وطباعته ──
+    const showAndPrint = (html) => {
+        setPrintOverlay(html);
+        setTimeout(() => {
+            const iframe = document.getElementById('sanad-print-frame');
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.focus();
+                iframe.contentWindow.print();
+            }
+        }, 700);
     };
 
     // ── طباعة الفاتورة ──
     const printInvoice = async (inv) => {
-        // ⚠️ افتح النافذة فوراً قبل أي async عشان المتصفح ميبلوكهاش
-        const w = openPrintWindow();
-        if(!w) return;
-        // بعدين جلب بيانات المكتب
         const { name, contactLine, logoHtml } = await loadOfficeInfo();
         const statusBadge = inv.remaining==='0'
             ? '<span class="status-badge status-paid">مسدد بالكامل</span>'
@@ -206,16 +196,11 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             +sigRowHtml
             +'<div class="footer">'+name+(contactLine?' — '+contactLine:'')+'</div>'
             +'</div>'
-            +autoPrintScript
             +'</body></html>';
 
-        writeAndPrint(w, html);
+        showAndPrint(html);
     };
     const printAllPayments = async (fee, feePayments, caseName, clientName) => {
-        // ⚠️ افتح النافذة فوراً قبل أي async عشان المتصفح ميبلوكهاش
-        const w = openPrintWindow();
-        if(!w) return;
-        // جلب بيانات المكتب
         const { name: officeName, contactLine, logoHtml } = await loadOfficeInfo();
         const year = new Date().getFullYear();
         const css = [
@@ -297,9 +282,8 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             +sigRowHtml
             +'<div class="footer">'+officeName+(contactLine?' — '+contactLine:'')+'</div>'
             +'</div>'
-            +autoPrintScript
             +'</body></html>';
-        writeAndPrint(w, html);
+        showAndPrint(html);
     };
 
     // ── المتغيرات المحسوبة تأتي من useFeesActions مباشرة ──
@@ -912,6 +896,66 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     )
                 )
             )
+        )
+        ,
+
+        // ── Print Overlay — يظهر جوه الصفحة بدل window.open ──
+        printOverlay && createPortal(
+            React.createElement('div', {
+                style: {
+                    position:'fixed', inset:0, zIndex:9999,
+                    background:'rgba(0,0,0,0.85)',
+                    display:'flex', flexDirection:'column',
+                    alignItems:'center', justifyContent:'flex-start',
+                }
+            },
+                // شريط التحكم
+                React.createElement('div', {
+                    style: {
+                        width:'100%', maxWidth:860,
+                        display:'flex', alignItems:'center', justifyContent:'space-between',
+                        padding:'10px 16px',
+                        background:'#0B1320',
+                        borderBottom:'2px solid #D4AF37',
+                        flexShrink:0,
+                    }
+                },
+                    React.createElement('span', {style:{color:'#D4AF37', fontWeight:900, fontSize:14, fontFamily:'Cairo,sans-serif'}}, '📄 معاينة التقرير'),
+                    React.createElement('div', {style:{display:'flex', gap:8}},
+                        React.createElement('button', {
+                            onClick: () => {
+                                const iframe = document.getElementById('sanad-print-frame') as HTMLIFrameElement;
+                                if (iframe?.contentWindow) { iframe.contentWindow.focus(); iframe.contentWindow.print(); }
+                            },
+                            style: {
+                                background:'#D4AF37', color:'#0B1320',
+                                border:'none', borderRadius:8, padding:'6px 18px',
+                                fontWeight:900, fontSize:12, cursor:'pointer', fontFamily:'Cairo,sans-serif'
+                            }
+                        }, '🖨️ طباعة'),
+                        React.createElement('button', {
+                            onClick: () => setPrintOverlay(null),
+                            style: {
+                                background:'rgba(255,255,255,0.08)', color:'#fff',
+                                border:'1px solid rgba(255,255,255,0.15)', borderRadius:8,
+                                padding:'6px 14px', fontWeight:700, fontSize:12,
+                                cursor:'pointer', fontFamily:'Cairo,sans-serif'
+                            }
+                        }, '✕ إغلاق')
+                    )
+                ),
+                // الـ iframe يعرض التقرير
+                React.createElement('iframe', {
+                    id: 'sanad-print-frame',
+                    srcDoc: printOverlay,
+                    style: {
+                        width:'100%', maxWidth:860,
+                        flex:1, border:'none',
+                        background:'#fff',
+                    }
+                })
+            ),
+            document.body
         )
     );
 }
