@@ -339,12 +339,11 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         // ── Modal الملخص المالي الإجمالي ──
         showSummaryModal && React.createElement('div',{
-            className:"fixed inset-0 z-50 flex items-end justify-center",
+            className:"fixed inset-0 z-50 flex items-end justify-center pt-[80px]",
             style:{background:'rgba(0,0,0,0.75)'},
             onClick:()=>setShowSummaryModal(false)
-        },
             React.createElement('div',{
-                className:"bg-premium-card border-t border-premium-gold/30 rounded-t-3xl w-full max-w-sm max-h-[80vh] overflow-y-auto no-scrollbar slide-up",
+                className:"bg-premium-card border-t border-premium-gold/30 rounded-t-3xl w-full max-w-sm max-h-[70vh] overflow-y-auto no-scrollbar slide-up",
                 onClick:e=>e.stopPropagation()
             },
             React.createElement('div',{className:"p-5 space-y-4"},
@@ -442,12 +441,12 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         // ─ فورم الإضافة/التعديل (modal) ─
         showForm && createPortal(
             React.createElement('div',{
-                className:"fixed inset-0 z-[70] flex items-end justify-center",
+                className:"fixed inset-0 z-[70] flex items-end justify-center pt-[80px]",
                 style:{background:'rgba(0,0,0,0.8)'},
                 onClick:()=>{setShowForm(false);setEditId(null);}
             },
                 React.createElement('div',{
-                    className:"bg-premium-card border-t border-premium-gold/30 rounded-t-3xl w-full max-w-sm max-h-[80vh] overflow-y-auto no-scrollbar slide-up p-5 space-y-3",
+                    className:"bg-premium-card border-t border-premium-gold/30 rounded-t-3xl w-full max-w-sm max-h-[calc(100vh-80px)] overflow-y-auto no-scrollbar slide-up p-5 space-y-3",
                     onClick:e=>e.stopPropagation()
                 },
                     React.createElement('div',{className:"w-10 h-1 bg-white/20 rounded-full mx-auto mb-1"}),
@@ -566,12 +565,12 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         ),
                         // ─ مودال التفاصيل الكاملة ─
                         detailsFor===fee.id && React.createElement('div',{
-                            className:"fixed inset-0 z-50 flex items-end justify-center",
+                            className:"fixed inset-0 z-50 flex items-end justify-center pt-[80px]",
                             style:{background:'rgba(0,0,0,0.8)'},
                             onClick:()=>setDetailsFor(null)
                         },
                             React.createElement('div',{
-                                className:"bg-premium-card border-t border-white/10 rounded-t-3xl shadow-premium-shadow w-full max-w-sm slide-up flex flex-col max-h-[80vh]",
+                                className:"bg-premium-card border-t border-white/10 rounded-t-3xl shadow-premium-shadow w-full max-w-sm slide-up flex flex-col max-h-[calc(100vh-80px)]",
                                 onClick:e=>e.stopPropagation()
                             },
                                 React.createElement('div',{className:"shrink-0 px-4 pt-2 pb-1"},
