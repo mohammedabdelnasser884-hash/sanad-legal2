@@ -902,7 +902,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     // أزرار
                     React.createElement('div',{className:"flex gap-2 pt-1"},
                         React.createElement('button',{
-                            onClick:()=>printInvoice(invoiceModal),
+                            onClick:()=>{ setInvoiceModal(null); printInvoice(invoiceModal); },
                             className:"flex-1 py-2.5 bg-premium-gold text-premium-bg rounded-xl text-xs font-black flex items-center justify-center gap-1.5 active:scale-95"
                         },"🖨️ طباعة الفاتورة"),
                         React.createElement('button',{
