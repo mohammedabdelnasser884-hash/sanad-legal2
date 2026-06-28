@@ -348,8 +348,8 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             onClick:()=>setShowSummaryModal(false)
         },
             React.createElement('div',{
-                className:"bg-premium-card border border-premium-gold/20 rounded-t-3xl w-full overflow-y-auto no-scrollbar slide-up shadow-2xl mt-auto",
-                style:{maxHeight:'100%'},
+                className:"bg-premium-card border border-premium-gold/20 rounded-t-3xl w-full overflow-y-auto no-scrollbar slide-up shadow-2xl flex-1",
+                style:{height:'100%'},
                 onClick:e=>e.stopPropagation()
             },
             React.createElement('div',{className:"p-5 space-y-4"},
@@ -455,8 +455,8 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                 onClick:()=>{setShowForm(false);setEditId(null);}
             },
                 React.createElement('div',{
-                    className:"bg-premium-card border border-premium-gold/20 rounded-t-3xl w-full overflow-y-auto no-scrollbar slide-up p-5 space-y-3 shadow-2xl mt-auto",
-                    style:{maxHeight:'100%'},
+                    className:"bg-premium-card border border-premium-gold/20 rounded-t-3xl w-full overflow-y-auto no-scrollbar slide-up p-5 space-y-3 shadow-2xl flex-1",
+                    style:{height:'100%'},
                     onClick:e=>e.stopPropagation()
                 },
                     React.createElement('div',{className:"flex items-center justify-between mb-1"},
@@ -583,11 +583,8 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                             onClick:()=>setDetailsFor(null)
                         },
                             React.createElement('div',{
-                                className:"bg-premium-card border border-white/10 rounded-t-3xl shadow-2xl w-full flex flex-col overflow-hidden mx-auto max-w-sm",
-                                style:{
-                                    height:'100%',
-                                    marginTop:'auto',
-                                },
+                                className:"bg-premium-card border border-white/10 rounded-t-3xl shadow-2xl w-full flex flex-col overflow-hidden",
+                                style:{height:'100%'},
                                 onClick:e=>e.stopPropagation()
                             },
                                 React.createElement('div',{className:"shrink-0 px-4 pt-4 pb-2"},
@@ -782,13 +779,12 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         // ─ مودال تأكيد حذف الأتعاب الرئيسية ─
         confirmDeleteFee && React.createElement('div',{
-            className:"fixed inset-x-0 bottom-0 z-50 flex flex-col",
-            style:{top:'calc(64px + env(safe-area-inset-top, 0px))', background:'rgba(0,0,0,0.7)'},
+            className:"fixed inset-x-0 z-50 flex flex-col",
+            style:{top:'calc(64px + env(safe-area-inset-top, 0px))', bottom:'calc(80px + env(safe-area-inset-bottom, 0px))', background:'rgba(0,0,0,0.7)'},
             onClick:()=>setConfirmDeleteFee(null)
         },
             React.createElement('div',{
-                className:"bg-premium-card border border-rose-500/30 rounded-t-2xl p-5 w-full max-w-sm space-y-4 slide-up mx-auto mt-auto",
-                style:{paddingBottom:'max(env(safe-area-inset-bottom, 16px), 16px)'},
+                className:"bg-premium-card border border-rose-500/30 rounded-t-2xl p-5 w-full max-w-sm space-y-4 slide-up flex-1",
                 onClick:e=>e.stopPropagation()
             },
                 React.createElement('div',{className:"text-center space-y-1"},
@@ -813,13 +809,12 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         // ─ مودال تأكيد حذف الدفعة ─
         confirmDeletePay && React.createElement('div',{
-            className:"fixed inset-x-0 bottom-0 z-50 flex flex-col",
-            style:{top:'calc(64px + env(safe-area-inset-top, 0px))', background:'rgba(0,0,0,0.7)'},
+            className:"fixed inset-x-0 z-50 flex flex-col",
+            style:{top:'calc(64px + env(safe-area-inset-top, 0px))', bottom:'calc(80px + env(safe-area-inset-bottom, 0px))', background:'rgba(0,0,0,0.7)'},
             onClick:()=>setConfirmDeletePay(null)
         },
             React.createElement('div',{
-                className:"bg-premium-card border border-rose-500/30 rounded-t-2xl p-5 w-full max-w-sm space-y-4 slide-up mx-auto mt-auto",
-                style:{paddingBottom:'max(env(safe-area-inset-bottom, 16px), 16px)'},
+                className:"bg-premium-card border border-rose-500/30 rounded-t-2xl p-5 w-full space-y-4 slide-up flex-1",
                 onClick:e=>e.stopPropagation()
             },
                 React.createElement('div',{className:"text-center space-y-1"},
@@ -842,13 +837,13 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         // ─ مودال معاينة الفاتورة ─
         invoiceModal && React.createElement('div',{
-            className:"fixed inset-x-0 bottom-0 z-50 flex flex-col",
-            style:{top:'calc(64px + env(safe-area-inset-top, 0px))', background:'rgba(0,0,0,0.85)'},
+            className:"fixed inset-x-0 z-50 flex flex-col",
+            style:{top:'calc(64px + env(safe-area-inset-top, 0px))', bottom:'calc(80px + env(safe-area-inset-bottom, 0px))', background:'rgba(0,0,0,0.85)'},
             onClick:()=>setInvoiceModal(null)
         },
             React.createElement('div',{
-                className:"bg-premium-card border border-premium-gold/30 rounded-t-2xl w-full overflow-y-auto mt-auto",
-                style:{maxHeight:'100%', paddingBottom:'env(safe-area-inset-bottom, 16px)'},
+                className:"bg-premium-card border border-premium-gold/30 rounded-t-2xl w-full overflow-y-auto flex-1",
+                style:{height:'100%'},
                 onClick:e=>e.stopPropagation()
             },
                 // ─ رأس المودال ─
