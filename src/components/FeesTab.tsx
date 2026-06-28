@@ -1,44 +1,40 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { toast, escapeHtml } from '../utils';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { toast, safeUpdate, escapeHtml } from '../utils';
 import { Inp, Sel } from './shared';
 import { createPortal } from 'react-dom';
-import { I, COUNTRY_CONFIGS, loadOfficeSetting, SanadMark } from '../constants';
 import { db } from '../supabaseClient';
-import { useFeesActions } from '../hooks/fees/useFeesActions';
+import { I, COUNTRY_CONFIGS, loadOfficeSetting, SanadMark } from '../constants';
 
-function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country, profile=null}){
-    const {
-      fees, payments, expandedPayments, setExpandedPayments,
-      loading, showForm, setShowForm, form, setForm, saving, editId, setEditId,
-      addPaymentFor, setAddPaymentFor, payAmount, setPayAmount, payDate, setPayDate,
-      payNote, setPayNote, confirmDeletePay, setConfirmDeletePay,
-      confirmDeleteFee, setConfirmDeleteFee, invoiceModal, setInvoiceModal,
-      payReceiver, setPayReceiver, payClientName, setPayClientName,
-      payClientNameText, setPayClientNameText, feesSearch, setFeesSearch,
-      feesFilter, setFeesFilter,
-      fetchFees, handleSave, handleAddPayment, handleDeletePayment, handleDelete,
-      // ── قيم محسوبة من الـ hook (مركزية — لا تُعاد هنا) ──
-      fmt, fmtDate,
-      feesByCategory, feesSections, feesAfterCategoryFilter, filteredFees,
-      grandTotal, grandPaid, grandRemaining,
-    } = useFeesActions(cases, clients, country, profile);
 
+function FeesTab({db, cases, clients, showSummaryModal, setShowSummaryModal}){
+    const [fees, setFees] = useState([]);
+    const [payments, setPayments] = useState({}); // keyed by fee_id
+    const [expandedPayments, setExpandedPayments] = useState({});
+    const [loading, setLoading] = useState(true);
+    const [showForm, setShowForm] = useState(false);
+    const [form, setForm] = useState({case_id:'', client_name_manual:'', receiver:'', total:'', paid:'', payment_date:'', notes:''});
+    const [saving, setSaving] = useState(false);
+    const [editId, setEditId] = useState(null);
+    const [addPaymentFor, setAddPaymentFor] = useState(null);
+    const [payAmount, setPayAmount] = useState('');
+    const [payDate, setPayDate] = useState('');
+    const [payNote, setPayNote] = useState('');
+    const [confirmDeletePay, setConfirmDeletePay] = useState(null);
+    const [confirmDeleteFee, setConfirmDeleteFee] = useState(null);
+    const [invoiceModal, setInvoiceModal] = useState(null);
+    const [payReceiver, setPayReceiver] = useState('');
+    const [payClientName, setPayClientName] = useState('');
+    const [payClientNameText, setPayClientNameText] = useState('');
+    const [feesSearch, setFeesSearch] = useState('');
+    const [feesFilter, setFeesFilter] = useState<'collected'|'deferred'|'open'>('deferred');
     const [detailsFor, setDetailsFor] = useState(null); // معرف بطاقة الأتعاب المفتوحة تفاصيلها
-    const [printOverlay, setPrintOverlay] = useState(null); // HTML التقرير للعرض والطباعة
-    // ── حالة أيقونة البحث القابلة للفتح في الهيدر ──
-    const [searchOpen, setSearchOpen] = useState(false);
-    const searchInputRef = useRef(null);
-    const handleSearchOpen = () => { setSearchOpen(true); setTimeout(()=>searchInputRef.current?.focus(), 50); };
-    const handleSearchClose = () => { setFeesSearch(''); setSearchOpen(false); };
-    // ── عملة الدولة المختارة في الإعدادات (افتراضي جنيه مصري) ──
-    const currency = COUNTRY_CONFIGS[country||'EG']?.currency || 'جنيه مصري';
 
     // ── توليد رقم فاتورة تسلسلي ──
     const genInvoiceNumber = (allPayments, paymentId) => {
         // جمع كل الدفعات مرتبة بالتاريخ
         const allPays = [];
-        (Object.values(allPayments) as any[]).forEach(arr => (arr as any[]).forEach((p:any) => allPays.push(p)));
-        allPays.sort((a:any,b:any)=> new Date(a.payment_date||a.created_at).getTime() - new Date(b.payment_date||b.created_at).getTime());
+        Object.values(allPayments).forEach(arr => arr.forEach(p => allPays.push(p)));
+        allPays.sort((a,b)=> new Date(a.payment_date||a.created_at) - new Date(b.payment_date||b.created_at));
         const idx = allPays.findIndex(p=>p.id===paymentId);
         const num = idx>=0 ? idx+1 : allPays.length+1;
         const year = new Date().getFullYear();
@@ -90,20 +86,25 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         +'<div class="sig-box"><div class="sig-line">توقيع واستلام الموكل</div></div>'
         +'</div>';
 
-    // ── عرض التقرير في overlay داخل الصفحة وطباعته ──
-    const showAndPrint = (html) => {
-        setPrintOverlay(html);
-        setTimeout(() => {
-            const iframe = document.getElementById('sanad-print-frame') as HTMLIFrameElement;
-            if (iframe && iframe.contentWindow) {
-                iframe.contentWindow.focus();
-                iframe.contentWindow.print();
-            }
-        }, 700);
+    // ── سكريبت الطباعة التلقائية عند تحميل الصفحة ──
+    const autoPrintScript = '<scr'+'ipt>window.onload=function(){window.print();}<'+'/scr'+'ipt>';
+
+    // ── فتح نافذة جديدة جاهزة للطباعة بمقاس A4 ──
+    const openPrintWindow = () => window.open('','_blank','width=794,height=1123');
+
+    // ── كتابة الـHTML النهائي وتشغيل الطباعة ──
+    const writeAndPrint = (w, html) => {
+        if(!w) return;
+        w.document.write(html);
+        w.document.close();
     };
 
     // ── طباعة الفاتورة ──
     const printInvoice = async (inv) => {
+        // افتح النافذة فوراً قبل أي async عشان المتصفح ميبلوكهاش
+        const w = openPrintWindow();
+        if(!w) return;
+        // بعدين جلب بيانات المكتب
         const { name, contactLine, logoHtml } = await loadOfficeInfo();
         const statusBadge = inv.remaining==='0'
             ? '<span class="status-badge status-paid">مسدد بالكامل</span>'
@@ -189,19 +190,21 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             +'</div>'
             +'<div class="amount-section">'
             +'<div class="amount-label">مبلغ هذه الدفعة</div>'
-            +'<div class="amount-value">'+amount+' '+currency+'</div>'
+            +'<div class="amount-value">'+amount+' جنيه</div>'
             +'<div class="amount-sub">تاريخ الدفع: '+payDate+'</div>'
             +'</div>'
             +notesHtml
             +sigRowHtml
             +'<div class="footer">'+name+(contactLine?' — '+contactLine:'')+'</div>'
             +'</div>'
+            +autoPrintScript
             +'</body></html>';
 
-        showAndPrint(html);
+        writeAndPrint(w, html);
     };
-    const printAllPayments = async (fee, feePayments, caseName, clientName) => {
-        const { name: officeName, contactLine, logoHtml } = await loadOfficeInfo();
+    const printAllPayments = (fee, feePayments, caseName, clientName) => {
+        const w = openPrintWindow();
+        if(!w) return;
         const year = new Date().getFullYear();
         const css = [
             '*{margin:0;padding:0;box-sizing:border-box;}',
@@ -241,13 +244,13 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             rows += '<tr>'
                 +'<td>'+num+'</td>'
                 +'<td>'+d+'</td>'
-                +'<td>'+amt+' '+currency+'</td>'
+                +'<td>'+amt+' \u062c\u0646\u064a\u0647</td>'
                 +'<td>'+recv+'</td>'
                 +'<td>'+note+'</td>'
                 +'</tr>';
         });
         const totalPaid = (fee.paid_fees||0).toLocaleString('ar-SA',{maximumFractionDigits:0});
-        rows += '<tr class="total-row"><td colspan="2">\u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0645\u062f\u0641\u0648\u0639</td><td>'+totalPaid+' '+currency+'</td><td colspan="2"></td></tr>';
+        rows += '<tr class="total-row"><td colspan="2">\u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0645\u062f\u0641\u0648\u0639</td><td>'+totalPaid+' \u062c\u0646\u064a\u0647</td><td colspan="2"></td></tr>';
 
         const safeCaseName = escapeHtml(caseName);
         const safeClientName = escapeHtml(clientName || '—');
@@ -259,10 +262,9 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             +'<div class="page">'
             +'<div class="header">'
             +'<div class="logo-box">'
-            +logoHtml
-            +'<div><div class="office-name">'+officeName+'</div>'
-            +(contactLine?'<div class="office-sub">'+contactLine+'</div>':'')
-            +'</div></div>'
+            +officeLogoSvg(56)
+            +'<div><div class="office-name">\u0633\u064e\u0646\u064e\u062f</div>'
+            +'<div class="office-sub">\u0646\u0638\u0627\u0645 \u0627\u0644\u062a\u0634\u0639\u064a\u0644 \u0627\u0644\u0642\u0627\u0646\u0648\u0646\u064a</div></div></div>'
             +'<div><div class="report-title">\u0643\u0634\u0641 \u062c\u0645\u064a\u0639 \u0627\u0644\u062f\u0641\u0639\u0627\u062a</div>'
             +'<div class="report-sub">\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0637\u0628\u0627\u0639\u0629: '+new Date().toLocaleDateString('ar-EG',{year:'numeric',month:'long',day:'numeric'})+'</div></div>'
             +'</div>'
@@ -280,68 +282,208 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             +'<th>\u0645\u0644\u0627\u062d\u0638\u0627\u062a</th>'
             +'</tr></thead><tbody>'+rows+'</tbody></table>'
             +sigRowHtml
-            +'<div class="footer">'+officeName+(contactLine?' — '+contactLine:'')+'</div>'
+            +'<div class="footer">\u0633\u064e\u0646\u064e\u062f \u2014 \u0646\u0638\u0627\u0645 \u0627\u0644\u062a\u0634\u0639\u064a\u0644 \u0627\u0644\u0642\u0627\u0646\u0648\u0646\u064a</div>'
             +'</div>'
+            +autoPrintScript
             +'</body></html>';
-        showAndPrint(html);
+        writeAndPrint(w, html);
     };
 
-    // ── المتغيرات المحسوبة تأتي من useFeesActions مباشرة ──
+    const fetchFees = async () => {
+        setLoading(true);
+        const {data} = await db.from('case_fees').select('*').order('created_at',{ascending:false});
+        setFees(data||[]);
+        // جلب كل الدفعات
+        const {data:pays} = await db.from('fee_payments').select('*').order('payment_date',{ascending:false});
+        const grouped = {};
+        (pays||[]).forEach(p=>{ if(!grouped[p.fee_id]) grouped[p.fee_id]=[]; grouped[p.fee_id].push(p); });
+        setPayments(grouped);
+        setLoading(false);
+    };
+    useEffect(()=>{ fetchFees(); },[]);
+
+    const handleSave = async () => {
+        if(!form.case_id||!form.total){ toast('يرجى اختيار القضية وإدخال إجمالي الأتعاب',true); return; }
+        setSaving(true);
+        const clientName = form.client_name_manual === '__manual__'
+            ? (form.client_name_text||null)
+            : (form.client_name_manual||null);
+        const payload = {
+            case_id: form.case_id,
+            client_name: clientName,
+            receiver: form.receiver||null,
+            total_fees: parseFloat(form.total)||0,
+            notes: form.notes||null,
+        };
+        if(editId){
+            // تعديل — لا نلمس paid_fees أبداً، يتحسب من fee_payments
+            const editFee = fees.find((f:any) => f.id === editId);
+            const { conflict } = await safeUpdate(db, 'case_fees', editId, payload, editFee?.updated_at || null);
+            if (conflict) { setSaving(false); return; }
+            toast('✅ تم تحديث الأتعاب');
+        } else {
+            // إضافة جديدة — paid_fees يبدأ بصفر دايماً
+            const {data:inserted, error} = await db.from('case_fees')
+                .insert([{...payload, paid_fees:0}]).select().single();
+            if(error){ toast('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true); setSaving(false); return; }
+            // لو كتب مقدم أتعاب → سجّله كدفعة وحدّث paid_fees
+            if(inserted && parseFloat(form.paid)>0){
+                await db.from('fee_payments').insert([{
+                    fee_id: inserted.id,
+                    amount: parseFloat(form.paid),
+                    payment_date: form.payment_date||new Date().toISOString().slice(0,10),
+                    notes: 'مقدم أتعاب',
+                    received_by: form.receiver||null,
+                    client_name: clientName
+                }]);
+                // احسب paid_fees من DB بعد ما الدفعة اتضافت
+                const {data:allPays} = await db.from('fee_payments').select('amount').eq('fee_id',inserted.id);
+                const realPaid = (allPays||[]).reduce((s,p)=>s+(p.amount||0), 0);
+                await db.from('case_fees').update({
+                    paid_fees: realPaid,
+                    last_payment_date: form.payment_date||new Date().toISOString().slice(0,10)
+                }).eq('id',inserted.id);
+            }
+            toast('✅ تم إضافة الأتعاب');
+        }
+        setSaving(false);
+        setShowForm(false); setForm({case_id:'',client_name_manual:'',client_name_text:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); setEditId(null);
+        fetchFees();
+    };
+
+    const handleAddPayment = async (fee) => {
+        const amount = parseFloat(payAmount)||0;
+        if(amount<=0){ toast('أدخل مبلغاً صحيحاً',true); return; }
+        const remaining = (fee.total_fees || 0) - (fee.paid_fees || 0);
+        if (fee.total_fees > 0 && amount > remaining) {
+            toast(`⚠️ المبلغ (${amount.toLocaleString('ar-EG')}) يتجاوز المتبقي (${remaining.toLocaleString('ar-EG')} جنيه). تأكد من الصحة.`, true);
+            // نتيح المتابعة — لا نمنع (قد تكون غرامة أو تكاليف إضافية)
+        }
+        const resolvedClient = payClientName==='__manual__' ? (payClientNameText||null) : (payClientName||fee.client_name||null);
+        await db.from('fee_payments').insert([{
+            fee_id: fee.id,
+            amount: amount,
+            payment_date: payDate||new Date().toISOString().slice(0,10),
+            notes: payNote||null,
+            received_by: payReceiver||null,
+            client_name: resolvedClient
+        }]);
+        // احسب المجموع الفعلي من قاعدة البيانات بدون تحديد سقف
+        const {data:allPays} = await db.from('fee_payments').select('amount').eq('fee_id',fee.id);
+        const realPaid = (allPays||[]).reduce((s,p)=>s+(p.amount||0), 0);
+        const upd = {paid_fees: realPaid};
+        if(resolvedClient) upd.client_name = resolvedClient;
+        if(payDate) upd.last_payment_date = payDate;
+        await db.from('case_fees').update(upd).eq('id',fee.id);
+        toast('✅ تم تسجيل الدفعة');
+        setAddPaymentFor(null); setPayAmount(''); setPayDate(''); setPayNote(''); setPayReceiver(''); setPayClientName(''); setPayClientNameText('');
+        fetchFees();
+    };
+
+    const handleDeletePayment = async (payId, fee) => {
+        await db.from('fee_payments').delete().eq('id',payId);
+        // احسب المجموع الفعلي بعد الحذف من قاعدة البيانات بدون تحديد سقف
+        const {data:allPays} = await db.from('fee_payments').select('amount').eq('fee_id',fee.id);
+        const realPaid = (allPays||[]).reduce((s,p)=>s+(p.amount||0), 0);
+        await db.from('case_fees').update({paid_fees: realPaid}).eq('id',fee.id);
+        toast('🗑 تم حذف الدفعة');
+        fetchFees();
+    };
+
+    const handleDelete = async (id) => {
+        await db.from('fee_payments').delete().eq('fee_id',id);
+        await db.from('case_fees').delete().eq('id',id);
+        toast('🗑 تم الحذف');
+        fetchFees();
+    };
+
+    const fmt = n => n?.toLocaleString('ar-SA',{maximumFractionDigits:0})||'0';
+    const fmtDate = d => d ? new Date(d).toLocaleDateString('ar-EG',{year:'numeric',month:'short',day:'numeric'}) : '';
+
+    // ── تصنيف الأتعاب (محصلة / مؤجلة / مفتوحة) ──
+    const getFeeCategory = (fee) => {
+        const total = fee.total_fees || 0;
+        const paid  = fee.paid_fees  || 0;
+        if (total <= 0) return 'open';          // مفيش اتفاق على رقم → مفتوحة
+        if (paid >= total) return 'collected';  // اتدفعت بالكامل → محصلة
+        return 'deferred';                      // فيها رقم بس لسه ناقصة → مؤجلة
+    };
+
+    const feesSections = [
+        {
+            key: 'deferred' as const,
+            label: 'مؤجلة',
+            emoji: '⏳',
+            desc: 'فلوس في الطريق',
+            activeBg: 'bg-amber-500/20 border-amber-500/40',
+            activeText: 'text-amber-300',
+            countActiveBg: 'bg-amber-500/30 text-amber-200',
+        },
+        {
+            key: 'open' as const,
+            label: 'مفتوحة',
+            emoji: '⚠️',
+            desc: 'محتاجة تتحدد',
+            activeBg: 'bg-rose-500/20 border-rose-500/40',
+            activeText: 'text-rose-300',
+            countActiveBg: 'bg-rose-500/30 text-rose-200',
+        },
+        {
+            key: 'collected' as const,
+            label: 'محصّلة',
+            emoji: '✅',
+            desc: 'أرباحك الفعلية',
+            activeBg: 'bg-emerald-500/20 border-emerald-500/40',
+            activeText: 'text-emerald-300',
+            countActiveBg: 'bg-emerald-500/30 text-emerald-200',
+        },
+    ];
+
+    const feesByCategory = {
+        collected: fees.filter(f => getFeeCategory(f) === 'collected'),
+        deferred:  fees.filter(f => getFeeCategory(f) === 'deferred'),
+        open:      fees.filter(f => getFeeCategory(f) === 'open'),
+    };
+
+    // ── فلترة الأتعاب بالبحث ──
+    const feesAfterCategoryFilter = feesByCategory[feesFilter] || [];
+    const filteredFees = feesSearch.trim() === '' ? feesAfterCategoryFilter : feesAfterCategoryFilter.filter(fee => {
+        const q = feesSearch.trim().toLowerCase();
+        const linkedCase = cases.find(c => c.id === fee.case_id);
+        const linkedClient = linkedCase ? clients.find(cl => cl.id === linkedCase.client_id) : null;
+        return (
+            linkedCase?.title?.toLowerCase().includes(q) ||
+            linkedClient?.full_name?.toLowerCase().includes(q) ||
+            linkedCase?.plaintiff?.toLowerCase().includes(q) ||
+            linkedCase?.defendant?.toLowerCase().includes(q) ||
+            fee.notes?.toLowerCase().includes(q)
+        );
+    });
+
+    // ── إجماليات حسب الفئة الحالية ──
+    const currentSectionFees = feesAfterCategoryFilter;
+    const totalAll  = currentSectionFees.reduce((s,f)=>s+(f.total_fees||0),0);
+    const paidAll   = currentSectionFees.reduce((s,f)=>s+(f.paid_fees||0),0);
+    const remaining = totalAll - paidAll;
+
+    // ── إجماليات شاملة من كل الفئات ──
+    const allFees = fees;
+    const grandTotal     = allFees.reduce((s,f)=>s+(f.total_fees||0),0);
+    const grandPaid      = allFees.reduce((s,f)=>s+(f.paid_fees||0),0);
+    const grandRemaining = grandTotal - grandPaid;
 
     return React.createElement('div',{className:"space-y-4 fade-in"},
 
-        // ── هيدر القسم: العنوان + أيقونة البحث ──
-        React.createElement('div',{className:"flex items-center justify-between gap-2"},
-            React.createElement('h3',{className:"text-sm font-black text-white shrink-0"},"💰 نظام الأتعاب"),
-            searchOpen
-                ? React.createElement('div',{
-                    className:"flex items-center gap-1.5 flex-1 bg-white/8 border border-white/12 rounded-xl px-2.5 py-1.5",
-                    style:{minWidth:0}
-                },
-                    React.createElement('svg',{className:"w-3.5 h-3.5 text-amber-400 shrink-0",fill:"none",viewBox:"0 0 24 24",strokeWidth:"2.5",stroke:"currentColor"},
-                        React.createElement('path',{strokeLinecap:"round",strokeLinejoin:"round",d:"m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"})
-                    ),
-                    React.createElement('input',{
-                        ref:searchInputRef,
-                        type:"text",
-                        value:feesSearch,
-                        onChange:e=>setFeesSearch(e.target.value),
-                        placeholder:"اسم الموكل أو القضية...",
-                        dir:"rtl",
-                        className:"flex-1 bg-transparent text-[11px] text-white placeholder-slate-500 outline-none min-w-0"
-                    }),
-                    React.createElement('button',{
-                        onClick:handleSearchClose,
-                        className:"text-slate-500 hover:text-slate-300 shrink-0 active:scale-90 transition-transform"
-                    },
-                        React.createElement('svg',{className:"w-3.5 h-3.5",fill:"none",viewBox:"0 0 24 24",strokeWidth:"2.5",stroke:"currentColor"},
-                            React.createElement('path',{strokeLinecap:"round",strokeLinejoin:"round",d:"M6 18 18 6M6 6l12 12"})
-                        )
-                    )
-                )
-                : React.createElement('button',{
-                    onClick:handleSearchOpen,
-                    className:"flex items-center gap-1 bg-white/8 border border-white/10 text-slate-300 px-2.5 py-2 rounded-xl text-[11px] font-black active:scale-95 transition-transform hover:border-amber-500/30 hover:text-amber-300",
-                    title:"بحث في الأتعاب"
-                },
-                    React.createElement('svg',{className:"w-3.5 h-3.5",fill:"none",viewBox:"0 0 24 24",strokeWidth:"2.5",stroke:"currentColor"},
-                        React.createElement('path',{strokeLinecap:"round",strokeLinejoin:"round",d:"m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"})
-                    ),
-                    React.createElement('span',null,"بحث")
-                )
-        ),
-
         // ── Modal الملخص المالي الإجمالي ──
-        showSummaryModal && createPortal(React.createElement('div',{
-            className:"fixed z-50 bg-premium-card border-t border-premium-gold/20 rounded-t-3xl overflow-y-auto no-scrollbar shadow-2xl",
-            style:{
-                top:'calc(64px + env(safe-area-inset-top, 0px))',
-                bottom:'calc(80px + env(safe-area-inset-bottom, 0px))',
-                left:0, right:0,
-            },
-            onClick:e=>e.stopPropagation()
+        showSummaryModal && React.createElement('div',{
+            className:"fixed inset-0 z-50 flex items-end justify-center pb-8 px-4",
+            style:{background:'rgba(0,0,0,0.75)'},
+            onClick:()=>setShowSummaryModal(false)
         },
-            React.createElement('div',{className:"p-5 space-y-4"},
+            React.createElement('div',{
+                className:"bg-premium-card border border-premium-gold/30 rounded-2xl p-5 w-full max-w-sm space-y-4 slide-up",
+                onClick:e=>e.stopPropagation()
+            },
                 // رأس المودال
                 React.createElement('div',{className:"flex items-center justify-between"},
                     React.createElement('p',{className:"text-sm font-black text-premium-gold"},"💰 الملخص المالي الإجمالي"),
@@ -394,7 +536,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     className:"w-full py-2.5 bg-white/5 text-slate-400 rounded-xl text-xs font-bold active:scale-95"
                 },"إغلاق")
             )
-        ), document.body),
+        ),
 
         // ── Pill Selector — أتعاب محصلة / مؤجلة / مفتوحة ──
         React.createElement('div',{className:"flex items-center bg-white/5 rounded-2xl p-1 gap-1"},
@@ -419,11 +561,22 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             })
         ),
 
-        // ─ زر الملخص المالي (بقى هنا مكان شريط البحث القديم) ─
-        React.createElement('button',{
-            onClick:()=>setShowSummaryModal(true),
-            className:"w-full flex items-center justify-center gap-1.5 py-2.5 rounded-2xl bg-premium-gold/10 border border-premium-gold/25 text-premium-gold text-xs font-black active:scale-95 transition-all hover:bg-premium-gold/15"
-        },"📊 الملخص المالي الإجمالي"),
+        // ─ شريط البحث ─
+        React.createElement('div',{className:"relative"},
+            React.createElement('div',{className:"absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm pointer-events-none"},"🔍"),
+            React.createElement('input',{
+                type:"text",
+                value:feesSearch,
+                onChange:e=>setFeesSearch(e.target.value),
+                placeholder:"ابحث باسم الموكل أو القضية أو المدعي أو المدعى عليه...",
+                className:"w-full pr-9 pl-8 py-2.5 text-xs rounded-2xl border border-white/10 bg-white/5 text-white placeholder-slate-600 focus:outline-none focus:border-premium-gold/40 transition-all",
+                style:{fontFamily:'Cairo,sans-serif'}
+            }),
+            feesSearch && React.createElement('button',{
+                onClick:()=>setFeesSearch(''),
+                className:"absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs active:scale-90"
+            },"✕")
+        ),
 
         // ─ زر الإضافة ─
         React.createElement('button',{
@@ -431,78 +584,64 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             className:"w-full py-3 border border-dashed border-premium-gold/30 rounded-2xl flex items-center justify-center gap-2 text-premium-gold text-xs font-black hover:bg-premium-gold/5 transition-all active:scale-[0.98]"
         }, React.createElement(I.Plus), "إضافة أتعاب قضية"),
 
-        // ─ فورم الإضافة/التعديل (modal) ─
-        showForm && createPortal(
-            React.createElement('div',{
-                className:"fixed z-[70] bg-premium-card border-t border-premium-gold/20 rounded-t-3xl overflow-y-auto no-scrollbar p-5 space-y-3 shadow-2xl",
-                style:{
-                    top:'calc(64px + env(safe-area-inset-top, 0px))',
-                    bottom:'calc(80px + env(safe-area-inset-bottom, 0px))',
-                    left:0, right:0,
+        // ─ فورم الإضافة/التعديل ─
+        showForm && React.createElement('div',{className:"bg-premium-card border border-premium-gold/20 rounded-2xl p-4 space-y-3 slide-up"},
+            React.createElement('h4',{className:"text-xs font-black text-premium-gold"},"📋 بيانات الأتعاب"),
+            React.createElement(Sel,{
+                label:"القضية",value:form.case_id,
+                onChange:e=>{
+                    const cid = e.target.value;
+                    const lc = cases.find(c=>c.id===cid);
+                    const lcl = lc ? clients.find(cl=>cl.id===lc.client_id) : null;
+                    setForm(p=>({...p, case_id:cid, client_name_manual: lcl ? '' : p.client_name_manual}));
                 },
-                onClick:e=>e.stopPropagation()
-            },
-                    React.createElement('div',{className:"flex items-center justify-between mb-1"},
-                        React.createElement('h4',{className:"text-xs font-black text-premium-gold"},editId ? "✏️ تعديل الأتعاب" : "📋 إضافة أتعاب"),
-                        React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);},className:"w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90"},"✕")
-                    ),
-                    React.createElement(Sel,{
-                        label:"القضية",value:form.case_id,
-                        onChange:e=>{
-                            const cid = e.target.value;
-                            const lc = cases.find(c=>c.id===cid);
-                            const lcl = lc ? clients.find(cl=>cl.id===lc.client_id) : null;
-                            setForm(p=>({...p, case_id:cid, client_name_manual: lcl ? '' : p.client_name_manual}));
-                        },
-                        options:[{value:'',label:'اختر القضية...'}, ...cases.map(c=>({value:c.id,label:c.title}))]
-                    }),
-                    React.createElement('div',{className:"space-y-1.5"},
-                        React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"اسم الموكل"),
-                        React.createElement('select',{
-                            value: form.client_name_manual === '__manual__' ? '__manual__'
-                                : (clients.find(cl=>cl.full_name===form.client_name_manual) ? form.client_name_manual : (form.client_name_manual ? '__manual__' : '')),
-                            onChange:e=>{
-                                const v = e.target.value;
-                                if(v==='__manual__') setForm(p=>({...p, client_name_manual:'__manual__'}));
-                                else setForm(p=>({...p, client_name_manual: v}));
-                            },
-                            className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-black/30 text-white",
-                            style:{fontFamily:'Cairo,sans-serif',colorScheme:'dark'}
-                        },
-                            React.createElement('option',{value:''},'اختر موكل...'),
-                            clients.map(cl=>React.createElement('option',{key:cl.id, value:cl.full_name}, cl.full_name)),
-                            React.createElement('option',{value:'__manual__'},'➕ آخر (اكتب يدوي)')
-                        ),
-                        form.client_name_manual==='__manual__' && React.createElement('input',{
-                            type:"text",
-                            value:form.client_name_text||'',
-                            onChange:e=>setForm(p=>({...p, client_name_text:e.target.value})),
-                            placeholder:"اكتب اسم الموكل...",
-                            className:"w-full p-2.5 text-xs rounded-xl border border-premium-gold/30 bg-black/30 text-white placeholder-slate-600",
-                            style:{fontFamily:'Cairo,sans-serif'},
-                            autoFocus:true
-                        })
-                    ),
-                    React.createElement(Inp,{label:"المستلم من المكتب",value:form.receiver,onChange:e=>setForm(p=>({...p,receiver:e.target.value})),placeholder:"اسم المحامي أو الموظف المستلم"}),
-                    React.createElement(Inp,{label:"إجمالي الأتعاب",type:"number",value:form.total,onChange:e=>setForm(p=>({...p,total:e.target.value})),placeholder:"0"}),
-                    React.createElement(Inp,{label:"المبلغ المدفوع",type:"number",value:form.paid,onChange:e=>setForm(p=>({...p,paid:e.target.value})),placeholder:"0"}),
-                    React.createElement('div',{className:"space-y-1"},
-                        React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"تاريخ الدفعة"),
-                        React.createElement('input',{
-                            type:"date",value:form.payment_date,onChange:e=>setForm(p=>({...p,payment_date:e.target.value})),
-                            className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-black/30 text-white",
-                            style:{fontFamily:'Cairo,sans-serif',colorScheme:'dark'}
-                        })
-                    ),
-                    React.createElement(Inp,{label:"ملاحظات",value:form.notes,onChange:e=>setForm(p=>({...p,notes:e.target.value})),placeholder:"أي ملاحظات..."}),
-                    React.createElement('div',{className:"flex gap-2"},
-                        React.createElement('button',{onClick:handleSave,disabled:saving,className:"flex-1 py-2.5 bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg rounded-xl text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-95"},
-                            saving?React.createElement(I.Spin):React.createElement(I.Check),"حفظ"),
-                        React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);},className:"px-4 py-2.5 bg-white/5 text-slate-400 rounded-xl text-xs font-bold active:scale-95"},"إلغاء")
-                    )
-                )
-            ,
-            document.body
+                options:[{value:'',label:'اختر القضية...'}, ...cases.map(c=>({value:c.id,label:c.title}))]
+            }),
+            // اسم الموكل — dropdown من المسجلين + خيار يدوي
+            React.createElement('div',{className:"space-y-1.5"},
+                React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"اسم الموكل"),
+                React.createElement('select',{
+                    value: form.client_name_manual === '__manual__' ? '__manual__'
+                        : (clients.find(cl=>cl.full_name===form.client_name_manual) ? form.client_name_manual : (form.client_name_manual ? '__manual__' : '')),
+                    onChange:e=>{
+                        const v = e.target.value;
+                        if(v==='__manual__') setForm(p=>({...p, client_name_manual:'__manual__'}));
+                        else setForm(p=>({...p, client_name_manual: v}));
+                    },
+                    className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-black/30 text-white",
+                    style:{fontFamily:'Cairo,sans-serif',colorScheme:'dark'}
+                },
+                    React.createElement('option',{value:''},'اختر موكل...'),
+                    clients.map(cl=>React.createElement('option',{key:cl.id, value:cl.full_name}, cl.full_name)),
+                    React.createElement('option',{value:'__manual__'},'➕ آخر (اكتب يدوي)')
+                ),
+                form.client_name_manual==='__manual__' && React.createElement('input',{
+                    type:"text",
+                    value:form.client_name_text||'',
+                    onChange:e=>setForm(p=>({...p, client_name_text:e.target.value})),
+                    placeholder:"اكتب اسم الموكل...",
+                    className:"w-full p-2.5 text-xs rounded-xl border border-premium-gold/30 bg-black/30 text-white placeholder-slate-600",
+                    style:{fontFamily:'Cairo,sans-serif'},
+                    autoFocus:true
+                })
+            ),
+            React.createElement(Inp,{label:"المستلم من المكتب",value:form.receiver,onChange:e=>setForm(p=>({...p,receiver:e.target.value})),placeholder:"اسم المحامي أو الموظف المستلم"}),
+            React.createElement(Inp,{label:"إجمالي الأتعاب",type:"number",value:form.total,onChange:e=>setForm(p=>({...p,total:e.target.value})),placeholder:"0"}),
+            React.createElement(Inp,{label:"المبلغ المدفوع",type:"number",value:form.paid,onChange:e=>setForm(p=>({...p,paid:e.target.value})),placeholder:"0"}),
+            React.createElement('div',{className:"space-y-1"},
+                React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"تاريخ الدفعة"),
+                React.createElement('input',{
+                    type:"date",value:form.payment_date,onChange:e=>setForm(p=>({...p,payment_date:e.target.value})),
+                    className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-black/30 text-white",
+                    style:{fontFamily:'Cairo,sans-serif',colorScheme:'dark'}
+                })
+            ),
+            React.createElement(Inp,{label:"ملاحظات",value:form.notes,onChange:e=>setForm(p=>({...p,notes:e.target.value})),placeholder:"أي ملاحظات..."}),
+            React.createElement('div',{className:"flex gap-2"},
+                React.createElement('button',{onClick:handleSave,disabled:saving,className:"flex-1 py-2.5 bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg rounded-xl text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-95"},
+                    saving?React.createElement(I.Spin):React.createElement(I.Check),"حفظ"),
+                React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);},className:"px-4 py-2.5 bg-white/5 text-slate-400 rounded-xl text-xs font-bold active:scale-95"},"إلغاء")
+            )
         ),
 
         // ─ قائمة الأتعاب ─
@@ -556,22 +695,21 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                             React.createElement('span',{className:`text-[9px] font-black px-2 py-1 rounded-full shrink-0 ${isFullyPaid?'bg-emerald-500/15 text-emerald-400':'bg-amber-500/15 text-amber-400'}`}, isFullyPaid ? '✅ مسدد' : pct+'%')
                         ),
                         // ─ مودال التفاصيل الكاملة ─
-                        detailsFor===fee.id && createPortal(React.createElement('div',{
-                            className:"fixed z-50 bg-premium-card border-t border-white/10 rounded-t-3xl shadow-2xl overflow-y-auto",
-                            style:{
-                                top:'calc(64px + env(safe-area-inset-top, 0px))',
-                                bottom:'calc(80px + env(safe-area-inset-bottom, 0px))',
-                                left:0, right:0,
-                            },
-                            onClick:e=>e.stopPropagation()
+                        detailsFor===fee.id && React.createElement('div',{
+                            className:"fixed inset-0 z-50 flex items-center justify-center px-3 py-6",
+                            style:{background:'rgba(0,0,0,0.8)'},
+                            onClick:()=>setDetailsFor(null)
                         },
-                                React.createElement('div',{className:"px-4 pt-4 pb-2"},
-                                    React.createElement('div',{className:"flex items-center justify-between"},
-                                        React.createElement('p',{className:"text-[10px] text-slate-500 font-black"},"📋 تفاصيل الأتعاب"),
-                                        React.createElement('button',{onClick:()=>setDetailsFor(null),className:"w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90"},"✕")
-                                    )
+                            React.createElement('div',{
+                                className:"bg-premium-card border border-white/10 rounded-2xl shadow-premium-shadow w-full max-w-sm slide-up flex flex-col",
+                                style:{maxHeight:'85vh'},
+                                onClick:e=>e.stopPropagation()
+                            },
+                                React.createElement('div',{className:"flex items-center justify-between px-4 pt-3 pb-1 shrink-0"},
+                                    React.createElement('p',{className:"text-[10px] text-slate-500 font-black"},"📋 تفاصيل الأتعاب"),
+                                    React.createElement('button',{onClick:()=>setDetailsFor(null),className:"w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90"},"✕")
                                 ),
-                                React.createElement('div',{className:"pb-4"},
+                                React.createElement('div',{className:"overflow-y-auto flex-1"},
                         // شريط التقدم
                         React.createElement('div',{className:"h-1 w-full bg-white/5"},
                             React.createElement('div',{className:`h-full transition-all ${isFullyPaid?'bg-emerald-400':'bg-premium-gold'}`,style:{width:pct+'%'}})
@@ -627,7 +765,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                                     feePayments.map((p,i)=>
                                         React.createElement('div',{key:p.id,className:"flex items-center justify-between bg-white/3 rounded-xl px-3 py-2 gap-2"},
                                             React.createElement('div',{className:"flex-1"},
-                                                React.createElement('p',{className:"text-[10px] font-black text-emerald-400"},fmt(p.amount)+" "+currency),
+                                                React.createElement('p',{className:"text-[10px] font-black text-emerald-400"},fmt(p.amount)+" جنيه"),
                                                 React.createElement('p',{className:"text-[9px] text-slate-500"},fmtDate(p.payment_date)),
                                                 p.received_by && React.createElement('p',{className:"text-[9px] text-blue-400 mt-0.5"},"👤 استلم: "+p.received_by),
                                                 p.notes && React.createElement('p',{className:"text-[9px] text-slate-400 mt-0.5"},"📝 "+p.notes)
@@ -749,22 +887,15 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                                   )
                         )
                     )
-                    )
-                    , document.body)
+                        )
+                        )
                     );
                 })
               ),
 
         // ─ مودال تأكيد حذف الأتعاب الرئيسية ─
-        confirmDeleteFee && React.createElement('div',{
-            className:"fixed z-50",
-            style:{top:'calc(64px + env(safe-area-inset-top, 0px))', bottom:'calc(80px + env(safe-area-inset-bottom, 0px))', left:0, right:0, background:'rgba(0,0,0,0.7)'},
-            onClick:()=>setConfirmDeleteFee(null)
-        },
-            React.createElement('div',{
-                className:"absolute inset-0 bg-premium-card border-t border-rose-500/30 rounded-t-2xl p-5 space-y-4",
-                onClick:e=>e.stopPropagation()
-            },
+        confirmDeleteFee && React.createElement('div',{className:"fixed inset-0 z-50 flex items-center justify-center px-4",style:{background:'rgba(0,0,0,0.7)'},onClick:()=>setConfirmDeleteFee(null)},
+            React.createElement('div',{className:"bg-premium-card border border-rose-500/30 rounded-2xl p-5 w-full max-w-sm space-y-4 slide-up",onClick:e=>e.stopPropagation()},
                 React.createElement('div',{className:"text-center space-y-1"},
                     React.createElement('div',{className:"text-3xl"},"⚠️"),
                     React.createElement('p',{className:"text-sm font-black text-white"},"حذف الأتعاب"),
@@ -786,15 +917,8 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         ),
 
         // ─ مودال تأكيد حذف الدفعة ─
-        confirmDeletePay && React.createElement('div',{
-            className:"fixed z-50",
-            style:{top:'calc(64px + env(safe-area-inset-top, 0px))', bottom:'calc(80px + env(safe-area-inset-bottom, 0px))', left:0, right:0, background:'rgba(0,0,0,0.7)'},
-            onClick:()=>setConfirmDeletePay(null)
-        },
-            React.createElement('div',{
-                className:"absolute inset-0 bg-premium-card border-t border-rose-500/30 rounded-t-2xl p-5 space-y-4",
-                onClick:e=>e.stopPropagation()
-            },
+        confirmDeletePay && React.createElement('div',{className:"fixed inset-0 z-50 flex items-center justify-center px-4",style:{background:'rgba(0,0,0,0.7)'},onClick:()=>setConfirmDeletePay(null)},
+            React.createElement('div',{className:"bg-premium-card border border-rose-500/30 rounded-2xl p-5 w-full max-w-sm space-y-4 slide-up",onClick:e=>e.stopPropagation()},
                 React.createElement('div',{className:"text-center space-y-1"},
                     React.createElement('div',{className:"text-3xl"},"🗑"),
                     React.createElement('p',{className:"text-sm font-black text-white"},"حذف الدفعة"),
@@ -815,12 +939,12 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         // ─ مودال معاينة الفاتورة ─
         invoiceModal && React.createElement('div',{
-            className:"fixed z-50",
-            style:{top:'calc(64px + env(safe-area-inset-top, 0px))', bottom:'calc(80px + env(safe-area-inset-bottom, 0px))', left:0, right:0, background:'rgba(0,0,0,0.85)'},
+            className:"fixed inset-0 z-50 flex items-center justify-center px-4",
+            style:{background:'rgba(0,0,0,0.85)'},
             onClick:()=>setInvoiceModal(null)
         },
             React.createElement('div',{
-                className:"absolute inset-0 bg-premium-card border-t border-premium-gold/30 rounded-t-2xl overflow-y-auto",
+                className:"bg-premium-card border border-premium-gold/30 rounded-2xl w-full max-w-sm slide-up overflow-hidden",
                 onClick:e=>e.stopPropagation()
             },
                 // ─ رأس المودال ─
@@ -865,7 +989,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     // مبلغ الدفعة (بارز)
                     React.createElement('div',{className:"bg-gradient-to-l from-amber-900/40 to-yellow-900/20 border border-premium-gold/25 rounded-xl p-3 text-center"},
                         React.createElement('p',{className:"text-[9px] text-premium-gold/70 mb-1"},"💰 مبلغ هذه الدفعة"),
-                        React.createElement('p',{className:"text-2xl font-black text-premium-gold"},invoiceModal.amount+" "+currency)
+                        React.createElement('p',{className:"text-2xl font-black text-premium-gold"},invoiceModal.amount+" جنيه")
                     ),
                     // جدول الإجماليات
                     React.createElement('div',{className:"grid grid-cols-3 gap-1.5"},
@@ -896,66 +1020,6 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     )
                 )
             )
-        )
-        ,
-
-        // ── Print Overlay — يظهر جوه الصفحة بدل window.open ──
-        printOverlay && createPortal(
-            React.createElement('div', {
-                style: {
-                    position:'fixed', inset:0, zIndex:9999,
-                    background:'rgba(0,0,0,0.85)',
-                    display:'flex', flexDirection:'column',
-                    alignItems:'center', justifyContent:'flex-start',
-                }
-            },
-                // شريط التحكم
-                React.createElement('div', {
-                    style: {
-                        width:'100%', maxWidth:860,
-                        display:'flex', alignItems:'center', justifyContent:'space-between',
-                        padding:'10px 16px',
-                        background:'#0B1320',
-                        borderBottom:'2px solid #D4AF37',
-                        flexShrink:0,
-                    }
-                },
-                    React.createElement('span', {style:{color:'#D4AF37', fontWeight:900, fontSize:14, fontFamily:'Cairo,sans-serif'}}, '📄 معاينة التقرير'),
-                    React.createElement('div', {style:{display:'flex', gap:8}},
-                        React.createElement('button', {
-                            onClick: () => {
-                                const iframe = document.getElementById('sanad-print-frame') as HTMLIFrameElement;
-                                if (iframe?.contentWindow) { iframe.contentWindow.focus(); iframe.contentWindow.print(); }
-                            },
-                            style: {
-                                background:'#D4AF37', color:'#0B1320',
-                                border:'none', borderRadius:8, padding:'6px 18px',
-                                fontWeight:900, fontSize:12, cursor:'pointer', fontFamily:'Cairo,sans-serif'
-                            }
-                        }, '🖨️ طباعة'),
-                        React.createElement('button', {
-                            onClick: () => setPrintOverlay(null),
-                            style: {
-                                background:'rgba(255,255,255,0.08)', color:'#fff',
-                                border:'1px solid rgba(255,255,255,0.15)', borderRadius:8,
-                                padding:'6px 14px', fontWeight:700, fontSize:12,
-                                cursor:'pointer', fontFamily:'Cairo,sans-serif'
-                            }
-                        }, '✕ إغلاق')
-                    )
-                ),
-                // الـ iframe يعرض التقرير
-                React.createElement('iframe', {
-                    id: 'sanad-print-frame',
-                    srcDoc: printOverlay,
-                    style: {
-                        width:'100%', maxWidth:860,
-                        flex:1, border:'none',
-                        background:'#fff',
-                    }
-                })
-            ),
-            document.body
         )
     );
 }
