@@ -755,6 +755,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                                   )
                         )
                     )
+                    )
                     );
                 })
               ),
@@ -900,8 +901,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     )
                 )
             )
-        )
-    );
+        );
 }
 
 // ══════════════════════════════════════════
