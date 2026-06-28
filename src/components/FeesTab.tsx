@@ -339,13 +339,13 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         // ── Modal الملخص المالي الإجمالي ──
         showSummaryModal && React.createElement('div',{
-            className:"fixed inset-0 z-50 flex items-center justify-center px-4 py-24",
-            style:{background:'rgba(0,0,0,0.75)'},
+            className:"fixed inset-0 z-50 flex items-end justify-center px-4",
+            style:{background:'rgba(0,0,0,0.75)', paddingTop:'env(safe-area-inset-top, 0px)'},
             onClick:()=>setShowSummaryModal(false)
         },
             React.createElement('div',{
-                className:"bg-premium-card border border-premium-gold/20 rounded-3xl w-full max-w-sm overflow-y-auto no-scrollbar slide-up shadow-2xl",
-                style:{maxHeight:'calc(100vh - 12rem)'},
+                className:"bg-premium-card border border-premium-gold/20 rounded-t-3xl w-full max-w-sm overflow-y-auto no-scrollbar slide-up shadow-2xl mb-0",
+                style:{maxHeight:'calc(100vh - 80px)', paddingBottom:'env(safe-area-inset-bottom, 16px)'},
                 onClick:e=>e.stopPropagation()
             },
             React.createElement('div',{className:"p-5 space-y-4"},
@@ -442,13 +442,19 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         // ─ فورم الإضافة/التعديل (modal) ─
         showForm && createPortal(
             React.createElement('div',{
-                className:"fixed inset-0 z-[70] flex items-center justify-center px-4 py-24",
-                style:{background:'rgba(0,0,0,0.8)'},
+                className:"fixed inset-x-0 bottom-0 z-[70] flex flex-col",
+                style:{
+                    top:'calc(64px + env(safe-area-inset-top, 0px))',
+                    background:'rgba(0,0,0,0.8)'
+                },
                 onClick:()=>{setShowForm(false);setEditId(null);}
             },
                 React.createElement('div',{
-                    className:"bg-premium-card border border-premium-gold/20 rounded-3xl w-full max-w-sm overflow-y-auto no-scrollbar slide-up p-5 space-y-3 shadow-2xl",
-                    style:{maxHeight:'calc(100vh - 12rem)'},
+                    className:"bg-premium-card border border-premium-gold/20 rounded-t-3xl w-full overflow-y-auto no-scrollbar slide-up p-5 space-y-3 shadow-2xl mt-auto",
+                    style:{
+                        maxHeight:'100%',
+                        paddingBottom:'env(safe-area-inset-bottom, 16px)'
+                    },
                     onClick:e=>e.stopPropagation()
                 },
                     React.createElement('div',{className:"flex items-center justify-between mb-1"},
@@ -566,13 +572,20 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         ),
                         // ─ مودال التفاصيل الكاملة ─
                         detailsFor===fee.id && React.createElement('div',{
-                            className:"fixed inset-0 z-50 flex items-center justify-center px-4 py-24",
-                            style:{background:'rgba(0,0,0,0.8)'},
+                            className:"fixed inset-x-0 bottom-0 z-50 flex flex-col",
+                            style:{
+                                top:'calc(64px + env(safe-area-inset-top, 0px))',
+                                background:'rgba(0,0,0,0.8)'
+                            },
                             onClick:()=>setDetailsFor(null)
                         },
                             React.createElement('div',{
-                                className:"bg-premium-card border border-white/10 rounded-3xl shadow-2xl w-full max-w-sm slide-up flex flex-col overflow-hidden",
-                                style:{maxHeight:'calc(100vh - 12rem)'},
+                                className:"bg-premium-card border border-white/10 rounded-t-3xl shadow-2xl w-full flex flex-col overflow-hidden mx-auto max-w-sm",
+                                style:{
+                                    maxHeight:'100%',
+                                    marginTop:'auto',
+                                    paddingBottom:'env(safe-area-inset-bottom, 16px)'
+                                },
                                 onClick:e=>e.stopPropagation()
                             },
                                 React.createElement('div',{className:"shrink-0 px-4 pt-4 pb-2"},
@@ -766,8 +779,16 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
               ),
 
         // ─ مودال تأكيد حذف الأتعاب الرئيسية ─
-        confirmDeleteFee && React.createElement('div',{className:"fixed inset-0 z-50 flex items-center justify-center px-4",style:{background:'rgba(0,0,0,0.7)'},onClick:()=>setConfirmDeleteFee(null)},
-            React.createElement('div',{className:"bg-premium-card border border-rose-500/30 rounded-2xl p-5 w-full max-w-sm space-y-4 slide-up",onClick:e=>e.stopPropagation()},
+        confirmDeleteFee && React.createElement('div',{
+            className:"fixed inset-x-0 bottom-0 z-50 flex flex-col",
+            style:{top:'calc(64px + env(safe-area-inset-top, 0px))', background:'rgba(0,0,0,0.7)'},
+            onClick:()=>setConfirmDeleteFee(null)
+        },
+            React.createElement('div',{
+                className:"bg-premium-card border border-rose-500/30 rounded-t-2xl p-5 w-full max-w-sm space-y-4 slide-up mx-auto mt-auto",
+                style:{paddingBottom:'max(env(safe-area-inset-bottom, 16px), 16px)'},
+                onClick:e=>e.stopPropagation()
+            },
                 React.createElement('div',{className:"text-center space-y-1"},
                     React.createElement('div',{className:"text-3xl"},"⚠️"),
                     React.createElement('p',{className:"text-sm font-black text-white"},"حذف الأتعاب"),
@@ -789,8 +810,16 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         ),
 
         // ─ مودال تأكيد حذف الدفعة ─
-        confirmDeletePay && React.createElement('div',{className:"fixed inset-0 z-50 flex items-center justify-center px-4",style:{background:'rgba(0,0,0,0.7)'},onClick:()=>setConfirmDeletePay(null)},
-            React.createElement('div',{className:"bg-premium-card border border-rose-500/30 rounded-2xl p-5 w-full max-w-sm space-y-4 slide-up",onClick:e=>e.stopPropagation()},
+        confirmDeletePay && React.createElement('div',{
+            className:"fixed inset-x-0 bottom-0 z-50 flex flex-col",
+            style:{top:'calc(64px + env(safe-area-inset-top, 0px))', background:'rgba(0,0,0,0.7)'},
+            onClick:()=>setConfirmDeletePay(null)
+        },
+            React.createElement('div',{
+                className:"bg-premium-card border border-rose-500/30 rounded-t-2xl p-5 w-full max-w-sm space-y-4 slide-up mx-auto mt-auto",
+                style:{paddingBottom:'max(env(safe-area-inset-bottom, 16px), 16px)'},
+                onClick:e=>e.stopPropagation()
+            },
                 React.createElement('div',{className:"text-center space-y-1"},
                     React.createElement('div',{className:"text-3xl"},"🗑"),
                     React.createElement('p',{className:"text-sm font-black text-white"},"حذف الدفعة"),
@@ -811,12 +840,13 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         // ─ مودال معاينة الفاتورة ─
         invoiceModal && React.createElement('div',{
-            className:"fixed inset-0 z-50 flex items-center justify-center px-4",
-            style:{background:'rgba(0,0,0,0.85)'},
+            className:"fixed inset-x-0 bottom-0 z-50 flex flex-col",
+            style:{top:'calc(64px + env(safe-area-inset-top, 0px))', background:'rgba(0,0,0,0.85)'},
             onClick:()=>setInvoiceModal(null)
         },
             React.createElement('div',{
-                className:"bg-premium-card border border-premium-gold/30 rounded-2xl w-full max-w-sm slide-up overflow-hidden",
+                className:"bg-premium-card border border-premium-gold/30 rounded-t-2xl w-full overflow-y-auto mt-auto",
+                style:{maxHeight:'100%', paddingBottom:'env(safe-area-inset-bottom, 16px)'},
                 onClick:e=>e.stopPropagation()
             },
                 // ─ رأس المودال ─
