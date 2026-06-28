@@ -339,19 +339,14 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         // ── Modal الملخص المالي الإجمالي ──
         showSummaryModal && React.createElement('div',{
-            className:"fixed z-50",
+            className:"fixed z-50 bg-premium-card border-t border-premium-gold/20 rounded-t-3xl overflow-y-auto no-scrollbar shadow-2xl",
             style:{
                 top:'calc(64px + env(safe-area-inset-top, 0px))',
                 bottom:'calc(80px + env(safe-area-inset-bottom, 0px))',
                 left:0, right:0,
-                background:'rgba(0,0,0,0.75)'
             },
-            onClick:()=>setShowSummaryModal(false)
+            onClick:e=>e.stopPropagation()
         },
-            React.createElement('div',{
-                className:"absolute inset-0 bg-premium-card border-t border-premium-gold/20 rounded-t-3xl overflow-y-auto no-scrollbar shadow-2xl",
-                onClick:e=>e.stopPropagation()
-            },
             React.createElement('div',{className:"p-5 space-y-4"},
                 // رأس المودال
                 React.createElement('div',{className:"flex items-center justify-between"},
@@ -405,7 +400,6 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     className:"w-full py-2.5 bg-white/5 text-slate-400 rounded-xl text-xs font-bold active:scale-95"
                 },"إغلاق")
             )
-            )
         ),
 
         // ── Pill Selector — أتعاب محصلة / مؤجلة / مفتوحة ──
@@ -446,19 +440,14 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         // ─ فورم الإضافة/التعديل (modal) ─
         showForm && createPortal(
             React.createElement('div',{
-                className:"fixed z-[70]",
+                className:"fixed z-[70] bg-premium-card border-t border-premium-gold/20 rounded-t-3xl overflow-y-auto no-scrollbar p-5 space-y-3 shadow-2xl",
                 style:{
                     top:'calc(64px + env(safe-area-inset-top, 0px))',
                     bottom:'calc(80px + env(safe-area-inset-bottom, 0px))',
                     left:0, right:0,
-                    background:'rgba(0,0,0,0.8)'
                 },
-                onClick:()=>{setShowForm(false);setEditId(null);}
+                onClick:e=>e.stopPropagation()
             },
-                React.createElement('div',{
-                    className:"absolute inset-0 bg-premium-card border-t border-premium-gold/20 rounded-t-3xl overflow-y-auto no-scrollbar p-5 space-y-3 shadow-2xl",
-                    onClick:e=>e.stopPropagation()
-                },
                     React.createElement('div',{className:"flex items-center justify-between mb-1"},
                         React.createElement('h4',{className:"text-xs font-black text-premium-gold"},editId ? "✏️ تعديل الأتعاب" : "📋 إضافة أتعاب"),
                         React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);},className:"w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90"},"✕")
@@ -574,26 +563,21 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         ),
                         // ─ مودال التفاصيل الكاملة ─
                         detailsFor===fee.id && React.createElement('div',{
-                            className:"fixed z-50",
+                            className:"fixed z-50 bg-premium-card border-t border-white/10 rounded-t-3xl shadow-2xl overflow-y-auto",
                             style:{
                                 top:'calc(64px + env(safe-area-inset-top, 0px))',
                                 bottom:'calc(80px + env(safe-area-inset-bottom, 0px))',
                                 left:0, right:0,
-                                background:'rgba(0,0,0,0.8)'
                             },
-                            onClick:()=>setDetailsFor(null)
+                            onClick:e=>e.stopPropagation()
                         },
-                            React.createElement('div',{
-                                className:"absolute inset-0 bg-premium-card border-t border-white/10 rounded-t-3xl shadow-2xl flex flex-col overflow-hidden",
-                                onClick:e=>e.stopPropagation()
-                            },
-                                React.createElement('div',{className:"shrink-0 px-4 pt-4 pb-2"},
+                                React.createElement('div',{className:"px-4 pt-4 pb-2"},
                                     React.createElement('div',{className:"flex items-center justify-between"},
                                         React.createElement('p',{className:"text-[10px] text-slate-500 font-black"},"📋 تفاصيل الأتعاب"),
                                         React.createElement('button',{onClick:()=>setDetailsFor(null),className:"w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90"},"✕")
                                     )
                                 ),
-                                React.createElement('div',{className:"overflow-y-auto flex-1"},
+                                React.createElement('div',{className:"pb-4"},
                         // شريط التقدم
                         React.createElement('div',{className:"h-1 w-full bg-white/5"},
                             React.createElement('div',{className:`h-full transition-all ${isFullyPaid?'bg-emerald-400':'bg-premium-gold'}`,style:{width:pct+'%'}})
@@ -771,8 +755,6 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                                   )
                         )
                     )
-                        )
-                        )
                     );
                 })
               ),
