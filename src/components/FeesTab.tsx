@@ -338,7 +338,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         ),
 
         // ── Modal الملخص المالي الإجمالي ──
-        showSummaryModal && React.createElement('div',{
+        showSummaryModal && createPortal(React.createElement('div',{
             className:"fixed z-50 bg-premium-card border-t border-premium-gold/20 rounded-t-3xl overflow-y-auto no-scrollbar shadow-2xl",
             style:{
                 top:'calc(64px + env(safe-area-inset-top, 0px))',
@@ -400,7 +400,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     className:"w-full py-2.5 bg-white/5 text-slate-400 rounded-xl text-xs font-bold active:scale-95"
                 },"إغلاق")
             )
-        ),
+        ), document.body),
 
         // ── Pill Selector — أتعاب محصلة / مؤجلة / مفتوحة ──
         React.createElement('div',{className:"flex items-center bg-white/5 rounded-2xl p-1 gap-1"},
