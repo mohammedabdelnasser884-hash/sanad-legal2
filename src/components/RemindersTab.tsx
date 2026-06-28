@@ -469,8 +469,8 @@ function RemindersTab({initialFilter, profile=null}){
     React.createElement('div',{className:"space-y-4 fade-in"},
 
         // ── هيدر: أيقونة + عنوان على اليمين، بحث + إضافة على الشمال ──
-        React.createElement('div',{className:"flex items-center justify-between gap-2"},
-            React.createElement('div',{className:"flex items-center gap-1.5 shrink-0"},React.createElement('span',{className:"text-base"},"🔔"),React.createElement('h3',{className:"text-sm font-black text-white"},"المهام والتذكيرات المخصصة")),
+        React.createElement('div',{className:"flex items-center justify-between gap-2 overflow-hidden"},
+            React.createElement('div',{className:"flex items-center gap-1 min-w-0"},React.createElement('span',{className:"text-sm shrink-0"},"🔔"),React.createElement('h3',{className:"text-xs font-black text-white truncate"},"المهام والتذكيرات المخصصة")),
             React.createElement('div',{className:"flex items-center gap-2"},
 
                 // زرار / حقل بحث
@@ -514,8 +514,8 @@ function RemindersTab({initialFilter, profile=null}){
                 // زرار إضافة تذكير (ذهبي)
                 React.createElement('button',{
                     onClick:()=>setShowForm(!showForm),
-                    className:"flex items-center bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg px-3 py-2 rounded-xl text-xs font-black shadow-lg gap-1 active:scale-95 transition-transform shrink-0"
-                }, React.createElement(I.Plus), "إضافة تذكير")
+                    className:"flex items-center bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg px-2.5 py-1.5 rounded-xl text-[11px] font-black shadow-lg gap-1 active:scale-95 transition-transform shrink-0"
+                }, React.createElement(I.Plus), "إضافة")
             )
         ),
 
