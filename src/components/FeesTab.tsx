@@ -339,16 +339,15 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         // ── Modal الملخص المالي الإجمالي ──
         showSummaryModal && React.createElement('div',{
-            className:"fixed inset-0 z-50 flex items-end justify-center pt-[80px]",
+            className:"fixed inset-0 z-50 flex items-center justify-center px-4",
             style:{background:'rgba(0,0,0,0.75)'},
             onClick:()=>setShowSummaryModal(false)
         },
             React.createElement('div',{
-                className:"bg-premium-card border-t border-premium-gold/30 rounded-t-3xl w-full max-w-sm max-h-[70vh] overflow-y-auto no-scrollbar slide-up",
+                className:"bg-premium-card border border-premium-gold/20 rounded-3xl w-full max-w-sm max-h-[75vh] overflow-y-auto no-scrollbar slide-up shadow-2xl",
                 onClick:e=>e.stopPropagation()
             },
             React.createElement('div',{className:"p-5 space-y-4"},
-                React.createElement('div',{className:"w-10 h-1 bg-white/20 rounded-full mx-auto mb-1"}),
                 // رأس المودال
                 React.createElement('div',{className:"flex items-center justify-between"},
                     React.createElement('p',{className:"text-sm font-black text-premium-gold"},"💰 الملخص المالي الإجمالي"),
@@ -442,15 +441,14 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         // ─ فورم الإضافة/التعديل (modal) ─
         showForm && createPortal(
             React.createElement('div',{
-                className:"fixed inset-0 z-[70] flex items-end justify-center pt-[80px]",
+                className:"fixed inset-0 z-[70] flex items-center justify-center px-4",
                 style:{background:'rgba(0,0,0,0.8)'},
                 onClick:()=>{setShowForm(false);setEditId(null);}
             },
                 React.createElement('div',{
-                    className:"bg-premium-card border-t border-premium-gold/30 rounded-t-3xl w-full max-w-sm max-h-[calc(100vh-80px)] overflow-y-auto no-scrollbar slide-up p-5 space-y-3",
+                    className:"bg-premium-card border border-premium-gold/20 rounded-3xl w-full max-w-sm max-h-[75vh] overflow-y-auto no-scrollbar slide-up p-5 space-y-3 shadow-2xl",
                     onClick:e=>e.stopPropagation()
                 },
-                    React.createElement('div',{className:"w-10 h-1 bg-white/20 rounded-full mx-auto mb-1"}),
                     React.createElement('div',{className:"flex items-center justify-between mb-1"},
                         React.createElement('h4',{className:"text-xs font-black text-premium-gold"},editId ? "✏️ تعديل الأتعاب" : "📋 إضافة أتعاب"),
                         React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);},className:"w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90"},"✕")
@@ -566,16 +564,15 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         ),
                         // ─ مودال التفاصيل الكاملة ─
                         detailsFor===fee.id && React.createElement('div',{
-                            className:"fixed inset-0 z-50 flex items-end justify-center pt-[80px]",
+                            className:"fixed inset-0 z-50 flex items-center justify-center px-4",
                             style:{background:'rgba(0,0,0,0.8)'},
                             onClick:()=>setDetailsFor(null)
                         },
                             React.createElement('div',{
-                                className:"bg-premium-card border-t border-white/10 rounded-t-3xl shadow-premium-shadow w-full max-w-sm slide-up flex flex-col max-h-[calc(100vh-80px)]",
+                                className:"bg-premium-card border border-white/10 rounded-3xl shadow-2xl w-full max-w-sm slide-up flex flex-col max-h-[75vh]",
                                 onClick:e=>e.stopPropagation()
                             },
-                                React.createElement('div',{className:"shrink-0 px-4 pt-2 pb-1"},
-                                    React.createElement('div',{className:"w-10 h-1 bg-white/20 rounded-full mx-auto mb-2"}),
+                                React.createElement('div',{className:"shrink-0 px-4 pt-4 pb-2"},
                                     React.createElement('div',{className:"flex items-center justify-between"},
                                         React.createElement('p',{className:"text-[10px] text-slate-500 font-black"},"📋 تفاصيل الأتعاب"),
                                         React.createElement('button',{onClick:()=>setDetailsFor(null),className:"w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90"},"✕")
