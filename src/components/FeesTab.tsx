@@ -342,6 +342,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             className:"fixed inset-0 z-50 flex items-end justify-center pt-[80px]",
             style:{background:'rgba(0,0,0,0.75)'},
             onClick:()=>setShowSummaryModal(false)
+        },
             React.createElement('div',{
                 className:"bg-premium-card border-t border-premium-gold/30 rounded-t-3xl w-full max-w-sm max-h-[70vh] overflow-y-auto no-scrollbar slide-up",
                 onClick:e=>e.stopPropagation()
