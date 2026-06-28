@@ -339,13 +339,17 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         // ── Modal الملخص المالي الإجمالي ──
         showSummaryModal && React.createElement('div',{
-            className:"fixed inset-0 z-50 flex items-end justify-center px-4",
-            style:{background:'rgba(0,0,0,0.75)', paddingTop:'env(safe-area-inset-top, 0px)'},
+            className:"fixed inset-x-0 z-50 flex flex-col",
+            style:{
+                top:'calc(64px + env(safe-area-inset-top, 0px))',
+                bottom:'calc(80px + env(safe-area-inset-bottom, 0px))',
+                background:'rgba(0,0,0,0.75)'
+            },
             onClick:()=>setShowSummaryModal(false)
         },
             React.createElement('div',{
-                className:"bg-premium-card border border-premium-gold/20 rounded-t-3xl w-full max-w-sm overflow-y-auto no-scrollbar slide-up shadow-2xl mb-0",
-                style:{maxHeight:'calc(100vh - 80px)', paddingBottom:'env(safe-area-inset-bottom, 16px)'},
+                className:"bg-premium-card border border-premium-gold/20 rounded-t-3xl w-full overflow-y-auto no-scrollbar slide-up shadow-2xl mt-auto",
+                style:{maxHeight:'100%'},
                 onClick:e=>e.stopPropagation()
             },
             React.createElement('div',{className:"p-5 space-y-4"},
@@ -442,19 +446,17 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         // ─ فورم الإضافة/التعديل (modal) ─
         showForm && createPortal(
             React.createElement('div',{
-                className:"fixed inset-x-0 bottom-0 z-[70] flex flex-col",
+                className:"fixed inset-x-0 z-[70] flex flex-col",
                 style:{
                     top:'calc(64px + env(safe-area-inset-top, 0px))',
+                    bottom:'calc(80px + env(safe-area-inset-bottom, 0px))',
                     background:'rgba(0,0,0,0.8)'
                 },
                 onClick:()=>{setShowForm(false);setEditId(null);}
             },
                 React.createElement('div',{
                     className:"bg-premium-card border border-premium-gold/20 rounded-t-3xl w-full overflow-y-auto no-scrollbar slide-up p-5 space-y-3 shadow-2xl mt-auto",
-                    style:{
-                        maxHeight:'100%',
-                        paddingBottom:'env(safe-area-inset-bottom, 16px)'
-                    },
+                    style:{maxHeight:'100%'},
                     onClick:e=>e.stopPropagation()
                 },
                     React.createElement('div',{className:"flex items-center justify-between mb-1"},
@@ -572,9 +574,10 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         ),
                         // ─ مودال التفاصيل الكاملة ─
                         detailsFor===fee.id && React.createElement('div',{
-                            className:"fixed inset-x-0 bottom-0 z-50 flex flex-col",
+                            className:"fixed inset-x-0 z-50 flex flex-col",
                             style:{
                                 top:'calc(64px + env(safe-area-inset-top, 0px))',
+                                bottom:'calc(80px + env(safe-area-inset-bottom, 0px))',
                                 background:'rgba(0,0,0,0.8)'
                             },
                             onClick:()=>setDetailsFor(null)
@@ -582,9 +585,8 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                             React.createElement('div',{
                                 className:"bg-premium-card border border-white/10 rounded-t-3xl shadow-2xl w-full flex flex-col overflow-hidden mx-auto max-w-sm",
                                 style:{
-                                    maxHeight:'100%',
+                                    height:'100%',
                                     marginTop:'auto',
-                                    paddingBottom:'env(safe-area-inset-bottom, 16px)'
                                 },
                                 onClick:e=>e.stopPropagation()
                             },
