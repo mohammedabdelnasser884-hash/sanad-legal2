@@ -92,14 +92,8 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
     // ── سكريبت الطباعة التلقائية عند تحميل الصفحة ──
     const autoPrintScript = '<scr'+'ipt>window.onload=function(){window.print();}<'+'/scr'+'ipt>';
 
-    // ── فتح نافذة جديدة جاهزة للطباعة (maximized) ──
-    const openPrintWindow = () => {
-        const w = window.open('', '_blank');
-        if (w) {
-            try { w.moveTo(0, 0); w.resizeTo(screen.availWidth, screen.availHeight); } catch(_){}
-        }
-        return w;
-    };
+    // ── فتح نافذة جديدة جاهزة للطباعة بمقاس A4 ──
+    const openPrintWindow = () => window.open('','_blank','width=794,height=1123');
 
     // ── كتابة الـHTML النهائي وتشغيل الطباعة ──
     const writeAndPrint = (w, html) => {
@@ -110,11 +104,11 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
     // ── طباعة الفاتورة ──
     const printInvoice = async (inv) => {
-        // ⚠️ افتح النافذة فوراً قبل أي async عشان المتصفح ميبلوكهاش
+        // جلب بيانات المكتب من الإعدادات
+        const { name, contactLine, logoHtml } = await loadOfficeInfo();
+
         const w = openPrintWindow();
         if(!w) return;
-        // بعدين جلب بيانات المكتب
-        const { name, contactLine, logoHtml } = await loadOfficeInfo();
         const statusBadge = inv.remaining==='0'
             ? '<span class="status-badge status-paid">مسدد بالكامل</span>'
             : '<span class="status-badge" style="background:#fef3c7;color:#92400e">جزئي</span>';
@@ -211,12 +205,9 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         writeAndPrint(w, html);
     };
-    const printAllPayments = async (fee, feePayments, caseName, clientName) => {
-        // ⚠️ افتح النافذة فوراً قبل أي async عشان المتصفح ميبلوكهاش
+    const printAllPayments = (fee, feePayments, caseName, clientName) => {
         const w = openPrintWindow();
         if(!w) return;
-        // جلب بيانات المكتب
-        const { name: officeName, contactLine, logoHtml } = await loadOfficeInfo();
         const year = new Date().getFullYear();
         const css = [
             '*{margin:0;padding:0;box-sizing:border-box;}',
@@ -274,10 +265,9 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             +'<div class="page">'
             +'<div class="header">'
             +'<div class="logo-box">'
-            +logoHtml
-            +'<div><div class="office-name">'+officeName+'</div>'
-            +(contactLine?'<div class="office-sub">'+contactLine+'</div>':'')
-            +'</div></div>'
+            +officeLogoSvg(56)
+            +'<div><div class="office-name">\u0633\u064e\u0646\u064e\u062f</div>'
+            +'<div class="office-sub">\u0646\u0638\u0627\u0645 \u0627\u0644\u062a\u0634\u0639\u064a\u0644 \u0627\u0644\u0642\u0627\u0646\u0648\u0646\u064a</div></div></div>'
             +'<div><div class="report-title">\u0643\u0634\u0641 \u062c\u0645\u064a\u0639 \u0627\u0644\u062f\u0641\u0639\u0627\u062a</div>'
             +'<div class="report-sub">\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0637\u0628\u0627\u0639\u0629: '+new Date().toLocaleDateString('ar-EG',{year:'numeric',month:'long',day:'numeric'})+'</div></div>'
             +'</div>'
@@ -295,7 +285,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             +'<th>\u0645\u0644\u0627\u062d\u0638\u0627\u062a</th>'
             +'</tr></thead><tbody>'+rows+'</tbody></table>'
             +sigRowHtml
-            +'<div class="footer">'+officeName+(contactLine?' — '+contactLine:'')+'</div>'
+            +'<div class="footer">\u0633\u064e\u0646\u064e\u062f \u2014 \u0646\u0638\u0627\u0645 \u0627\u0644\u062a\u0634\u0639\u064a\u0644 \u0627\u0644\u0642\u0627\u0646\u0648\u0646\u064a</div>'
             +'</div>'
             +autoPrintScript
             +'</body></html>';
@@ -652,6 +642,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                                                 React.createElement('button',{
                                                     title:"معاينة وطباعة الفاتورة",
                                                     onClick:()=>{
+                                                        setDetailsFor(null);
                                                         const invNum = genInvoiceNumber(payments, p.id);
                                                         const rem = Math.max(0,(fee.total_fees||0)-(fee.paid_fees||0));
                                                         setInvoiceModal({
@@ -830,7 +821,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         ),
 
         // ─ مودال معاينة الفاتورة ─
-        invoiceModal && React.createElement('div',{
+        invoiceModal && createPortal(React.createElement('div',{
             className:"fixed z-50",
             style:{top:'calc(64px + env(safe-area-inset-top, 0px))', bottom:'calc(80px + env(safe-area-inset-bottom, 0px))', left:0, right:0, background:'rgba(0,0,0,0.85)'},
             onClick:()=>setInvoiceModal(null)
@@ -902,7 +893,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     // أزرار
                     React.createElement('div',{className:"flex gap-2 pt-1"},
                         React.createElement('button',{
-                            onClick:()=>{ setInvoiceModal(null); printInvoice(invoiceModal); },
+                            onClick:()=>printInvoice(invoiceModal),
                             className:"flex-1 py-2.5 bg-premium-gold text-premium-bg rounded-xl text-xs font-black flex items-center justify-center gap-1.5 active:scale-95"
                         },"🖨️ طباعة الفاتورة"),
                         React.createElement('button',{
@@ -912,7 +903,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     )
                 )
             )
-        )
+        ), document.body)
     );
 }
 
