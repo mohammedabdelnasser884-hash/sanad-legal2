@@ -94,7 +94,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
     const showAndPrint = (html) => {
         setPrintOverlay(html);
         setTimeout(() => {
-            const iframe = document.getElementById('sanad-print-frame');
+            const iframe = document.getElementById('sanad-print-frame') as HTMLIFrameElement;
             if (iframe && iframe.contentWindow) {
                 iframe.contentWindow.focus();
                 iframe.contentWindow.print();
