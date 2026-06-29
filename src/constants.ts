@@ -182,6 +182,7 @@ const OFFICE_KEY_MAP: Record<string,string> = {
   office_name:           'name',
   office_tagline:        'slogan',
   office_logo_url:       'logo_url',
+  office_logo:           'logo_url', // ⚠️ المفتاح الفعلي المستخدم في كل الكود (Settings/Fees/CaseDetail) — كان ناقص فاتسبب في حفظ صامت فاشل على عمود غير موجود
   office_color:          'brand_color',
   office_phone:          'phone',
   office_phone2:         'phone2',
@@ -192,6 +193,7 @@ const OFFICE_KEY_MAP: Record<string,string> = {
   office_whatsapp:       'whatsapp',
   office_tax_number:     'tax_number',
   office_license:        'license_number',
+  office_bar:            'license_number', // ⚠️ "نقابة المحامين" في الواجهة — مفيش عمود bar مستقل، نفس عمود الترخيص
   office_bank_name:      'bank_name',
   office_bank_iban:      'bank_iban',
   office_invoice_note:   'invoice_footer',
@@ -252,18 +254,23 @@ async function loadOfficeSetting(key: string): Promise<string|null>{
 async function saveOfficeSetting(key: string, value: string): Promise<void>{
   if(!_currentTenantId){
     console.error('saveOfficeSetting: لا يوجد tenant_id حالي — تم تجاهل الحفظ');
-    return;
+    throw new Error('لا يمكن الحفظ: لم يتم تحديد المكتب الحالي');
   }
   const col = OFFICE_KEY_MAP[key] || key;
   _officeCache = null;
   const row = await _loadOfficeRow();
   const id = row?.id;
+  let error;
   if(id){
-    await db.from('office_settings').update({[col]: value}).eq('id', id);
+    ({error} = await db.from('office_settings').update({[col]: value}).eq('id', id));
   } else {
-    await db.from('office_settings').insert({[col]: value, tenant_id: _currentTenantId});
+    ({error} = await db.from('office_settings').insert({[col]: value, tenant_id: _currentTenantId}));
   }
   _officeCache = null; // أعد التحميل في النداء الجاي بعد التحديث
+  if(error){
+    console.error('saveOfficeSetting: فشل الحفظ على عمود', col, error);
+    throw error;
+  }
 }
 
 // ══════════════════════════════════════════
