@@ -24,6 +24,16 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
     } = useFeesActions(cases, clients, country, profile);
 
     const [detailsFor, setDetailsFor] = useState(null); // معرف بطاقة الأتعاب المفتوحة تفاصيلها
+    // ── بيانات المكتب (الاسم/الشعار) لعرضها في معاينة الفاتورة على الشاشة ──
+    const [officeBrand, setOfficeBrand] = useState({ name: '', logoUrl: '' });
+    useEffect(() => {
+        Promise.all([
+            loadOfficeSetting('office_name'),
+            loadOfficeSetting('office_logo'),
+        ]).then(([officeName, officeLogo]) => {
+            setOfficeBrand({ name: officeName || '', logoUrl: officeLogo || '' });
+        });
+    }, []);
     // ── حالة أيقونة البحث القابلة للفتح في الهيدر ──
     const [searchOpen, setSearchOpen] = useState(false);
     const searchInputRef = useRef(null);
@@ -205,7 +215,9 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
         writeAndPrint(w, html);
     };
-    const printAllPayments = (fee, feePayments, caseName, clientName) => {
+    const printAllPayments = async (fee, feePayments, caseName, clientName) => {
+        // جلب بيانات المكتب الفعلية (الاسم/العنوان/الشعار) من إعدادات المكتب
+        const { name, contactLine, logoHtml } = await loadOfficeInfo();
         const w = openPrintWindow();
         if(!w) return;
         const year = new Date().getFullYear();
@@ -265,9 +277,9 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             +'<div class="page">'
             +'<div class="header">'
             +'<div class="logo-box">'
-            +officeLogoSvg(56)
-            +'<div><div class="office-name">\u0633\u064e\u0646\u064e\u062f</div>'
-            +'<div class="office-sub">\u0646\u0638\u0627\u0645 \u0627\u0644\u062a\u0634\u0639\u064a\u0644 \u0627\u0644\u0642\u0627\u0646\u0648\u0646\u064a</div></div></div>'
+            +logoHtml
+            +'<div><div class="office-name">'+name+'</div>'
+            +(contactLine?'<div class="office-sub">'+contactLine+'</div>':'')+'</div></div>'
             +'<div><div class="report-title">\u0643\u0634\u0641 \u062c\u0645\u064a\u0639 \u0627\u0644\u062f\u0641\u0639\u0627\u062a</div>'
             +'<div class="report-sub">\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0637\u0628\u0627\u0639\u0629: '+new Date().toLocaleDateString('ar-EG',{year:'numeric',month:'long',day:'numeric'})+'</div></div>'
             +'</div>'
@@ -285,7 +297,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             +'<th>\u0645\u0644\u0627\u062d\u0638\u0627\u062a</th>'
             +'</tr></thead><tbody>'+rows+'</tbody></table>'
             +sigRowHtml
-            +'<div class="footer">\u0633\u064e\u0646\u064e\u062f \u2014 \u0646\u0638\u0627\u0645 \u0627\u0644\u062a\u0634\u0639\u064a\u0644 \u0627\u0644\u0642\u0627\u0646\u0648\u0646\u064a</div>'
+            +'<div class="footer">'+name+(contactLine?' \u2014 '+contactLine:'')+'</div>'
             +'</div>'
             +autoPrintScript
             +'</body></html>';
@@ -851,11 +863,13 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     React.createElement('div',{className:"flex items-center gap-2.5 bg-white/3 rounded-xl p-2.5 border border-white/5"},
                         React.createElement('div',{style:{width:32,height:32,borderRadius:8,background:'#0B1320',
                             border:'1px solid rgba(212,175,55,0.2)',display:'flex',alignItems:'center',
-                            justifyContent:'center',flexShrink:0}},
-                            React.createElement(SanadMark,{size:20})
+                            justifyContent:'center',flexShrink:0, overflow:'hidden'}},
+                            officeBrand.logoUrl
+                                ? React.createElement('img',{src:officeBrand.logoUrl, alt:"شعار المكتب", style:{width:'100%',height:'100%',objectFit:'contain'}})
+                                : React.createElement(SanadMark,{size:20})
                         ),
                         React.createElement('div',null,
-                            React.createElement('p',{className:"text-[11px] font-black text-white"},"سَنَد"),
+                            React.createElement('p',{className:"text-[11px] font-black text-white"},officeBrand.name||"سَنَد"),
                             React.createElement('p',{className:"text-[8px] text-slate-500"},"نظام التشغيل القانوني")
                         )
                     ),
