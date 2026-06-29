@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { toast } from '../utils';
+import { toast, validateUploadFile } from '../utils';
 import { I, COUNTRY_CONFIGS } from '../constants';
 import { createPortal } from 'react-dom';
 import { db } from '../supabaseClient';
@@ -23,7 +23,10 @@ function SettingsPage({profile, isAdmin, country, onCountryChange, onClose}){
   const [officePhone,   setOfficePhone]   = useState('');
   const [officeEmail,   setOfficeEmail]   = useState('');
   const [officeBar,     setOfficeBar]     = useState('');
-  const [officeLogo,    setOfficeLogo]    = useState('');
+  const [officeLogo,    setOfficeLogo]    = useState(''); // الشعار المحفوظ فعليًا (رابط Storage)
+  const [logoFile,      setLogoFile]      = useState<File|null>(null); // ملف جديد لسه متختار، لحد ما يتم الحفظ
+  const [logoPreview,   setLogoPreview]   = useState(''); // معاينة فورية محليّة فقط (Data URL)
+  const [logoRemoved,   setLogoRemoved]   = useState(false); // المستخدم دوس "حذف الشعار"
   const [officeLoaded,  setOfficeLoaded]  = useState(false);
   const [officeSaving,  setOfficeSaving]  = useState(false);
   const logoRef = useRef<HTMLInputElement>(null);
@@ -68,14 +71,43 @@ function SettingsPage({profile, isAdmin, country, onCountryChange, onClose}){
   const saveOffice = async () => {
     setOfficeSaving(true);
     try {
+      // ⚠️ كان الكود قبل كده بيخزن الشعار كـ Data URL (base64) كامل جوه
+      // عمود نصي في قاعدة البيانات. لأي صورة حقيقية (صورة من الموبايل
+      // مثلاً) ده بيبقى نص ضخم (ميجابايتات)، والـ request بتاع التحديث
+      // كان بيفشل صامت (Promise.all بترفض، الحقول الصغيرة التانية زي
+      // الاسم بتكون خلصت حفظها بالفعل قبل ما تفشل، فيبان إن الاسم
+      // محفوظ والشعار لأ). الحل: نرفع الملف على Storage ونخزن رابط
+      // صغير فقط، نفس الطريقة المستخدمة في لوحة التحكم (useAdminOffice).
+      let logoUrl = officeLogo;
+      if (logoFile) {
+        const validationError = validateUploadFile(logoFile);
+        if (validationError) {
+          toast('❌ ' + validationError, true);
+          setOfficeSaving(false);
+          return;
+        }
+        const ext = logoFile.name.split('.').pop();
+        const path = `office/logo.${ext}`;
+        const { error: upErr } = await db.storage.from('client-docs').upload(path, logoFile, { upsert: true });
+        if (upErr) throw upErr;
+        const { data: urlData } = db.storage.from('client-docs').getPublicUrl(path);
+        // كسر كاش المتصفح/الـ CDN عشان الشعار الجديد يظهر فورًا
+        logoUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+      } else if (logoRemoved) {
+        logoUrl = '';
+      }
       await Promise.all([
         saveOfficeSetting('office_name',    officeName.trim()),
         saveOfficeSetting('office_address', officeAddress.trim()),
         saveOfficeSetting('office_phone',   officePhone.trim()),
         saveOfficeSetting('office_email',   officeEmail.trim()),
         saveOfficeSetting('office_bar',     officeBar.trim()),
-        saveOfficeSetting('office_logo',    officeLogo),
+        saveOfficeSetting('office_logo',    logoUrl),
       ]);
+      setOfficeLogo(logoUrl);
+      setLogoFile(null);
+      setLogoPreview('');
+      setLogoRemoved(false);
       toast('✅ تم حفظ بيانات المكتب بنجاح');
     } catch (err) {
       console.error('saveOffice failed:', err);
@@ -88,8 +120,13 @@ function SettingsPage({profile, isAdmin, country, onCountryChange, onClose}){
   const handleLogoUpload = (e: any) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const validationError = validateUploadFile(file);
+    if (validationError) { toast('❌ ' + validationError, true); return; }
+    setLogoFile(file);
+    setLogoRemoved(false);
+    // معاينة فورية فقط على الشاشة — القيمة دي مش اللي بتُحفظ في قاعدة البيانات
     const reader = new FileReader();
-    reader.onload = (ev) => setOfficeLogo(ev.target?.result as string);
+    reader.onload = (ev) => setLogoPreview(ev.target?.result as string);
     reader.readAsDataURL(file);
   };
 
@@ -154,16 +191,16 @@ function SettingsPage({profile, isAdmin, country, onCountryChange, onClose}){
         React.createElement('div',{className:"bg-premium-card border border-white/5 rounded-2xl p-4"},
           React.createElement('p',{className:"text-[10px] font-black text-slate-400 mb-3"},"🖼 شعار المكتب"),
           React.createElement('div',{className:"flex items-center gap-3"},
-            officeLogo
-              ? React.createElement('img',{src:officeLogo,className:"w-16 h-16 rounded-xl object-contain border border-white/10 bg-white/5"})
+            (logoPreview || officeLogo)
+              ? React.createElement('img',{src:logoPreview || officeLogo,className:"w-16 h-16 rounded-xl object-contain border border-white/10 bg-white/5"})
               : React.createElement('div',{className:"w-16 h-16 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-2xl"},"🏛️"),
             React.createElement('div',{className:"flex-1 space-y-2"},
               React.createElement('button',{
                 onClick:()=>logoRef.current?.click(),
                 className:"w-full py-2 rounded-xl text-[10px] font-black text-slate-300 border border-white/10 bg-white/5 active:scale-95 transition-all"
-              }, officeLogo ? "تغيير الشعار" : "رفع شعار المكتب"),
-              officeLogo && React.createElement('button',{
-                onClick:()=>setOfficeLogo(''),
+              }, (logoPreview || officeLogo) ? "تغيير الشعار" : "رفع شعار المكتب"),
+              (logoPreview || officeLogo) && React.createElement('button',{
+                onClick:()=>{ setLogoFile(null); setLogoPreview(''); setOfficeLogo(''); setLogoRemoved(true); },
                 className:"w-full py-2 rounded-xl text-[10px] font-black text-rose-400 border border-rose-500/20 bg-rose-500/5 active:scale-95 transition-all"
               },"حذف الشعار"),
               React.createElement('input',{ref:logoRef,type:"file",accept:"image/*",className:"hidden",onChange:handleLogoUpload})
