@@ -82,10 +82,19 @@ export function useAdminOffice(tenantId: string | null, profile?: any) {
         const ext = logoFile.name.split('.').pop();
         const path = `office/logo.${ext}`;
         const { error: upErr } = await db.storage.from('client-docs').upload(path, logoFile, { upsert: true });
-        if (!upErr) {
-          const { data: urlData } = db.storage.from('client-docs').getPublicUrl(path);
-          logoUrl = urlData.publicUrl;
+        // ⚠️ BUG FIX: قبل كده لو الرفع فشل (upErr)، الكود كان يتجاهل الخطأ
+        // تمامًا ويكمل الحفظ بقيمة logoUrl القديمة (غالبًا فاضية)، ويظهر
+        // "✅ تم حفظ إعدادات المكتب" — يعني المستخدم يشوف رسالة نجاح خادعة
+        // والشعار فعليًا ملحقش يترفع ولا يتحفظ. دلوقتي نوقف الحفظ ونعرض
+        // سبب فشل الرفع الحقيقي (مساحة، صلاحيات RLS، نوع ملف مرفوض... إلخ).
+        if (upErr) {
+          toast('❌ فشل رفع الشعار: ' + (upErr.message || String(upErr)), true);
+          setSavingOffice(false);
+          return;
         }
+        const { data: urlData } = db.storage.from('client-docs').getPublicUrl(path);
+        // كسر كاش المتصفح/الـ CDN عشان الشعار الجديد يظهر فورًا بدل القديم
+        logoUrl = `${urlData.publicUrl}?t=${Date.now()}`;
       }
       const { data: existing } = await db.from('office_settings').select('id').eq('tenant_id', tenantId).limit(1).maybeSingle();
       const payload = {
