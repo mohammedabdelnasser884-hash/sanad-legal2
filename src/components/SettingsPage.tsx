@@ -51,26 +51,38 @@ function SettingsPage({profile, isAdmin, country, onCountryChange, onClose}){
 
   const saveTg = async () => {
     setTgSaving(true);
-    await Promise.all([
-      saveOfficeSetting('tg_token', tgToken.trim()),
-      saveOfficeSetting('tg_chat',  tgChat.trim()),
-    ]);
-    setTgSaving(false);
-    toast('✅ تم حفظ إعدادات التليجرام بأمان في السحابة');
+    try {
+      await Promise.all([
+        saveOfficeSetting('tg_token', tgToken.trim()),
+        saveOfficeSetting('tg_chat',  tgChat.trim()),
+      ]);
+      toast('✅ تم حفظ إعدادات التليجرام بأمان في السحابة');
+    } catch (err) {
+      console.error('saveTg failed:', err);
+      toast('❌ فشل حفظ إعدادات التليجرام، حاول مرة أخرى');
+    } finally {
+      setTgSaving(false);
+    }
   };
 
   const saveOffice = async () => {
     setOfficeSaving(true);
-    await Promise.all([
-      saveOfficeSetting('office_name',    officeName.trim()),
-      saveOfficeSetting('office_address', officeAddress.trim()),
-      saveOfficeSetting('office_phone',   officePhone.trim()),
-      saveOfficeSetting('office_email',   officeEmail.trim()),
-      saveOfficeSetting('office_bar',     officeBar.trim()),
-      saveOfficeSetting('office_logo',    officeLogo),
-    ]);
-    setOfficeSaving(false);
-    toast('✅ تم حفظ بيانات المكتب بنجاح');
+    try {
+      await Promise.all([
+        saveOfficeSetting('office_name',    officeName.trim()),
+        saveOfficeSetting('office_address', officeAddress.trim()),
+        saveOfficeSetting('office_phone',   officePhone.trim()),
+        saveOfficeSetting('office_email',   officeEmail.trim()),
+        saveOfficeSetting('office_bar',     officeBar.trim()),
+        saveOfficeSetting('office_logo',    officeLogo),
+      ]);
+      toast('✅ تم حفظ بيانات المكتب بنجاح');
+    } catch (err) {
+      console.error('saveOffice failed:', err);
+      toast('❌ فشل حفظ بيانات المكتب، حاول مرة أخرى');
+    } finally {
+      setOfficeSaving(false);
+    }
   };
 
   const handleLogoUpload = (e: any) => {
