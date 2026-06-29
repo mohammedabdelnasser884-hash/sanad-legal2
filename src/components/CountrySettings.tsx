@@ -16,11 +16,17 @@ function CountrySettings({currentCountry, onCountryChange}){
   const handleSave=async()=>{
     if(selected===currentCountry){toast('الدولة المختارة هي نفس الدولة الحالية');setShowConfirm(false);return;}
     setSaving(true);
-    await saveOfficeSetting('country',selected);
-    setSaving(false);
-    setShowConfirm(false);
-    onCountryChange(selected);
-    toast(`✅ تم تغيير الدولة إلى ${COUNTRY_CONFIGS[selected].name}`);
+    try {
+      await saveOfficeSetting('country',selected);
+      setShowConfirm(false);
+      onCountryChange(selected);
+      toast(`✅ تم تغيير الدولة إلى ${COUNTRY_CONFIGS[selected].name}`);
+    } catch (err) {
+      console.error('CountrySettings save failed:', err);
+      toast('❌ فشل حفظ الدولة، حاول مرة أخرى');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return React.createElement('div',{className:"space-y-5"},
