@@ -167,7 +167,12 @@ function RemindersTab({initialFilter, profile=null, nav}: RemindersTabProps){
                         searchTerm.trim() ? 'جرّب كلمات مختلفة أو تحقق من التاب الصحيح' : activeSection.emptyNote
                     )
                   )
-                : React.createElement('div',{className:"space-y-3"},
+                : React.createElement('div',{className:"space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start xl:grid-cols-3"},
+                    // 🆕 Phase 3 (تقرير تشخيص تجربة سطح المكتب — 15 أغسطس):
+                    // نفس نمط FeesTab — `ReminderCard` بلا width ثابت وتفاصيله
+                    // بتفتح في مودال مركزي منفصل (ViewReminderModal، اتوحّد في
+                    // دفعة 2.1)، فبيتوزع في شبكة عمودين/تلاتة على الديسكتوب
+                    // من غير أي تعديل داخل الكارت نفسه. الموبايل صفر تغيير.
                     // القادمة: slice محلي — المتأخرة والمنجزة: كل المحملين
                     (searchTerm.trim() ? filteredData : activeSection.data).map((r: ReminderRow)=>React.createElement(ReminderCard,{
                         key:r.id,
@@ -184,7 +189,7 @@ function RemindersTab({initialFilter, profile=null, nav}: RemindersTabProps){
                         React.createElement('button',{
                             onClick: activeSection.loadMore,
                             disabled: loading,
-                            className:"w-full py-3 rounded-2xl text-xs font-black active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-40",
+                            className:"w-full lg:col-span-full py-3 rounded-2xl text-xs font-black active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-40",
                             style:{background:'rgba(167,139,250,0.06)',border:'1px solid rgba(167,139,250,0.18)',color:'#a78bfa'}
                         },
                             loading
