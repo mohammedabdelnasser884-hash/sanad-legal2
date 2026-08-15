@@ -15,8 +15,7 @@ test('إضافة أتعاب لقضية وظهورها في تبويب الأتع
   await createCase(page, caseTitle);
 
   // 1) الدخول لتبويب "الأتعاب" (جوه قايمة "المزيد")
-  await page.getByTestId('nav-more-toggle').click();
-  await page.getByTestId('nav-more-fees').click();
+  await page.getByTestId('desktop-nav-fees').click();
 
   // 2) فتح فورم "إضافة أتعاب قضية"
   await page.getByTestId('add-fee-button').click();
