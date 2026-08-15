@@ -37,9 +37,12 @@ test('أرشفة قضية: تختفي من القايمة النشطة، وتت�
   // بعد النجاح: setSelectedCase(null) بتقفل شاشة التفاصيل
   await page.getByTestId('case-detail-view').waitFor({ state: 'hidden', timeout: 10_000 });
 
-  // والقضية تتشال من قايمة الكروت النشطة (setCases فلترة الـ id)
-  const card = page.getByTestId('case-card').filter({ hasText: title });
-  await expect(card).toHaveCount(0);
+  // والقضية تتشال من قايمة القضايا النشطة (setCases فلترة الـ id)
+  // ⚡ H (16 أغسطس 2026): `case-card` بقى `lg:hidden` على الديسكتوب —
+  // بديله `cases-table-row` (جدول الديسكتوب D1/D2)، نفس النمط
+  // المستخدم في e2e/utils.ts.
+  const row = page.getByTestId('cases-table-row').filter({ hasText: title });
+  await expect(row).toHaveCount(0);
 
   // ── تأكيد فعلي من قاعدة البيانات (قراءة فقط) ──
   const supaUrl = process.env.VITE_SUPABASE_URL;
