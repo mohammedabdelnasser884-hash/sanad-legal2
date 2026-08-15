@@ -25,7 +25,9 @@ test('قضية متعددة الأطراف ببيانات سليمة (مسمى �
   await login(page);
   const caseTitle = `اختبار E2E - مراجعة تعدد أطراف - ${Date.now()}`;
 
-  await page.getByTestId('nav-cases').click();
+  // ⚡ H (16 أغسطس 2026): `nav-cases` (موبايل) بقى `lg:hidden` على
+  // الديسكتوب — بديله `desktop-nav-cases` (DesktopSidebar).
+  await page.getByTestId('desktop-nav-cases').click();
   await page.getByTestId('new-case-button').click();
   await page.getByTestId('new-case-title').fill(caseTitle);
   // ⚡ NEW (طلب مباشر — 12 أغسطس 2026): بيانات القيد الرسمي بقت إجبارية.
@@ -57,9 +59,11 @@ test('قضية متعددة الأطراف ببيانات سليمة (مسمى �
   await page.getByTestId('new-case-defendant-subform-save').click();
   await page.getByTestId('new-case-save').click();
 
-  const card = page.getByTestId('case-card').filter({ hasText: caseTitle });
-  await card.first().waitFor({ state: 'visible', timeout: 15_000 });
-  await card.first().click();
+  // ⚡ H (16 أغسطس 2026): `case-card` بقى `lg:hidden` على الديسكتوب —
+  // بديله `cases-table-row` (جدول الديسكتوب D1/D2) + زرار الفتح.
+  const row = page.getByTestId('cases-table-row').filter({ hasText: caseTitle });
+  await row.first().waitFor({ state: 'visible', timeout: 15_000 });
+  await row.first().getByTestId('cases-table-row-open').click();
   await page.getByTestId('case-detail-view').waitFor({ state: 'visible', timeout: 10_000 });
 
   await page.getByTestId('case-tab-checklist').click();
@@ -81,8 +85,9 @@ test('بند ناقص (مستندات) في المراجعة — الدوس عل
   // ناقص طبيعيًا من غير أي إعداد إضافي، وباقي البنود (بيانات القيد/
   // الأطراف) هتظهر مكتملة (مش موضوع التست ده).
   await createCase(page, caseTitle);
-  const card = page.getByTestId('case-card').filter({ hasText: caseTitle });
-  await card.first().click();
+  // ⚡ H (16 أغسطس 2026): بديل `case-card` — `cases-table-row` + زرار الفتح.
+  const row = page.getByTestId('cases-table-row').filter({ hasText: caseTitle });
+  await row.first().getByTestId('cases-table-row-open').click();
   await page.getByTestId('case-detail-view').waitFor({ state: 'visible', timeout: 10_000 });
 
   await page.getByTestId('case-tab-checklist').click();
