@@ -54,7 +54,7 @@ test('استرجاع قضية من شاشة الأرشيف: تختفي من ال
   expect(data?.deleted_at).toBeNull();
 
   // ── لازم نقفل شاشة لوحة الإدارة (overlay بتغطي الشريط السفلي بالكامل، z-[60])
-  //    قبل ما نقدر نضغط على nav-cases، وإلا الدوسة بتفشل (element intercepted).
+  //    قبل ما نقدر نضغط على desktop-nav-cases، وإلا الدوسة بتفشل (element intercepted).
   //    الدوسة على admin-section-back بس مش كفاية أحيانًا (الأوفرلاي بياخد وقت
   //    يتشال من الـ DOM بعد الاستدعاء، خصوصًا بعد عملية استرجاع)، فلازم
   //    ننتظر الأوفرلاي يختفي فعليًا قبل ما نكمل ──
@@ -62,9 +62,13 @@ test('استرجاع قضية من شاشة الأرشيف: تختفي من ال
   await page.getByTestId('admin-section-back').waitFor({ state: 'detached', timeout: 10_000 });
 
   // وتظهر تاني في قائمة القضايا النشطة
-  await page.getByTestId('nav-cases').click();
-  const card = page.getByTestId('case-card').filter({ hasText: title });
-  await expect(card).toHaveCount(1, { timeout: 10_000 });
+  // ⚡ H (16 أغسطس 2026): `nav-cases`/`case-card` (موبايل، Bottom Dock)
+  // بقوا `lg:hidden` على الديسكتوب — بديلهم `desktop-nav-cases`
+  // (DesktopSidebar) و`cases-table-row` (جدول الديسكتوب D1/D2)، نفس
+  // النمط المستخدم في e2e/utils.ts.
+  await page.getByTestId('desktop-nav-cases').click();
+  const row = page.getByTestId('cases-table-row').filter({ hasText: title });
+  await expect(row).toHaveCount(1, { timeout: 10_000 });
 });
 
 test('حذف قضية نهائيًا من شاشة الأرشيف: تختفي من الأرشيف وتتمسح فعليًا من قاعدة البيانات', async ({ page }) => {
