@@ -18,8 +18,7 @@ function makeArchiveTestFile(prefix: string, content: string) {
 
 test('الأرشيف الرقمي: رفع مستند، ظهوره في القائمة، والبحث عنه', async ({ page }) => {
   await login(page);
-  await page.getByTestId('nav-more-toggle').click();
-  await page.getByTestId('nav-more-documents').click();
+  await page.getByTestId('desktop-nav-documents').click();
   await page.getByTestId('archive-upload-toggle').click();
   await page.getByTestId('archive-file-input').setInputFiles(makeArchiveTestFile('archive', 'محتوى تجريبي لاختبار E2E - الأرشيف'));
 
