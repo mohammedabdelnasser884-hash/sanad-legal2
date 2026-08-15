@@ -42,7 +42,7 @@ test('2) إنشاء جلسة مستقلة بأكتر من طرف — فاليد�
   await login(page);
   const title = `اختبار E2E - جلسة مستقلة 2 - ${Date.now()}`;
 
-  await page.getByTestId('nav-calendar').click();
+  await page.getByTestId('desktop-nav-calendar').click();
   await page.getByTestId('calendar-new-session-button').click();
   await page.getByTestId('new-session-modal').waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByTestId('new-session-title').fill(title);
@@ -109,7 +109,7 @@ test('2) إنشاء جلسة مستقلة بأكتر من طرف — فاليد�
 test('3) مودال "تحويل لقضية؟" — إنشاء قضية من بيانات الجلسة بعد الحفظ', async ({ page }) => {
   await login(page);
   const title = `اختبار E2E - جلسة تتحول لقضية - ${Date.now()}`;
-  await page.getByTestId('nav-calendar').click();
+  await page.getByTestId('desktop-nav-calendar').click();
   await page.getByTestId('calendar-new-session-button').click();
   await page.getByTestId('new-session-modal').waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByTestId('new-session-title').fill(title);
@@ -169,16 +169,19 @@ test('3) مودال "تحويل لقضية؟" — إنشاء قضية من بي�
   await page.getByTestId('new-session-postsave-done-close').click();
 
   // التأكد إن القضية اتعملت فعلًا وظهرت في تبويب القضايا.
-  await page.getByTestId('nav-cases').click();
-  const caseCard = page.getByTestId('case-card').filter({ hasText: title });
-  await expect(caseCard.first()).toBeVisible({ timeout: 15_000 });
+  // ⚡ H (16 أغسطس 2026): `nav-cases`/`case-card` (موبايل) بقوا
+  // `lg:hidden` على الديسكتوب — بدائلهم `desktop-nav-cases` و
+  // `cases-table-row`.
+  await page.getByTestId('desktop-nav-cases').click();
+  const caseRow = page.getByTestId('cases-table-row').filter({ hasText: title });
+  await expect(caseRow.first()).toBeVisible({ timeout: 15_000 });
 });
 
 test('4) حفظ الجلسة المستقلة أوفلاين', async ({ page, context }) => {
   await login(page);
   const title = `اختبار E2E - جلسة أوفلاين - ${Date.now()}`;
 
-  await page.getByTestId('nav-calendar').click();
+  await page.getByTestId('desktop-nav-calendar').click();
   await page.getByTestId('calendar-new-session-button').click();
   await page.getByTestId('new-session-modal').waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByTestId('new-session-title').fill(title);
