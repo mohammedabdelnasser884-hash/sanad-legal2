@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { useModalPresentation } from '../shared/hooks/useModalPresentation';
 import type { NavigationState } from '../useNavigation';
 
 interface ExitConfirmModalProps {
@@ -7,14 +8,21 @@ interface ExitConfirmModalProps {
 }
 
 function ExitConfirmModal({ nav }: ExitConfirmModalProps) {
+  // 🆕 (دفعة 2.3 — تقرير تشخيص تجربة سطح المكتب): هنا الـ panel أصلًا
+  // rounded-3xl بالكامل (مش rounded-t-3xl) لأنه "بطاقة عائمة" فوق حافة
+  // الشاشة (mx-4 mb-8) مش Bottom Sheet ملزوق — فمش محتاج panelShapeClassName،
+  // بس محتاج overlayAlignClassName بس عشان يفضل في نص الشاشة على الديسكتوب
+  // بدل ما يفضل عائم تحت.
+  const modalPresentation = useModalPresentation();
+
   return nav.showExitConfirm && createPortal(
             React.createElement('div', {
-                className: 'fixed inset-0 z-[9999] flex items-end justify-center',
+                className: `fixed inset-0 z-[9999] flex ${modalPresentation.overlayAlignClassName} justify-center`,
                 style: { background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' },
                 onClick: nav.cancelExit
             },
                 React.createElement('div', {
-                    className: 'w-full max-w-sm mx-4 mb-8 rounded-3xl overflow-hidden',
+                    className: `w-full max-w-sm mx-4 ${modalPresentation.isDesktop ? '' : 'mb-8'} rounded-3xl overflow-hidden`,
                     style: { background: '#0d1f35', border: '1px solid rgba(255,255,255,0.08)' },
                     onClick: (e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()
                 },
