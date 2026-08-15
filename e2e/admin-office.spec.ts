@@ -69,8 +69,7 @@ test('حفظ إعدادات المكتب: تعديل الاسم والسلوجن
 // نفس ملحوظة admin-archive-lifecycle.spec.ts.
 test('زرار المكتبة القانونية مش ظاهر لحساب مكتب عادي (مش سوبر أدمن)', async ({ page }) => {
   await login(page);
-  await page.getByTestId('nav-more-toggle').click();
-  await page.getByTestId('nav-more-admin').click();
+  await page.getByTestId('desktop-nav-admin').click();
 
   // الزرار مش بيتعمله render أصلًا لغير سوبر أدمن (مش مجرد إخفاء بصري) —
   // toHaveCount(0) بتعبّر عن ده بالظبط، بدل toBeVisible() الشرطية.
