@@ -1,0 +1,209 @@
+import React, { useState, useEffect } from 'react';
+import { db } from '../../../supabaseClient';
+import { toast } from '../../../shared/lib/notifications';
+import { recordError, recordSuccess } from '../../../systemHealth';
+import { I } from '../../../constants';
+import { createFetchGuard } from '../../../shared/lib/offlineGuard';
+import { exportSessionToGoogleCalendar } from '@/shared/ui/calendarExport';
+import { MONTHS_AR2, toDateStr } from './constants';
+import DayCard from './DayCard';
+import { getDayName } from './dateHelpers';
+import MonthWeekView from './MonthWeekView';
+import { useSessionsPartiesMap } from '@/shared/parties/useSessionsPartiesMap';
+import type { MappedCase, MappedClient } from '../../../hooks/useAppData';
+import type { CalendarSessionRow } from './CalendarTab';
+import { saveCalendarSessionsCache, loadCalendarSessionsCache } from './CalendarTab';
+import type { TaskFeedItem } from '@/shared/hooks/useDashboardFeed';
+
+// نفس أعمدة case_sessions اللي CalendarTab.tsx بيجيبها (CalendarSessionRow) —
+// الأعمدة القديمة (plaintiff_national_id/plaintiff_power_of_attorney/
+// defendant_national_id) اتشالت من هنا مع حذفها من القاعدة (F.4، 6 أغسطس 2026).
+export type MonthSessionRow = CalendarSessionRow;
+
+interface WeekBound {
+    start: number;
+    end: number;
+}
+
+export interface WeekInfo {
+    idx: number;
+    label: string;
+    dateRange: string;
+    days: string[];
+}
+
+interface MonthListTabProps {
+    cases: MappedCase[];
+    clients: MappedClient[];
+    onOpenCase: (c: MappedCase) => void;
+    onOpenReminders: () => void;
+    onOpenStandalone: (s: MonthSessionRow) => void;
+    // ⚡ [جديد] نفس فكرة refreshKey في CalendarTab.tsx — إجبار إعادة الجلب
+    // بعد أي إجراء على جلسة (ربط بقضية جديدة تحديدًا) عشان case_id
+    // المحدّث يبان فورًا في نفس الشاشة من غير تنقل يدوي.
+    refreshKey?: number;
+}
+
+function MonthListTab({ cases, clients, onOpenCase, onOpenReminders, onOpenStandalone, refreshKey }: MonthListTabProps) {
+    const today    = new Date();
+    const todayStr = toDateStr(today);
+
+    const [viewYear,  setViewYear]  = useState(today.getFullYear());
+    const [viewMonth, setViewMonth] = useState(today.getMonth());
+    const [sessions, setSessions]   = useState<MonthSessionRow[]>([]);
+    const [tasks,    setTasks]      = useState<TaskFeedItem[]>([]);
+    const [loading, setLoading]     = useState(true);
+    // ⚡ FIX (تحليل لوجز E2E — 9 أغسطس 2026): نفس فكرة prevMonthYear في
+    // CalendarTab.tsx — بنستخدمها هنا كمان عشان نميّز refetch بسبب تنقل
+    // شهور حقيقي عن refetch بسبب refreshKey بس (زي حفظ جلسة أوفلاين).
+    const prevMonthYear = React.useRef({ viewYear, viewMonth });
+
+    useEffect(() => {
+        setLoading(true);
+        const isMonthNavigation =
+            prevMonthYear.current.viewYear !== viewYear || prevMonthYear.current.viewMonth !== viewMonth;
+        prevMonthYear.current = { viewYear, viewMonth };
+        const mm   = String(viewMonth + 1).padStart(2, '0');
+        const last = new Date(viewYear, viewMonth + 1, 0).getDate();
+        const startStr = `${viewYear}-${mm}-01`;
+        const endStr   = `${viewYear}-${mm}-${String(last).padStart(2,'0')}`;
+
+        // ⚡ NEW (فيكس "تأخير محسوس عند التنقل أوف لاين" — 9 أغسطس 2026):
+        // نفس نمط CalendarTab.tsx/useDbConnectivity/useAuthProfile — offline
+        // من الأساس يروح على الكاش فورًا، وأونلاين بطيء/متقطع يتقفل بعد
+        // 8 ثواني بدل ما يفضل معلّق.
+        const guard = createFetchGuard();
+        if (guard.offline) {
+            const cached = loadCalendarSessionsCache(viewYear, viewMonth);
+            if (cached) {
+                setSessions(cached);
+                if (isMonthNavigation) toast('أنت أوف لاين — بتشوف آخر نسخة محفوظة من جلسات الشهر ده');
+            } else {
+                setSessions([]);
+                recordError('db_calendar_sessions', 'offline');
+            }
+            setTasks([]); setLoading(false);
+            return () => guard.cleanup();
+        }
+
+        db.from('case_sessions')
+          .select('id,session_date,case_id,client_id,description,result,next_action,session_time,session_floor,session_hall,title,case_number,court,case_type,circuit_number,cases(id,title,court_name,case_type,case_number_official,client_id)')
+          .gte('session_date', startStr)
+          .lte('session_date', endStr)
+          .order('session_date', { ascending: true })
+          .abortSignal(guard.controller.signal)
+          .then(({ data, error }) => {
+              guard.cleanup();
+              // ⚡ NEW (فيكس "الجلسات مش موجودة نهائي" — 9 أغسطس 2026): نفس
+              // فكرة الكاش المطبّقة في CalendarTab.tsx بالضبط (مفتاح مشترك
+              // بينهم — نفس البيانات فعليًا)، راجع التعليق الكامل هناك.
+              if (error) {
+                  const cached = loadCalendarSessionsCache(viewYear, viewMonth);
+                  if (cached) {
+                      setSessions(cached);
+                      if (isMonthNavigation) toast('أنت أوف لاين — بتشوف آخر نسخة محفوظة من جلسات الشهر ده');
+                  } else {
+                      setSessions([]);
+                      recordError('db_calendar_sessions', error.message);
+                  }
+                  setTasks([]); setLoading(false);
+                  return;
+              }
+              recordSuccess('db_calendar_sessions');
+              const list = (data || []) as unknown as MonthSessionRow[];
+              setSessions(list);
+              saveCalendarSessionsCache(viewYear, viewMonth, list);
+              setTasks([]); setLoading(false);
+          });
+        return () => guard.cleanup();
+    }, [viewYear, viewMonth, refreshKey]);
+
+    const prevMonth = () => { if (viewMonth === 0) { setViewMonth(11); setViewYear((y: number) => y-1); } else setViewMonth((m: number) => m-1); };
+    const nextMonth = () => { if (viewMonth === 11) { setViewMonth(0); setViewYear((y: number) => y+1); } else setViewMonth((m: number) => m+1); };
+
+    const sessionsMap: Record<string, MonthSessionRow[]> = {};
+    sessions.forEach((s: MonthSessionRow) => {
+        const key = s.session_date as string;
+        if (!sessionsMap[key]) sessionsMap[key] = [];
+        sessionsMap[key].push(s);
+    });
+    const tasksMap: Record<string, TaskFeedItem[]> = {};
+    tasks.forEach((r: TaskFeedItem) => {
+        const key = r.due_date as string;
+        if (!tasksMap[key]) tasksMap[key] = [];
+        tasksMap[key].push(r);
+    });
+
+    // ⚡ NEW (خطة تفكيك الأعمدة القديمة، المرحلة B.1) — راجع نفس التعليق في CalendarTab.tsx.
+    const partiesIndex = useSessionsPartiesMap(sessions);
+
+    const handleGoogleExport = (s: MonthSessionRow, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const linkedCase   = cases.find((c: MappedCase) => c.id === s.case_id);
+        const linkedClient = linkedCase
+            ? clients.find((cl: MappedClient) => cl.id === linkedCase.client_id)
+            : (s.client_id ? clients.find((cl: MappedClient) => cl.id === s.client_id) : null);
+        exportSessionToGoogleCalendar(s, linkedCase?.title || 'جلسة قانونية', linkedCase?.court || '', linkedClient?.full_name || '');
+        toast('🗓 جاري الفتح في Google Calendar...');
+    };
+
+    // ── بناء الأسابيع الأربعة ──
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const mm = String(viewMonth + 1).padStart(2, '0');
+    const buildDateStr = (d: number) => `${viewYear}-${mm}-${String(d).padStart(2,'0')}`;
+
+    // حدود الأسابيع: 1-7 / 8-14 / 15-21 / 22-نهاية
+    const weekBounds: WeekBound[] = [
+        { start: 1,  end: 7             },
+        { start: 8,  end: 14            },
+        { start: 15, end: 21            },
+        { start: 22, end: daysInMonth   },
+    ];
+    const weekLabels = ['الأسبوع الأول', 'الأسبوع الثاني', 'الأسبوع الثالث', 'الأسبوع الرابع'];
+
+    const weeks: WeekInfo[] = weekBounds.map((wb: WeekBound, idx: number) => {
+        const days: string[] = [];
+        for (let d = wb.start; d <= wb.end; d++) days.push(buildDateStr(d));
+        const start = buildDateStr(wb.start);
+        const end   = buildDateStr(wb.end);
+        const startDay = wb.start;
+        const endDay   = wb.end;
+        const startDayName = getDayName(start);
+        const endDayName   = getDayName(end);
+        return {
+            idx,
+            label: weekLabels[idx],
+            dateRange: `${startDay} (${startDayName}) — ${endDay} (${endDayName})`,
+            days,
+        };
+    });
+
+    return React.createElement('div', { className: "space-y-3 fade-in" },
+
+        // ── شريط رفيع: الشهر/السنة + عدد الجلسات + رجوع للشهر الحالي ──
+        React.createElement('div', { className: "flex items-center justify-between px-1" },
+            React.createElement('p', { className: "text-[10px] font-bold text-slate-500" },
+                `${MONTHS_AR2[viewMonth]} ${viewYear}` + (loading ? '' : ` · ${sessions.length} جلسة`)
+            ),
+            (viewYear !== today.getFullYear() || viewMonth !== today.getMonth()) && React.createElement('button', {
+                onClick: () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); },
+                className: "text-[9px] font-black text-premium-gold active:scale-95 transition-all px-2 py-1 rounded-full",
+                style: { background: 'rgba(212,175,55,0.08)' }
+            }, "↩ الشهر الحالي")
+        ),
+
+        loading
+            ? React.createElement('div', { className: "flex items-center justify-center py-16 gap-2 text-slate-500 text-xs" },
+                React.createElement(I.Spin), "جاري التحميل...")
+
+            : React.createElement(MonthWeekView, {
+                weeks, sessionsMap, tasksMap, cases, clients,
+                onOpenCase, onOpenReminders, onOpenStandalone, todayStr, handleGoogleExport,
+                prevMonth, nextMonth, partiesIndex
+            })
+    );
+}
+
+// ── عرض الشهر: أزرار 4 أسابيع + قائمة الأيام ──
+
+export default MonthListTab;
