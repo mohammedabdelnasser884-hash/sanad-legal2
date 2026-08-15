@@ -68,7 +68,11 @@ export async function login(page: Page): Promise<void> {
 // (star/name/capacity/national-id)، ولازم تفعيل ⭐ الأول عشان الرقم
 // القومي يبقى مطلوب/يتفحص، ومطابق لفاليديشن casePartiesValidation.ts.
 export async function createCase(page: Page, title: string): Promise<void> {
-  await page.getByTestId('nav-cases').click();
+  // ⚡ H1 (16 أغسطس 2026): `nav-cases` (CommandDock، الشريط السفلي) بقى
+  // `lg:hidden` فعليًا (H2) — كل الـ31 spec دي بتشتغل على مشروع
+  // `chromium` (Desktop Chrome، ≥1024px) فبقت تستخدم `desktop-nav-cases`
+  // (DesktopSidebar، B1) بدلًا منه. مفيش أي تغيير على منطق الملاحة نفسه.
+  await page.getByTestId('desktop-nav-cases').click();
   await page.getByTestId('new-case-button').click();
   await page.getByTestId('new-case-title').fill(title);
   // ⚡ NEW (طلب مباشر — 12 أغسطس 2026): بيانات القيد الرسمي (المحكمة/رقم
@@ -106,8 +110,13 @@ export async function createCase(page: Page, title: string): Promise<void> {
   await page.getByTestId('new-case-defendant-subform-save').click();
   await page.getByTestId('new-case-save').click();
 
-  const card = page.getByTestId('case-card').filter({ hasText: title });
-  await card.first().waitFor({ state: 'visible', timeout: 15_000 });
+  // ⚡ H1/H3 (16 أغسطس 2026): `case-card` بقى `lg:hidden` فعليًا (H3) —
+  // بديله على الديسكتوب `cases-table-row` (D1/D2)، لكنه ماكانش بيعرض
+  // موضوع القضية (`title`) قبل كده، فاتضاف كسطر ثانوي جوّه الصف نفسه
+  // (راجع CaseTableRow.tsx H) عشان الفلترة بالـtitle تفضل شغالة زي ما
+  // هي بالحرف من غير أي تغيير في منطق التستات.
+  const row = page.getByTestId('cases-table-row').filter({ hasText: title });
+  await row.first().waitFor({ state: 'visible', timeout: 15_000 });
 }
 
 // خطوة 3+ — خطوات زي "تسجيل جلسة"/"إضافة أتعاب"/"أرشفة" محتاجة قضية
@@ -117,8 +126,11 @@ export async function createCase(page: Page, title: string): Promise<void> {
 // (نفس ملحوظة auth.spec.ts فوق: cases.spec.ts اتسيب من غير تعديل عمدًا.)
 export async function createAndOpenCase(page: Page, title: string): Promise<void> {
   await createCase(page, title);
-  const card = page.getByTestId('case-card').filter({ hasText: title });
-  await card.first().click();
+  // ⚡ H1/H3: نفس مبدأ createCase فوق — الفتح بقى عبر زرار
+  // `cases-table-row-open` جوّه الصف الملفتر بالـtitle (بدل النقر على
+  // الكارت نفسه اللي بقى `lg:hidden`).
+  const row = page.getByTestId('cases-table-row').filter({ hasText: title });
+  await row.first().getByTestId('cases-table-row-open').click();
   await page.getByTestId('case-detail-view').waitFor({ state: 'visible', timeout: 10_000 });
 }
 
@@ -143,8 +155,11 @@ export async function openAdminArchiveTab(
   tab: 'cases' | 'clients' | 'fees' = 'cases'
 ): Promise<void> {
   await closeAdminSectionIfOpen(page);
-  await page.getByTestId('nav-more-toggle').click();
-  await page.getByTestId('nav-more-admin').click();
+  // ⚡ H1 (16 أغسطس 2026): DesktopSidebar (B1) بيعرض كل عناصر التنقل
+  // (بما فيها لوحة الإدارة) مباشرة بدون قائمة "المزيد" المطوية زي
+  // الموبايل — يعني نقرة واحدة (`desktop-nav-admin`) بدل الاتنين
+  // (`nav-more-toggle` ثم `nav-more-admin`) اللازمين على CommandDock.
+  await page.getByTestId('desktop-nav-admin').click();
   await page.getByTestId('admin-section-archive').click();
   await page.getByTestId('archive-tab-' + tab).click();
 }
@@ -168,8 +183,8 @@ export async function openAdminSection(
   sectionId: 'users' | 'portal' | 'activity' | 'sessions' | 'security' | 'backup' | 'office' | 'legal_library' | 'archive'
 ): Promise<void> {
   await closeAdminSectionIfOpen(page);
-  await page.getByTestId('nav-more-toggle').click();
-  await page.getByTestId('nav-more-admin').click();
+  // ⚡ H1: نفس تعليق openAdminArchiveTab فوق.
+  await page.getByTestId('desktop-nav-admin').click();
   await page.getByTestId('admin-section-' + sectionId).click();
 }
 
@@ -233,8 +248,9 @@ export async function createClient(
   // فشل الـE2E). الحل: ناخد آخر 14 خانة بدل الأول، فيتضمن Date.now()
   // كامل (13 خانة، فريدة لكل ميلي ثانية) بدل ما نقطعه.
   const finalNationalId = nationalId ?? `2900101${Date.now()}`.slice(-14);
-  await page.getByTestId('nav-more-toggle').click();
-  await page.getByTestId('nav-more-clients').click();
+  // ⚡ H1: نفس مبدأ openAdminArchiveTab — `desktop-nav-clients` نقرة
+  // واحدة بدل `nav-more-toggle`+`nav-more-clients`.
+  await page.getByTestId('desktop-nav-clients').click();
   await page.getByTestId('new-client-button').click();
   await page.getByTestId('new-client-name').fill(name);
   await page.getByTestId('new-client-phone').fill('01000000000');
@@ -254,8 +270,11 @@ export async function createClient(
   await page.getByTestId('save-client-button').click();
 
 
-  const card = page.getByTestId('client-card').filter({ hasText: name });
-  await card.first().waitFor({ state: 'visible', timeout: 15_000 });
+  // ⚡ H1/H3: `client-card` بقى `lg:hidden` (H3) — ClientTableRow (D3)
+  // بيعرض `data.name` مباشرة (نفس اسم الموكل)، فمفيش أي فجوة زي الحالة
+  // بتاعة القضايا فوق — الفلترة بالاسم شغالة زي ما هي.
+  const row = page.getByTestId('clients-table-row').filter({ hasText: name });
+  await row.first().waitFor({ state: 'visible', timeout: 15_000 });
   return { nationalId: finalNationalId };
 }
 
@@ -295,7 +314,8 @@ export async function addCaseSession(page: Page, day: number, description: strin
 // التقويم وتفتحها من غير ما تكرر نفس الخطوات. بيسيب مودال "تحويل لقضية؟"
 // مقفول (بيدوس "لا شكراً، إغلاق") وبيرجّع الصفحة على تبويب الجلسات.
 export async function createStandaloneSession(page: Page, title: string): Promise<void> {
-  await page.getByTestId('nav-calendar').click();
+  // ⚡ H1: نفس مبدأ createCase — desktop-nav-calendar بدل nav-calendar.
+  await page.getByTestId('desktop-nav-calendar').click();
   await page.getByTestId('calendar-new-session-button').click();
   await page.getByTestId('new-session-modal').waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByTestId('new-session-title').fill(title);
@@ -352,7 +372,8 @@ export async function addMissedSession(page: Page, description: string): Promise
 }
 
 export async function createReminder(page: Page, title: string): Promise<void> {
-  await page.getByTestId('nav-reminders').click();
+  // ⚡ H1: نفس مبدأ createCase — desktop-nav-reminders بدل nav-reminders.
+  await page.getByTestId('desktop-nav-reminders').click();
   await page.getByTestId('new-reminder-toggle').click();
   await page.getByTestId('new-reminder-title').fill(title);
   await page.getByTestId('new-reminder-date-trigger').click();
