@@ -58,9 +58,19 @@ function CommandDock({
             onClick: () => setShowMore(false)
         }),
 
+        // 🔒 FIX (تشخيص لوجز CI — 15 أغسطس 2026، mobile-shell.spec.ts):
+        // الـ<nav> ده كان من غير position خالص، فحسب قواعد CSS stacking
+        // كان بيترسم *تحت* الـbackdrop اللي فوقه (fixed z-40) رغم إنه جاي
+        // بعده في الـDOM — لأن أي عنصر non-positioned بيترسم تحت أي
+        // sibling positioned له z-index. النتيجة: وقت ما showMore=true،
+        // أي ضغطة على الدوك كله (بما فيه nav-more-toggle نفسه لقفل
+        // القائمة) كانت بتوصل فعليًا للـbackdrop مش للزرار. إضافة
+        // `relative z-50` هنا بتخلي الـnav positioned بنفس z-index بتاع
+        // الحاوية الأب (z-50)، يعني بيترسم فوق الـbackdrop (z-40) صح.
+        // صفر تغيير على أي شكل بصري أو أي data-testid.
         React.createElement('nav', {
             ref: navRef,
-            className: 'pointer-events-auto w-full max-w-sm h-[62px] flex items-center px-2 gap-0',
+            className: 'pointer-events-auto relative z-50 w-full max-w-sm h-[62px] flex items-center px-2 gap-0',
             style: {
                 background: 'rgba(15,25,50,0.97)', backdropFilter: 'blur(28px) saturate(180%)',
                 border: '1px solid rgba(212,175,55,0.25)', borderRadius: '24px',
