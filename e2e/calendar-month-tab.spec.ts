@@ -21,7 +21,7 @@ test('تبويب الشهر: جلسة النهاردة تظهر في القائ�
   await page.getByTestId('case-detail-view').waitFor({ state: 'hidden', timeout: 10_000 });
 
   // الرجوع لشاشة التقويم والانتقال لتبويب "الشهر"
-  await page.getByTestId('nav-calendar').click();
+  await page.getByTestId('desktop-nav-calendar').click();
   await page.getByTestId('calendar-subtab-month').click();
 
   const card = page.getByTestId('calendar-session-card').filter({ hasText: caseTitle });
