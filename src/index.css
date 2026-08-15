@@ -216,12 +216,20 @@
         html.light .border-premium-gold { border-color: var(--gold) !important; }
         html.light [class*="text-amber-300"]  { color: #92650a !important; }
         html.light [class*="text-amber-400"]  { color: #b8860b !important; }
-        html.light [class*="bg-amber-500\/10"]{ background: rgba(184,134,11,0.09) !important; }
-        html.light [class*="bg-amber-500\/8"] { background: rgba(184,134,11,0.07) !important; }
+        /* ── FIX (تقرير تشخيص الديسكتوب، Phase 4، بند 2 — تحذير CSS syntax
+           وقت الـ build): السطور دي كانت بتستخدم "\/" (باك سلاش قبل الشرطة
+           المائلة) جوه قيمة نصية بين علامتي تنصيص ([class*="..."]). الإسكيب ده
+           مطلوب فعليًا لما "/" جزء من اسم selector مباشر زي `.bg-amber-500\/10`
+           (مستخدم صح في أماكن تانية بالملف ده)، لكنه زيادة عن الحاجة جوه string
+           بين تنصيص — أقوى مرشح لقيته لتحذير "Expected identifier but found
+           "-"" اللي ظهر وقت minify الـ CSS. اتشالت الإسكيب الزيادة؛ المطابقة
+           بتفضل شغالة زي ما هي لأنها substring match عادي. ── */
+        html.light [class*="bg-amber-500/10"]{ background: rgba(184,134,11,0.09) !important; }
+        html.light [class*="bg-amber-500/8"] { background: rgba(184,134,11,0.07) !important; }
         html.light [class*="border-amber-500"]{ border-color: rgba(184,134,11,0.22) !important; }
-        html.light [class*="bg-premium-gold\/10"]  { background: rgba(184,134,11,0.09) !important; }
-        html.light [class*="bg-premium-gold\/8"]   { background: rgba(184,134,11,0.07) !important; }
-        html.light [class*="border-premium-gold\/"] { border-color: rgba(184,134,11,0.22) !important; }
+        html.light [class*="bg-premium-gold/10"]  { background: rgba(184,134,11,0.09) !important; }
+        html.light [class*="bg-premium-gold/8"]   { background: rgba(184,134,11,0.07) !important; }
+        html.light [class*="border-premium-gold/"] { border-color: rgba(184,134,11,0.22) !important; }
 
         /* Danger / rose */
         html.light .bg-rose-500\/10   { background: var(--danger-bg) !important; }
