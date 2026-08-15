@@ -75,15 +75,18 @@ function AppHeader({ profile, setShowMenu, setShowSearch, isAdmin, fetchCases, c
                           React.createElement('path',{strokeLinecap:"round",strokeLinejoin:"round",d:"M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"})
                       )
             ),
-            // زر الهامبرغر — على الشمال (آخر العناصر في RTL)
+            // زر قائمة الحساب — على الشمال (آخر العناصر في RTL)
+            // ── FIX (تقرير تشخيص الديسكتوب، Phase 4، بند 4): كان شكل هذا الزرار
+            // (3 خطوط أفقية) مطابق بصريًا لأيقونة "همبرغر" الشائعة لقوائم التنقل/
+            // السايدبار، رغم إنه بيفتح قائمة حساب (ثيم/تثبيت PWA/خروج) مش قائمة
+            // تنقل. اتغيّر لأيقونة نقط رأسية (I.MoreVertical) لتمييزه بصريًا عن
+            // زرار طي/فتح DesktopSidebar (ChevronLeft/ChevronRight) وتفادي اللبس. ──
             React.createElement('button',{
                 onClick:()=>(setShowMenu as unknown as (updater: (prev: boolean) => boolean) => void)((p: boolean)=>!p),
-                className:"w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex flex-col items-center justify-center gap-[5px] active:scale-95 transition-transform shrink-0",
-                title:"القائمة"
+                className:"w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center active:scale-95 transition-transform text-premium-gold shrink-0",
+                title:"قائمة الحساب"
             },
-                React.createElement('span',{className:"block w-4 h-0.5 bg-premium-gold rounded-full"}),
-                React.createElement('span',{className:"block w-4 h-0.5 bg-premium-gold rounded-full"}),
-                React.createElement('span',{className:"block w-4 h-0.5 bg-premium-gold rounded-full"})
+                React.createElement(I.MoreVertical)
             )
         )
     )
