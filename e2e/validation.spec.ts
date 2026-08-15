@@ -11,7 +11,9 @@ import { login, createCase, expectToast, uniquePoa } from './utils';
 test.describe('فاليديشن الحقول المطلوبة', () => {
   test('قضية بعنوان فاضي → رسالة خطأ، والفورم يفضل مفتوح من غير حفظ', async ({ page }) => {
     await login(page);
-    await page.getByTestId('nav-cases').click();
+    // ⚡ H (16 أغسطس 2026): `nav-cases` (موبايل) بقى `lg:hidden` على
+    // الديسكتوب — بديله `desktop-nav-cases`.
+    await page.getByTestId('desktop-nav-cases').click();
     await page.getByTestId('new-case-button').click();
 
     // مفيش أي كتابة في new-case-title — بنحاول نحفظ فورًا
@@ -27,8 +29,9 @@ test.describe('فاليديشن الحقول المطلوبة', () => {
     const caseTitle = `اختبار E2E - فاليديشن أتعاب 1 - ${Date.now()}`;
     await createCase(page, caseTitle);
 
-    await page.getByTestId('nav-more-toggle').click();
-    await page.getByTestId('nav-more-fees').click();
+    // ⚡ H (16 أغسطس 2026): `nav-more-toggle`+`nav-more-fees` (موبايل)
+    // بقوا `lg:hidden` على الديسكتوب — بديلهم نقرة واحدة `desktop-nav-fees`.
+    await page.getByTestId('desktop-nav-fees').click();
     await page.getByTestId('add-fee-button').click();
 
     // نملى المبلغ بس من غير ما نختار قضية
@@ -44,8 +47,9 @@ test.describe('فاليديشن الحقول المطلوبة', () => {
     const caseTitle = `اختبار E2E - فاليديشن أتعاب 2 - ${Date.now()}`;
     await createCase(page, caseTitle);
 
-    await page.getByTestId('nav-more-toggle').click();
-    await page.getByTestId('nav-more-fees').click();
+    // ⚡ H (16 أغسطس 2026): `nav-more-toggle`+`nav-more-fees` (موبايل)
+    // بقوا `lg:hidden` على الديسكتوب — بديلهم نقرة واحدة `desktop-nav-fees`.
+    await page.getByTestId('desktop-nav-fees').click();
     await page.getByTestId('add-fee-button').click();
 
     await page.getByTestId('fee-case-select').selectOption({ label: caseTitle });
@@ -61,8 +65,9 @@ test.describe('فاليديشن الحقول المطلوبة', () => {
     const caseTitle = `اختبار E2E - فاليديشن أتعاب 3 - ${Date.now()}`;
     await createCase(page, caseTitle);
 
-    await page.getByTestId('nav-more-toggle').click();
-    await page.getByTestId('nav-more-fees').click();
+    // ⚡ H (16 أغسطس 2026): `nav-more-toggle`+`nav-more-fees` (موبايل)
+    // بقوا `lg:hidden` على الديسكتوب — بديلهم نقرة واحدة `desktop-nav-fees`.
+    await page.getByTestId('desktop-nav-fees').click();
     await page.getByTestId('add-fee-button').click();
 
     await page.getByTestId('fee-case-select').selectOption({ label: caseTitle });
@@ -75,8 +80,9 @@ test.describe('فاليديشن الحقول المطلوبة', () => {
 
   test('موكل جديد بدون اسم → رسالة خطأ، والمودال يفضل مفتوح', async ({ page }) => {
     await login(page);
-    await page.getByTestId('nav-more-toggle').click();
-    await page.getByTestId('nav-more-clients').click();
+    // ⚡ H (16 أغسطس 2026): `nav-more-toggle`+`nav-more-clients` (موبايل)
+    // بقوا `lg:hidden` على الديسكتوب — بديلهم نقرة واحدة `desktop-nav-clients`.
+    await page.getByTestId('desktop-nav-clients').click();
     await page.getByTestId('new-client-button').click();
 
     // مفيش كتابة في new-client-name خالص
@@ -88,8 +94,9 @@ test.describe('فاليديشن الحقول المطلوبة', () => {
 
   test('تعديل موكل موجود ومسح اسمه بالكامل → رسالة خطأ، ومفيش حفظ للتعديل', async ({ page }) => {
     await login(page);
-    await page.getByTestId('nav-more-toggle').click();
-    await page.getByTestId('nav-more-clients').click();
+    // ⚡ H (16 أغسطس 2026): `nav-more-toggle`+`nav-more-clients` (موبايل)
+    // بقوا `lg:hidden` على الديسكتوب — بديلهم نقرة واحدة `desktop-nav-clients`.
+    await page.getByTestId('desktop-nav-clients').click();
 
     // بننشئ موكل خاص بالتست ده عشان الاختبار يكون مستقل ومحكوم بالكامل،
     // مش معتمد على وجود موكل جاهز في التينانت التجريبي من تشغيلات سابقة.
@@ -114,10 +121,12 @@ test.describe('فاليديشن الحقول المطلوبة', () => {
     await page.getByTestId('new-client-poa-year').fill(poa.year);
     await page.getByTestId('save-client-button').click();
 
-    const newClientCard = page.getByTestId('client-card').filter({ hasText: clientName });
-    await expect(newClientCard.first()).toBeVisible({ timeout: 15_000 });
+    // ⚡ H (16 أغسطس 2026): `client-card` بقى `lg:hidden` على الديسكتوب —
+    // بديله `clients-table-row` (جدول الديسكتوب D3) + زرار الفتح.
+    const newClientRow = page.getByTestId('clients-table-row').filter({ hasText: clientName });
+    await expect(newClientRow.first()).toBeVisible({ timeout: 15_000 });
 
-    await newClientCard.first().click();
+    await newClientRow.first().getByTestId('clients-table-row-open').click();
     await page.getByTestId('client-detail-view').waitFor({ state: 'visible', timeout: 10_000 });
 
     await page.getByTestId('client-edit-trigger').click();
