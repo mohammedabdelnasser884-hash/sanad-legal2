@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { useModalPresentation } from '../hooks/useModalPresentation';
 
 // ══════════════════════════════════════════════════════════════
 //  UnsavedChangesConfirmModal — بديل مصمم بشكل التطبيق لـ
@@ -21,15 +22,18 @@ interface UnsavedChangesConfirmModalProps {
 }
 
 function UnsavedChangesConfirmModal({ onConfirm, onCancel }: UnsavedChangesConfirmModalProps) {
+    // 🆕 (دفعة 2.3 — تقرير تشخيص تجربة سطح المكتب): نفس نمط ExitConfirmModal.tsx.
+    const modalPresentation = useModalPresentation();
+
     return createPortal(
         React.createElement('div', {
-            className: 'fixed inset-0 z-[95] flex items-end justify-center',
+            className: `fixed inset-0 z-[95] flex ${modalPresentation.overlayAlignClassName} justify-center`,
             style: { background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' },
             onClick: onCancel,
             'data-testid': 'unsaved-changes-confirm-modal'
         },
             React.createElement('div', {
-                className: 'w-full max-w-sm mx-4 mb-8 rounded-3xl overflow-hidden',
+                className: `w-full max-w-sm mx-4 ${modalPresentation.isDesktop ? '' : 'mb-8'} rounded-3xl overflow-hidden`,
                 style: { background: '#0d1f35', border: '1px solid rgba(255,255,255,0.08)' },
                 onClick: (e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()
             },
