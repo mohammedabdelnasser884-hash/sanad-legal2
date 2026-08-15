@@ -2,7 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../supabaseClient';
 import { recordError } from '../systemHealth';
-import { COUNTRY_CONFIGS } from '../constants';
+import { COUNTRY_CONFIGS, I } from '../constants';
 import type { TabName } from '../useNavigation';
 import type { NavigationState } from '../useNavigation';
 import type { DeleteConfirmState, CaseFormSubmitData } from '@/features/cases/hooks/useCaseActions';
@@ -15,7 +15,14 @@ import NewClientModal from '../features/clients/NewClientModal';
 import UserFormModal from '@/features/admin/users/UserFormModal';
 import ClientDetailModal from '../features/clients/ClientDetailModal';
 import UniversalSearchModal from '../shared/modals/UniversalSearchModal';
-import AILegalAssistant from '../features/ai/AILegalAssistant';
+// ⚡ FIX (تقرير تشخيص الديسكتوب، Phase 4، بند 4 — تقسيم حزمة الـ JS، 15
+// أغسطس 2026): AILegalAssistant وكل ملفات features/ai المرتبطة بيه
+// (~3300 سطر تقريبًا) كانوا بيتحملوا statically للجميع رغم إن قسم الـ
+// AI مقفول حاليًا لكل المستخدمين ما عدا سوبر أدمن واحد (راجع
+// AI_SUPER_ADMIN_EMAIL في App.tsx) — يعني عمليًا بيتحمّل بلا أي استخدام
+// فعلي لغالبية المستخدمين. اتحول لـ React.lazy + React.Suspense في مكان
+// الرندر تحت.
+const AILegalAssistant = React.lazy(() => import('../features/ai/AILegalAssistant'));
 import AIComingSoonModal from '../shared/modals/AIComingSoonModal';
 import DeleteConfirmModal from '@/shared/modals/DeleteConfirmModal';
 import NewStandaloneSessionModal from '../features/calendar/NewStandaloneSessionModal';
@@ -245,7 +252,17 @@ function AppModals({
             // تبديل تاب). المودال بيتعرض فوق أي تاب من غير الحاجة لتبديله.
             onOpenClient: (c) => { setSelectedClient(c as MappedClient); }
         }),
-        showAI && createPortal(React.createElement(AILegalAssistant, { onClose: () => setShowAI(false), cases, clients, profile, country }), document.body),
+        showAI && createPortal(
+            React.createElement(React.Suspense, {
+                fallback: React.createElement('div', {
+                    className: 'fixed inset-0 flex items-center justify-center bg-black/60',
+                    style: { zIndex: 9999 }
+                }, React.createElement(I.Spin))
+            },
+                React.createElement(AILegalAssistant, { onClose: () => setShowAI(false), cases, clients, profile, country })
+            ),
+            document.body
+        ),
         // ⚡ NEW (قفل قسم الـAI مؤقتًا — 12 أغسطس 2026): بيتفتح بدل القسم
         // الحقيقي لكل المستخدمين ما عدا السوبر أدمن — راجع handleAIButtonClick
         // في App.tsx.
