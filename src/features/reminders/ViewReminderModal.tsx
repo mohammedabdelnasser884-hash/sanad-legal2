@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { I } from '../../constants';
 import { formatArDate } from '../../shared/ui/arabicLocale';
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { ReminderRow } from '../../types';
 
 interface ReminderEditForm {
@@ -22,13 +23,16 @@ interface ViewReminderModalProps {
 function ViewReminderModal({
   viewTarget, setViewTarget, handleToggleDone, setEditTarget, setEditForm, setConfirmDeleteTarget,
 }: ViewReminderModalProps) {
+  // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
+  // المُطبَّق في NewCaseModal.tsx.
+  const modalPresentation = useModalPresentation();
   return viewTarget && createPortal(React.createElement('div',{
         'data-testid':'view-reminder-modal',
-        className:"fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm",
+        className:`fixed inset-0 z-50 flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/70 backdrop-blur-sm`,
         onClick: () => setViewTarget(null)
     },
         React.createElement('div',{
-            className:"bg-premium-card w-full max-w-lg rounded-t-3xl border-t border-white/10 p-6 pb-10 shadow-2xl slide-up",
+            className:`bg-premium-card w-full max-w-lg ${modalPresentation.panelShapeClassName} p-6 pb-10 shadow-2xl ${modalPresentation.panelAnimationClassName}`,
             onClick: (e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()
         },
             // handle bar
