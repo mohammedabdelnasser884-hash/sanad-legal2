@@ -1,15 +1,21 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../database.types';
+import { db } from '../supabaseClient';
 
 // ══════════════════════════════════════════════════════════
 //  Last Seen Heartbeat — يحدّث آخر نشاط كل 2 دقيقة
 //  ويُسجّل الجهاز والمتصفح مرة واحدة عند الدخول
 //  منقول من main.tsx (اتفصل بتاريخ 15 يوليو 2026 كجزء من خطة
 //  تخفيف main.tsx)
-// ══════════════════════════════════════════════════════════
-(async function initLastSeenHeartbeat() {
-    let dbRef: SupabaseClient<Database> | null = null;
-    try { dbRef = (await import('../supabaseClient')).db; } catch(e){ return; }
+//
+//  ── FIX (تقرير تشخيص الديسكتوب، Phase 4، بند 3 — 15 أغسطس 2026):
+//  كان هنا import ديناميكي لـ supabaseClient بهدف إخراجه في chunk
+//  منفصل، لكن عشرات الملفات التانية في المشروع بتعمله import استاتيكي
+//  عادي أصلًا — فالنتيجة كانت Vite بيدمجه في الـ bundle الرئيسي زي ما
+//  هو (الـ dynamic import هنا كان بلا أي فايدة فعلية) + تحذير build عن
+//  "استيراد مزدوج" لنفس الملف. اتحول لـ import عادي زي باقي المشروع؛
+//  التصرف الوظيفي هنا لم يتغيّر لأن dbRef كان دايمًا بيتحل فورًا عمليًا
+//  (المستخدم لازم يكون مسجّل دخول عشان الصفحة تتحمّل أصلًا). ──
+(function initLastSeenHeartbeat() {
+    const dbRef = db;
 
     const detectBrowser = () => {
         const ua = navigator.userAgent;
