@@ -53,13 +53,19 @@ function UniversalSearchModal({ cases, clients, onClose, onOpenCase, onOpenClien
     // البحث الحالية — نداء واحد (case_id = id بتاع كل قضية).
     const partiesIndex = useSessionsPartiesMap(matchedCases.map((c: SearchCaseResult) => ({ id: c.id, case_id: c.id })));
 
-    return React.createElement('div', { 'data-testid': 'universal-search-modal', className: 'fixed inset-0 z-[60] bg-black/90 backdrop-blur-md flex flex-col fade-in' },
+    // 🖥️ دفعة 2.4 (تجربة الديسكتوب): على موبايل يفضل ملء الشاشة بالكامل زي
+    // ما هو. على ديسكتوب (lg:) الخلفية بتبقى overlay معتم ومحتوى البحث
+    // بيتحط جوه بطاقة بعرض أقصى محدود ومتوسّطة بدل الامتداد لحواف الشاشة.
+    // PdfViewerModal (لو مفتوح فوق نتيجة مستند) فضل برّه البطاقة عمدًا —
+    // هو أصلًا overlay مستقل بطبقة z-70 أعلى وعنده نفس معالجة الديسكتوب.
+    return React.createElement('div', { 'data-testid': 'universal-search-modal', className: 'fixed inset-0 z-[60] bg-black/90 lg:bg-black/80 backdrop-blur-md flex flex-col lg:items-center lg:justify-center lg:p-6 fade-in' },
         // ⚠️ viewingDoc هنا شكله SearchDocResult (نتيجة بحث جزئية، مش صف case_documents
         // كامل) بينما PdfViewerModal بيتوقع doc: CaseDocumentRow. PdfViewerModal فعليًا
         // بيقرا بس original_name/file_name من الكائن ده (نفس الحقول الموجودة هنا)، فالكاست
         // ده بيوثّق نفس السلوك الحالي من غير أي تغيير قيم أو منطق.
         viewingDoc && React.createElement(PdfViewerModal, { doc: viewingDoc as unknown as CaseDocumentRow, onClose: () => setViewingDoc(null) }),
 
+        React.createElement('div', { className: 'flex flex-col flex-1 min-h-0 lg:flex-none lg:w-full lg:max-w-2xl lg:h-[85vh] lg:rounded-3xl lg:overflow-hidden lg:border lg:border-white/10 lg:shadow-2xl' },
         // ── شريط البحث ──
         React.createElement('div', { className: 'px-4 pt-safe pt-4 pb-3 border-b border-white/10 bg-premium-card/80 backdrop-blur-lg shrink-0' },
             React.createElement('div', { className: 'flex items-center gap-3' },
@@ -293,6 +299,7 @@ function UniversalSearchModal({ cases, clients, onClose, onOpenCase, onOpenClien
                 React.createElement('p', { className: 'text-white font-black text-sm' }, 'لا توجد نتائج'),
                 React.createElement('p', { className: 'text-slate-500 text-xs' }, 'لم نجد شيئاً يطابق "' + q + '"')
             )
+        )
         )
     );
 }
