@@ -53,32 +53,52 @@ for (const bp of BREAKPOINTS) {
     test(`لقطات الشاشات الأساسية — ${bp.name}`, async ({ page }) => {
       const outDir = path.join(SNAPSHOT_ROOT, bp.name);
 
+      // 🔒 FIX (فحص لوجز E2E — 15 أغسطس 2026): على breakpoint الديسكتوب
+      // (1440×900، ≥1024px)، AppHeader/CommandDock الموبايل بقوا `lg:hidden`
+      // فعليًا (H2)، فـ`nav-cases`/`nav-more-toggle`/... بقوا غير مرئيين
+      // ومش قابلين للنقر عند 1440×900 — ده كان بيسبب timeout هنا (السكريبت
+      // ده بيغطي الـ3 breakpoints بنفس السيليكتورز الموبايل بالظبط، من
+      // غير تفريق). الحل: نستخدم `desktop-nav-*` (DesktopSidebar، مسطّحة
+      // بدون قائمة "المزيد" — راجع navConfig.ts) لما `bp.name === 'desktop'`،
+      // ونسيب سيليكتورز الموبايل زي ما هي لـmobile/tablet (لسه بتشتغل صح
+      // تحت 1024px). صفر تغيير على منطق الموبايل/التابلت.
+      const isDesktopBp = bp.name === 'desktop';
+      const navCases = isDesktopBp ? 'desktop-nav-cases' : 'nav-cases';
+      const navCalendar = isDesktopBp ? 'desktop-nav-calendar' : 'nav-calendar';
+      const navReminders = isDesktopBp ? 'desktop-nav-reminders' : 'nav-reminders';
+      const navClients = isDesktopBp ? 'desktop-nav-clients' : 'nav-more-clients';
+      const navDashboard = isDesktopBp ? 'desktop-nav-dashboard' : 'nav-dashboard';
+
       await login(page);
       await expect(page.getByTestId('app-shell')).toBeVisible();
       await page.screenshot({ path: path.join(outDir, '01-dashboard.png'), fullPage: true });
 
-      await page.getByTestId('nav-cases').click();
-      await expect(page.getByTestId('nav-cases')).toBeVisible();
+      await page.getByTestId(navCases).click();
+      await expect(page.getByTestId(navCases)).toBeVisible();
       await page.screenshot({ path: path.join(outDir, '02-cases.png'), fullPage: true });
 
-      await page.getByTestId('nav-calendar').click();
-      await expect(page.getByTestId('nav-calendar')).toBeVisible();
+      await page.getByTestId(navCalendar).click();
+      await expect(page.getByTestId(navCalendar)).toBeVisible();
       await page.screenshot({ path: path.join(outDir, '03-calendar.png'), fullPage: true });
 
-      await page.getByTestId('nav-reminders').click();
-      await expect(page.getByTestId('nav-reminders')).toBeVisible();
+      await page.getByTestId(navReminders).click();
+      await expect(page.getByTestId(navReminders)).toBeVisible();
       await page.screenshot({ path: path.join(outDir, '04-reminders.png'), fullPage: true });
 
-      // "المزيد" — الموكلين (شاشة D3: كروت + جدول hidden lg:block).
-      await page.getByTestId('nav-more-toggle').click();
-      await page.getByTestId('nav-more-clients').click();
+      // الموكلين (شاشة D3: كروت + جدول hidden lg:block). على الموبايل/
+      // التابلت لازم نفتح قائمة "المزيد" الأول — على الديسكتوب
+      // desktop-nav-clients ظاهر مباشرة جوه السايدبار (مفيش "مزيد" أصلًا).
+      if (!isDesktopBp) {
+        await page.getByTestId('nav-more-toggle').click();
+      }
+      await page.getByTestId(navClients).click();
       // زرار "إضافة موكل" ثابت الظهور في الشاشة دي بمجرد ما التاب
       // يتفتح (بعكس nav-more-clients اللي بيختفي مع إغلاق قائمة
       // "المزيد" وقت التنقل) — أفضل مؤشر إن الشاشة فعلاً حمّلت.
       await expect(page.getByTestId('new-client-button')).toBeVisible();
       await page.screenshot({ path: path.join(outDir, '05-clients.png'), fullPage: true });
 
-      await page.getByTestId('nav-dashboard').click();
+      await page.getByTestId(navDashboard).click();
     });
   });
 }
