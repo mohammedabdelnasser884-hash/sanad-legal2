@@ -69,20 +69,43 @@ for (const bp of BREAKPOINTS) {
       const navClients = isDesktopBp ? 'desktop-nav-clients' : 'nav-more-clients';
       const navDashboard = isDesktopBp ? 'desktop-nav-dashboard' : 'nav-dashboard';
 
+      // 🆕 (تشخيص "محتوى فاضي" في لقطات الديسكتوب — 16 أغسطس 2026):
+      // جيمي مالوش أي وسيلة يفتح ديسكتوب حقيقي (شهر كامل موبايل بس)،
+      // فمحتاجين الـCI نفسه يبلّغنا لو حصل JS error وقت الرندر بدل ما
+      // نعتمد على DevTools Console يدوي. أي error هنا هيتطبع في نفس
+      // ملف لوج e2e اللي جيمي بينزّله من GitHub Actions أصلًا — مفيش
+      // خطوة إضافية مطلوبة منه.
+      page.on('pageerror', (err) => {
+        console.log(`🔴 [pageerror] [${bp.name}] ${err.message}\n${err.stack ?? ''}`);
+      });
+      page.on('console', (msg) => {
+        if (msg.type() === 'error') {
+          console.log(`🔴 [console.error] [${bp.name}] ${msg.text()}`);
+        }
+      });
+
       await login(page);
       await expect(page.getByTestId('app-shell')).toBeVisible();
+      // 🆕 مهلة قصيرة بعد كل تنقل قبل اللقطة — بند احتياطي لاحتمال
+      // إن المحتوى (القضايا/الجلسات/التذكيرات) لسه بيتحمّل من Supabase
+      // وقت التقاط اللقطة القديمة الفورية. صفر تأثير على منطق الاختبار
+      // نفسه (نفس الـassertions القديمة زي ما هي، مجرد انتظار إضافي).
+      await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(outDir, '01-dashboard.png'), fullPage: true });
 
       await page.getByTestId(navCases).click();
       await expect(page.getByTestId(navCases)).toBeVisible();
+      await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(outDir, '02-cases.png'), fullPage: true });
 
       await page.getByTestId(navCalendar).click();
       await expect(page.getByTestId(navCalendar)).toBeVisible();
+      await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(outDir, '03-calendar.png'), fullPage: true });
 
       await page.getByTestId(navReminders).click();
       await expect(page.getByTestId(navReminders)).toBeVisible();
+      await page.waitForTimeout(400);
       await page.screenshot({ path: path.join(outDir, '04-reminders.png'), fullPage: true });
 
       // الموكلين (شاشة D3: كروت + جدول hidden lg:block). على الموبايل/
