@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { I } from '../../../constants';
 import { ROLE_CONFIG, PERMISSION_LABELS } from '../icons';
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { ProfileRow } from '../../../types';
 import type { EditUserForm } from './hooks/useAdminUsers';
 
@@ -25,14 +26,18 @@ function EditUserModal({ user, onSave, onClose, saving }: EditUserModalProps) {
     : form.role === 'viewer'
     ? { can_view_fees: false, can_view_reports: true }
     : {};
+  // 🆕 (دفعة 2.2 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
+  // المُطبَّق في NewCaseModal.tsx. هنا الخلفية/الحدود عبر inline style مش
+  // className، فبنستخدم modalPresentation.isDesktop للتحويل بدل panelShapeClassName.
+  const modalPresentation = useModalPresentation();
 
   return React.createElement('div',{
-    className:"fixed inset-0 z-50 flex items-end justify-center",
+    className:`fixed inset-0 z-50 flex ${modalPresentation.overlayAlignClassName} justify-center`,
     style:{background:'rgba(0,0,0,0.7)',backdropFilter:'blur(4px)'}
   },
     React.createElement('div',{
-      className:"w-full max-w-sm rounded-t-3xl p-5 space-y-4",
-      style:{background:'#0d1a2e',border:'1px solid rgba(212,175,55,0.15)',borderBottom:'none',maxHeight:'85vh',overflowY:'auto'}
+      className:`w-full max-w-sm ${modalPresentation.isDesktop ? 'rounded-3xl' : 'rounded-t-3xl'} p-5 space-y-4 ${modalPresentation.panelAnimationClassName}`,
+      style:{background:'#0d1a2e',border:'1px solid rgba(212,175,55,0.15)',borderBottom: modalPresentation.isDesktop ? '1px solid rgba(212,175,55,0.15)' : 'none',maxHeight:'85vh',overflowY:'auto'}
     },
       // هيدر
       React.createElement('div',{className:"flex items-center justify-between"},
