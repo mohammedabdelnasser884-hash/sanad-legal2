@@ -444,7 +444,14 @@ function App() {
         fetchCases, casesFilter, loadingCases: casesLoading,
     },
 
+        // ⚡ H2 (16 أغسطس 2026): AppHeader القديم بقى `lg:hidden` — كان
+        // ظاهر مؤقتًا فوق DesktopHeader (B3) لحد ما تتوفر تغطية اختبار
+        // موبايل بديلة (G3، مُسلَّمة فعليًا) تسمح بالإخفاء الآمن. زرار
+        // `header-search-open` (مستخدم في universal-search.spec.ts) لسه
+        // موجود بالكامل تحت 1024px — الاختبارات الحالية (chromium project)
+        // بقت تستخدم `desktop-header-search-open` بدل منه (راجع e2e/utils.ts).
         React.createElement('div', {
+            className: 'lg:hidden',
             style: showMenu ? { filter: 'blur(3px) brightness(0.4)', transition: 'filter 0.2s ease', pointerEvents: 'none' } : { transition: 'filter 0.2s ease' }
         }, Header),
 
@@ -502,7 +509,14 @@ function App() {
             // نفس تحسين المسافة العلوية اللي C1 قصدها بالظبط، من غير ما
             // يلمس `padding-bottom` خالص، فـ`pb-32` (غير الـprefixed،
             // بتفضل سارية على كل الأحجام) بترجع تحكم فعليًا.
-            className: `flex-1 overflow-y-auto no-scrollbar lg:transition-[padding] lg:duration-200 ${tab === 'admin' ? 'lg:ps-[var(--app-sidebar-w)]' : 'px-4 py-4 pb-32 lg:ps-[calc(var(--app-sidebar-w)+2rem)] lg:pe-8 lg:pt-6 xl:ps-[calc(var(--app-sidebar-w)+3rem)] xl:pe-12'}`,
+            // ⚡ H2 (16 أغسطس 2026): زودت `lg:pb-6` — بعد إخفاء CommandDock
+            // فعليًا على الديسكتوب (`lg:hidden` فوق)، مسافة الأمان `pb-32`
+            // (128px، لسه لازمة على الموبايل) بقت بلا داعي على `lg:` وبتسيب
+            // فراغ فاضي كبير تحت المحتوى. `lg:pb-6` (نفس قيمة `lg:pt-6`
+            // تناظريًا) بتكسب الـcascade بنفس آلية fix الـ`padding-bottom`
+            // الموثقة فوق (قاعدة `lg:` جوه `@media` بتيجي بعد `pb-32` في
+            // stylesheet Tailwind المولّد).
+            className: `flex-1 overflow-y-auto no-scrollbar lg:transition-[padding] lg:duration-200 ${tab === 'admin' ? 'lg:ps-[var(--app-sidebar-w)]' : 'px-4 py-4 pb-32 lg:ps-[calc(var(--app-sidebar-w)+2rem)] lg:pe-8 lg:pt-6 lg:pb-6 xl:ps-[calc(var(--app-sidebar-w)+3rem)] xl:pe-12'}`,
             style: showMenu ? { filter: 'blur(3px) brightness(0.4)', transition: 'filter 0.2s ease', pointerEvents: 'none' } : { transition: 'filter 0.2s ease' }
         },
             // ⚡ C1: `max-width` + توسيط اتحط على **wrapper جوّه `<main>`**
@@ -577,10 +591,20 @@ function App() {
         ),
 
         // ── COMMAND DOCK ──────────────────────────────────────────────────────
-        React.createElement(CommandDock, {
-            tab, setTab, showMore, setShowMore, isAdmin, navRef,
-            setShowAI: handleAIButtonClick, setSessionsInitialTab, setRemindersInitialFilter,
-        }),
+        // ⚡ H2 (16 أغسطس 2026): اتلف بـ`div.lg:hidden` بدل تعديل
+        // CommandDock.tsx نفسه (نفس مبدأ "صفر تعديل" المتبع من B1) —
+        // بما إن جذر CommandDock نفسه `fixed`، والأب لو `display:none`
+        // (نتيجة `lg:hidden`) بيمنع رندر أي عنصر جواه بغض النظر عن
+        // `position`، فده كافٍ لإخفائه بالكامل على الديسكتوب من غير
+        // أي لمس لملفه. التنقل على الديسكتوب بقى عبر DesktopSidebar
+        // (B1) بس، والاختبارات بقت تستخدم `desktop-nav-*` بدل `nav-*`
+        // (راجع e2e/utils.ts).
+        React.createElement('div', { className: 'lg:hidden' },
+            React.createElement(CommandDock, {
+                tab, setTab, showMore, setShowMore, isAdmin, navRef,
+                setShowAI: handleAIButtonClick, setSessionsInitialTab, setRemindersInitialFilter,
+            })
+        ),
 
         // ── Modals ────────────────────────────────────────────
         React.createElement(AppModals, {
