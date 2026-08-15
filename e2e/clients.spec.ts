@@ -22,8 +22,9 @@ test.describe('الموكلين — إضافة', () => {
     const { nationalId } = await createClient(page, firstName);
 
     // موكل تاني باسم مختلف تمامًا لكن بنفس الرقم القومي بالظبط
-    await page.getByTestId('nav-more-toggle').click();
-    await page.getByTestId('nav-more-clients').click();
+    // ⚡ H (16 أغسطس 2026): `nav-more-toggle`+`nav-more-clients` (موبايل)
+    // بقوا `lg:hidden` على الديسكتوب — بديلهم نقرة واحدة `desktop-nav-clients`.
+    await page.getByTestId('desktop-nav-clients').click();
     await page.getByTestId('new-client-button').click();
     const secondName = `اختبار E2E - موكل مكرر - ${Date.now()}`;
     await page.getByTestId('new-client-name').fill(secondName);
@@ -45,13 +46,14 @@ test.describe('الموكلين — إضافة', () => {
     // المودال لسه مفتوح (مفيش حفظ حصل)
     await expect(page.getByTestId('save-client-button')).toBeVisible();
     // وكارت الموكل التاني (المكرر) ما ظهرش خالص في القايمة
-    await expect(page.getByTestId('client-card').filter({ hasText: secondName })).toHaveCount(0);
+    await expect(page.getByTestId('clients-table-row').filter({ hasText: secondName })).toHaveCount(0);
   });
 
   test('ضغط زرار الحفظ مرتين بسرعة (دبل-كليك) → موكل واحد بس يتسجل', async ({ page }) => {
     await login(page);
-    await page.getByTestId('nav-more-toggle').click();
-    await page.getByTestId('nav-more-clients').click();
+    // ⚡ H (16 أغسطس 2026): `nav-more-toggle`+`nav-more-clients` (موبايل)
+    // بقوا `lg:hidden` على الديسكتوب — بديلهم نقرة واحدة `desktop-nav-clients`.
+    await page.getByTestId('desktop-nav-clients').click();
     await page.getByTestId('new-client-button').click();
 
     const name = `اختبار E2E - دبل كليك إضافة - ${Date.now()}`;
@@ -80,7 +82,7 @@ test.describe('الموكلين — إضافة', () => {
       btn?.click();
     });
 
-    const newCard = page.getByTestId('client-card').filter({ hasText: name });
+    const newCard = page.getByTestId('clients-table-row').filter({ hasText: name });
     await expect(newCard.first()).toBeVisible({ timeout: 15_000 });
     // منستنى شوية كمان عشان نتأكد إن مفيش نسخة تانية اتسجلت متأخر (لو
     // الضغطة التانية نفذت فعليًا وعملت INSERT ثاني)، بعدين نتأكد كارت واحد بس.
@@ -95,8 +97,8 @@ test.describe('الموكلين — تعديل', () => {
     const originalName = `اختبار E2E - موكل قبل التعديل - ${Date.now()}`;
     await createClient(page, originalName);
 
-    const card = page.getByTestId('client-card').filter({ hasText: originalName });
-    await card.first().click();
+    const row = page.getByTestId('clients-table-row').filter({ hasText: originalName });
+    await row.first().getByTestId('clients-table-row-open').click();
     await page.getByTestId('client-detail-view').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('client-edit-trigger').click();
 
@@ -122,8 +124,8 @@ test.describe('الموكلين — تعديل', () => {
     const nameB = `اختبار E2E - موكل ب - ${Date.now()}`;
     await createClient(page, nameB);
 
-    const cardB = page.getByTestId('client-card').filter({ hasText: nameB });
-    await cardB.first().click();
+    const rowB = page.getByTestId('clients-table-row').filter({ hasText: nameB });
+    await rowB.first().getByTestId('clients-table-row-open').click();
     await page.getByTestId('client-detail-view').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('client-edit-trigger').click();
 
@@ -146,8 +148,8 @@ test.describe('الموكلين — تعديل', () => {
     const name = `اختبار E2E - دبل كليك تعديل - ${Date.now()}`;
     await createClient(page, name);
 
-    const card = page.getByTestId('client-card').filter({ hasText: name });
-    await card.first().click();
+    const row = page.getByTestId('clients-table-row').filter({ hasText: name });
+    await row.first().getByTestId('clients-table-row-open').click();
     await page.getByTestId('client-detail-view').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('client-edit-trigger').click();
 
