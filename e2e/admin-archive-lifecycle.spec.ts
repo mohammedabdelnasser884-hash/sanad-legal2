@@ -67,8 +67,8 @@ test('استرجاع قضية من شاشة الأرشيف: تختفي من ال
   // (DesktopSidebar) و`cases-table-row` (جدول الديسكتوب D1/D2)، نفس
   // النمط المستخدم في e2e/utils.ts.
   await page.getByTestId('desktop-nav-cases').click();
-  const row = page.getByTestId('cases-table-row').filter({ hasText: title });
-  await expect(row).toHaveCount(1, { timeout: 10_000 });
+  const activeRow = page.getByTestId('cases-table-row').filter({ hasText: title });
+  await expect(activeRow).toHaveCount(1, { timeout: 10_000 });
 });
 
 test('حذف قضية نهائيًا من شاشة الأرشيف: تختفي من الأرشيف وتتمسح فعليًا من قاعدة البيانات', async ({ page }) => {
