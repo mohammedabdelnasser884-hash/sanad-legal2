@@ -403,7 +403,11 @@ function ArchiveTab({cases, clients, nav}: ArchiveTabProps){
                         ? React.createElement('button',{onClick:()=>{handleSearchChange('');handleCatChange('الكل');},className:"text-purple-400 text-xs font-bold"},"مسح الفلاتر")
                         : React.createElement('button',{onClick:()=>fileInputRef.current&&fileInputRef.current.click(),className:"mx-auto mt-2 flex items-center gap-2 px-4 py-2.5 bg-purple-500/10 border border-purple-500/20 text-purple-300 rounded-xl text-xs font-black active:scale-95"},React.createElement(I.Plus),"ابدأ الأرشفة")
                   )
-                : React.createElement('div',{className:"space-y-3"},
+                : React.createElement('div',{className:"space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 xl:grid-cols-3"},
+                    // 🆕 Phase 3 (تقرير تشخيص تجربة سطح المكتب — 15 أغسطس):
+                    // نفس نمط FeesTab/RemindersTab/TeamTab — كارت المستند
+                    // بلا width ثابت، فبيتوزع في شبكة على الديسكتوب بدل عمود
+                    // واحد ممتد. الموبايل صفر تغيير.
                     docs.map((doc: CaseDocumentRow) => {
                         const {emoji, bg, canPreview} = getDocMeta(doc);
                         const linkedCase   = cases.find((c: MappedCase) => c.id === doc.case_id);
@@ -430,7 +434,7 @@ function ArchiveTab({cases, clients, nav}: ArchiveTabProps){
                     docsMore && React.createElement('button',{
                         onClick:()=>fetchDocs(docsPage+1,searchQ,filterCat,sortBy,true),
                         disabled:loading,
-                        className:"w-full py-3 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-white/10 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
+                        className:"w-full lg:col-span-full py-3 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-white/10 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
                     }, loading?React.createElement(I.Spin):"⬇️ تحميل المزيد")
                 )
     );
