@@ -56,7 +56,7 @@ test.describe('مساعد الذكاء الاصطناعي — توليد مست�
       });
     });
 
-    await page.getByTestId('nav-ai-center').click();
+    await page.getByTestId('desktop-nav-ai-center').click();
     await page.getByTestId('ai-assistant-panel').waitFor({ state: 'visible', timeout: 10_000 });
 
     // فتح وضع "توليد مستند" من لوحة المهام
@@ -96,7 +96,7 @@ test.describe('مساعد الذكاء الاصطناعي — توليد مست�
       });
     });
 
-    await page.getByTestId('nav-ai-center').click();
+    await page.getByTestId('desktop-nav-ai-center').click();
     await page.getByTestId('ai-assistant-panel').waitFor({ state: 'visible', timeout: 10_000 });
     await page.getByTestId('ai-task-card-generate').click();
 
@@ -120,7 +120,7 @@ test.describe('مساعد الذكاء الاصطناعي — توليد مست�
   test('حساب مش سوبر أدمن يشوف مودال "قريبًا" بدل القسم الحقيقي', async ({ page }) => {
     await login(page);
 
-    await page.getByTestId('nav-ai-center').click();
+    await page.getByTestId('desktop-nav-ai-center').click();
 
     await page.getByTestId('ai-coming-soon-modal').waitFor({ state: 'visible', timeout: 10_000 });
     await expect(page.getByTestId('ai-assistant-panel')).toHaveCount(0);
