@@ -16,7 +16,7 @@ test('إنشاء قضية بأكتر من مدعي واحد — فاليديشن
   await login(page);
   const caseTitle = `اختبار E2E - قضية تعدد أطراف - ${Date.now()}`;
 
-  await page.getByTestId('nav-cases').click();
+  await page.getByTestId('desktop-nav-cases').click();
   await page.getByTestId('new-case-button').click();
   await page.getByTestId('new-case-title').fill(caseTitle);
   // ⚡ NEW (طلب مباشر — 12 أغسطس 2026): بيانات القيد الرسمي بقت إجبارية.
@@ -53,7 +53,7 @@ test('إنشاء قضية بأكتر من مدعي واحد — فاليديشن
   // مش مدعي بالضرورة، فاللقب اتشال من الرسالة.
   await expectToast(page, '⚠️ الطرف الأول فيه أكثر من شخص — لازم تكتب "المسمى القانوني" الجامع لهذا الطرف');
   await expect(page.getByTestId('new-case-save')).toBeVisible();
-  await expect(page.getByTestId('case-card').filter({ hasText: caseTitle })).toHaveCount(0);
+  await expect(page.getByTestId('cases-table-row').filter({ hasText: caseTitle })).toHaveCount(0);
 
   // 2) نكتب المسمى القانوني ونحفظ تاني → ينجح
   await page.getByTestId('party-side-card-plaintiff').click();
@@ -61,7 +61,7 @@ test('إنشاء قضية بأكتر من مدعي واحد — فاليديشن
   await page.getByTestId('new-case-plaintiff-subform-save').click();
   await page.getByTestId('new-case-save').click();
 
-  const newCaseCard = page.getByTestId('case-card').filter({ hasText: caseTitle });
+  const newCaseCard = page.getByTestId('cases-table-row').filter({ hasText: caseTitle });
   await expect(newCaseCard.first()).toBeVisible({ timeout: 15_000 });
 });
 
@@ -69,7 +69,7 @@ test('ضغط زرار حفظ القضية الجديدة مرتين بسرعة (
   await login(page);
   const caseTitle = `اختبار E2E - دبل كليك قضية - ${Date.now()}`;
 
-  await page.getByTestId('nav-cases').click();
+  await page.getByTestId('desktop-nav-cases').click();
   await page.getByTestId('new-case-button').click();
   await page.getByTestId('new-case-title').fill(caseTitle);
   // ⚡ NEW (طلب مباشر — 12 أغسطس 2026): بيانات القيد الرسمي بقت إجبارية.
@@ -100,7 +100,7 @@ test('ضغط زرار حفظ القضية الجديدة مرتين بسرعة (
     btn?.click();
   });
 
-  const newCaseCard = page.getByTestId('case-card').filter({ hasText: caseTitle });
+  const newCaseCard = page.getByTestId('cases-table-row').filter({ hasText: caseTitle });
   await expect(newCaseCard.first()).toBeVisible({ timeout: 15_000 });
   await expect(newCaseCard).toHaveCount(1);
 });
@@ -284,8 +284,8 @@ test('تعارض تعديل جلسة عند التحديث المتزامن من
   const page2 = await context2.newPage();
   try {
     await login(page2);
-    await page2.getByTestId('nav-cases').click();
-    await page2.getByTestId('case-card').filter({ hasText: caseTitle }).first().click();
+    await page2.getByTestId('desktop-nav-cases').click();
+    await page2.getByTestId('cases-table-row').filter({ hasText: caseTitle }).first().getByTestId('cases-table-row-open').click();
     await page2.getByTestId('case-detail-view').waitFor({ state: 'visible', timeout: 10_000 });
 
     const card1 = page.getByTestId('session-card').filter({ hasText: sessionDesc });
