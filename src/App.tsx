@@ -468,7 +468,21 @@ function App() {
         // pb-32 (لسه محتاجينها لمسافة CommandDock اللي لسه ظاهر على
         // الديسكتوب مؤقتًا زي ما اتوثق في B1).
         React.createElement('main', {
-            className: `flex-1 overflow-y-auto no-scrollbar lg:ps-[var(--app-sidebar-w)] lg:transition-[padding] lg:duration-200 ${tab === 'admin' ? '' : 'px-4 py-4 pb-32 lg:px-8 lg:py-6 xl:px-12'}`,
+            // 🔒 FIX (فحص لوجز E2E — 15 أغسطس 2026): كان `lg:px-8`/`xl:px-12`
+            // بيحطوا padding-right فيزيائي صريح على نفس الحافة اللي
+            // `lg:ps-[var(--app-sidebar-w)]` بيحجزها منطقيًا (padding-
+            // inline-start ⇒ padding-right في RTL)، والاتنين بيتنافسوا على
+            // نفس الخاصية الفيزيائية النهائية — فكان أحيانًا padding-right
+            // الفيزيائي بيكسب الـcascade ويصفّر مساحة السايدبار المحجوزة،
+            // فمحتوى الديسكتوب (زي كارت "اليوم" في عمود الـgrid الضيق يمين)
+            // كان بيتمد تحت DesktopSidebar فعليًا ويصير غير قابل للنقر
+            // (سبب فشل dashboard-tab.spec.ts في CI). الحل: مفيش أي padding
+            // فيزيائي على نفس الحافة خالص — `lg:pe-*`/`xl:pe-*` (نهاية
+            // منطقية ⇒ يسار فيزيائي في RTL، حافة تانية تمامًا) للمسافة
+            // البصرية، و`ps-[calc(...)]` واحد بس بيجمع مساحة السايدبار +
+            // المسافة البصرية المطلوبة لنفس الحافة، فمفيش تعارض ممكن يحصل
+            // بغض النظر عن ترتيب الـcascade.
+            className: `flex-1 overflow-y-auto no-scrollbar lg:transition-[padding] lg:duration-200 ${tab === 'admin' ? 'lg:ps-[var(--app-sidebar-w)]' : 'px-4 py-4 pb-32 lg:ps-[calc(var(--app-sidebar-w)+2rem)] lg:pe-8 lg:py-6 xl:ps-[calc(var(--app-sidebar-w)+3rem)] xl:pe-12'}`,
             style: showMenu ? { filter: 'blur(3px) brightness(0.4)', transition: 'filter 0.2s ease', pointerEvents: 'none' } : { transition: 'filter 0.2s ease' }
         },
             // ⚡ C1: `max-width` + توسيط اتحط على **wrapper جوّه `<main>`**
