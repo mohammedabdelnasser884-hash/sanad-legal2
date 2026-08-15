@@ -3,6 +3,7 @@ import { I } from '../../../constants';
 import type { ClientRow } from '../../../types';
 import type { PortalAccessRow, PortalSaveForm } from './hooks/useAdminPortal';
 import { normalizeArabicDigits } from '../../../shared/lib/sanitize';
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 
 interface AddPortalUserModalProps {
   clients: ClientRow[];
@@ -29,14 +30,17 @@ function AddPortalUserModal({ clients, portalAccess, onSave, onClose, saving }: 
   );
 
   const hasAccess = (clientId: string) => portalAccess.some((p) => p.client_id === clientId && p.is_active !== false);
+  // 🆕 (دفعة 2.2 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
+  // المُطبَّق في NewCaseModal.tsx.
+  const modalPresentation = useModalPresentation();
 
   return React.createElement('div',{
-    className:"fixed inset-0 z-50 flex items-end justify-center",
+    className:`fixed inset-0 z-50 flex ${modalPresentation.overlayAlignClassName} justify-center`,
     style:{background:'rgba(0,0,0,0.7)',backdropFilter:'blur(4px)'}
   },
     React.createElement('div',{
-      className:"w-full max-w-sm rounded-t-3xl p-5 space-y-4",
-      style:{background:'#0d1a2e',border:'1px solid rgba(212,175,55,0.15)',borderBottom:'none',maxHeight:'88vh',overflowY:'auto'}
+      className:`w-full max-w-sm ${modalPresentation.isDesktop ? 'rounded-3xl' : 'rounded-t-3xl'} p-5 space-y-4 ${modalPresentation.panelAnimationClassName}`,
+      style:{background:'#0d1a2e',border:'1px solid rgba(212,175,55,0.15)',borderBottom: modalPresentation.isDesktop ? '1px solid rgba(212,175,55,0.15)' : 'none',maxHeight:'88vh',overflowY:'auto'}
     },
       // هيدر
       React.createElement('div',{className:"flex items-center justify-between"},
