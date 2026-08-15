@@ -1,0 +1,158 @@
+import { describe, it, expect } from 'vitest';
+import { escapeHtml, ilikeOrClause, escapeTelegramHtml, normalizeArabicDigits, onlyDigits } from './sanitize';
+
+describe('escapeHtml', () => {
+    it('نص عادي → يرجع زي ما هو', () => {
+        expect(escapeHtml('hello world')).toBe('hello world');
+    });
+
+    it('<script>alert(1)</script> → يتحول لكيانات HTML آمنة بالكامل', () => {
+        expect(escapeHtml('<script>alert(1)</script>')).toBe(
+            '&lt;script&gt;alert(1)&lt;/script&gt;'
+        );
+    });
+
+    it('علامات اقتباس مزدوجة ومفردة → تتحول صح', () => {
+        expect(escapeHtml(`He said "hi" and 'bye'`)).toBe(
+            'He said &quot;hi&quot; and &#39;bye&#39;'
+        );
+    });
+
+    it('& لوحدها → &amp; (لازم قبل أي تهريب تاني، وإلا تتضاعف)', () => {
+        expect(escapeHtml('Tom & Jerry')).toBe('Tom &amp; Jerry');
+    });
+
+    it('null → نص فاضي من غير ما يرمي خطأ', () => {
+        expect(escapeHtml(null)).toBe('');
+    });
+
+    it('undefined → نص فاضي من غير ما يرمي خطأ', () => {
+        expect(escapeHtml(undefined)).toBe('');
+    });
+
+    it('رقم كمدخل → يتحول لنص من غير ما يرمي خطأ', () => {
+        expect(escapeHtml(123)).toBe('123');
+    });
+
+    it('نص عربي مختلط بعلامات خاصة → يتهرّب صح مع الحفاظ على النص العربي', () => {
+        expect(escapeHtml('اسم الموكل: "أحمد" <محامي>')).toBe(
+            'اسم الموكل: &quot;أحمد&quot; &lt;محامي&gt;'
+        );
+    });
+});
+
+describe('escapeTelegramHtml', () => {
+    it('نص عادي → يرجع زي ما هو', () => {
+        expect(escapeTelegramHtml('hello')).toBe('hello');
+    });
+
+    it('يهرّب & < > بس، ومش بيهرّب علامات الاقتباس (تيليجرام مش محتاجها)', () => {
+        expect(escapeTelegramHtml('<a href="x">link</a> & more')).toBe(
+            '&lt;a href="x"&gt;link&lt;/a&gt; &amp; more'
+        );
+    });
+
+    it('null → نص فاضي من غير ما يرمي خطأ', () => {
+        expect(escapeTelegramHtml(null)).toBe('');
+    });
+});
+
+describe('ilikeOrClause', () => {
+    it('حالة بسيطة → يلف النتيجة بـ % وعلامات اقتباس', () => {
+        expect(ilikeOrClause('client_name', 'ahmed')).toBe(
+            'client_name.ilike."%ahmed%"'
+        );
+    });
+
+    it('فاصلة وأقواس داخل نص البحث → تتحفظ حرفيًا جوه علامات الاقتباس من غير ما تكسر شرط الـ OR', () => {
+        expect(ilikeOrClause('notes', 'a,b(c)')).toBe(
+            'notes.ilike."%a,b(c)%"'
+        );
+    });
+
+    it('علامة اقتباس مزدوجة جوه نص البحث → تتهرّب بـ backslash', () => {
+        expect(ilikeOrClause('notes', 'say "hi"')).toBe(
+            'notes.ilike."%say \\"hi\\"%"'
+        );
+    });
+
+    it('backslash جوه نص البحث → يتضاعف (تهريب صحيح)', () => {
+        expect(ilikeOrClause('notes', 'a\\b')).toBe(
+            'notes.ilike."%a\\\\b%"'
+        );
+    });
+
+    it('% و _ (خاصين في SQL LIKE) داخل نص البحث → بيتحطوا حرفيًا من غير كسر الاستعلام', () => {
+        expect(ilikeOrClause('notes', '50%_off')).toBe(
+            'notes.ilike."%50%_off%"'
+        );
+    });
+
+    it('نص بحث فاضي → برضه بيرجع شرط صالح من غير خطأ', () => {
+        expect(ilikeOrClause('notes', '')).toBe('notes.ilike."%%"');
+    });
+});
+
+describe('normalizeArabicDigits', () => {
+    it('أرقام عربية شرقية → إنجليزية عادية', () => {
+        expect(normalizeArabicDigits('٦٣٥٢')).toBe('6352');
+    });
+
+    it('أرقام فارسية شرقية → إنجليزية عادية', () => {
+        expect(normalizeArabicDigits('۶۳۵۲')).toBe('6352');
+    });
+
+    it('أرقام إنجليزية → بترجع زي ما هي بدون تغيير', () => {
+        expect(normalizeArabicDigits('6352')).toBe('6352');
+    });
+
+    it('نص عربي فيه أرقام مختلطة → الأرقام بس بتتحول والحروف تفضل زي ما هي', () => {
+        expect(normalizeArabicDigits('القضية رقم ٦٣٥٢ لسنة ٢٠٢٦')).toBe('القضية رقم 6352 لسنة 2026');
+    });
+
+    it('رقم موبايل عربي شرقي كامل → إنجليزي كامل', () => {
+        expect(normalizeArabicDigits('٠١٢٤٥٨٤٨٤٥٧')).toBe('01245848457');
+    });
+
+    it('نص فاضي → يرجع فاضي', () => {
+        expect(normalizeArabicDigits('')).toBe('');
+    });
+});
+
+describe('ilikeOrClause + normalizeArabicDigits (تكامل)', () => {
+    it('رقم قضية بأرقام عربية شرقية → شرط ilike بأرقام إنجليزية (البحث بيتطابق مع القيمة المخزّنة فعليًا)', () => {
+        expect(ilikeOrClause('case_number_official', '٦٣٥٢')).toBe(
+            'case_number_official.ilike."%6352%"'
+        );
+    });
+});
+
+// 🔢 FIX (توحيد onlyDigits + تطبيع الأرقام العربية عند الحفظ — 12 أغسطس 2026):
+// قبل الفيكس، \D في جافاسكريبت كان بيشيل الأرقام العربية الشرقية (مش
+// بيحولها) لأنها مش بتتطابق مع [0-9] — يعني موبايل مكتوب بالعربي كان
+// بيتمسح بالكامل بدل ما يتحفظ محوّل.
+describe('onlyDigits', () => {
+    it('رقم موبايل عربي شرقي → بيتحول لإنجليزي (مش بيتمسح)', () => {
+        expect(onlyDigits('٠١٠١٢٣٤٥٦٧٨')).toBe('01012345678');
+    });
+
+    it('رقم قومي عربي مع مسافات → أرقام إنجليزية بس، والـmax بيقص الزيادة', () => {
+        expect(onlyDigits('٢٩ ٠١ ٠١ ٠١٢٣٤٥٦٧٨٩', 14)).toBe('29010101234567');
+    });
+
+    it('رقم إنجليزي عادي → يفضل زي ما هو', () => {
+        expect(onlyDigits('01012345678')).toBe('01012345678');
+    });
+
+    it('خليط عربي/إنجليزي مع حروف → الحروف بتتشال والأرقام كلها بتتحول وتتلم', () => {
+        expect(onlyDigits('01٠a1٢b345٦78')).toBe('01012345678');
+    });
+
+    it('من غير max → مفيش قص للطول', () => {
+        expect(onlyDigits('١٢٣٤٥٦٧٨٩٠١٢٣٤٥٦٧٨٩٠')).toBe('12345678901234567890');
+    });
+
+    it('نص فاضي → يرجع فاضي', () => {
+        expect(onlyDigits('')).toBe('');
+    });
+});
