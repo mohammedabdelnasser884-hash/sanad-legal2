@@ -17,16 +17,14 @@ import { login } from './utils';
 
 test('حساب مكتب عادي (مش سوبر أدمن) → قسم "المكتبة القانونية" مش ظاهر في لوحة الإدارة', async ({ page }) => {
   await login(page);
-  await page.getByTestId('nav-more-toggle').click();
-  await page.getByTestId('nav-more-admin').click();
+  await page.getByTestId('desktop-nav-admin').click();
 
   await expect(page.getByTestId('admin-section-legal_library')).toHaveCount(0);
 });
 
 test('حساب مكتب عادي (مش سوبر أدمن) → "بوابة إدارة المكاتب" مش ظاهرة في لوحة الإدارة', async ({ page }) => {
   await login(page);
-  await page.getByTestId('nav-more-toggle').click();
-  await page.getByTestId('nav-more-admin').click();
+  await page.getByTestId('desktop-nav-admin').click();
 
   await expect(page.getByTestId('admin-offices-portal-link')).toHaveCount(0);
 });
