@@ -124,6 +124,7 @@ function buildTableRowData(c: MappedCase, clients: ClientRow[]): CaseTableRowDat
         id: c.id,
         number: fmtCaseNum(c.number),
         clientName: resolveTableClientName(c, clients),
+        title: c.title || '',
         court: c.court && c.court !== '—' ? c.court : '—',
         status: c.status || '—',
         nextSessionLabel: formatNextSessionLabel(c.date),
@@ -376,30 +377,15 @@ function CasesTab({ cases, casesFilter, setCasesFilter, casesPage, setCasesPage,
                     )
                     : React.createElement(React.Fragment, null,
                         // ⚠️ قرار مهم اتصحّح وقت التنفيذ (14 أغسطس 2026):
-                        // نص الخطة الأصلي لـD2 (قسم 9) بيقول الحاوية تفرّق
-                        // `<lg` كروت 100%، `>=lg` جدول — يعني `lg:hidden` على
-                        // الكروت. جرّبت ده فعليًا ولقيت تعارض مباشر مع بند
-                        // Mobile Safety Strategy (بند 12.5) ونفس القرار
-                        // الموثّق في B1/B3: الـ31 اختبار E2E الحالية بتشتغل
-                        // على `devices['Desktop Chrome']` (فيوبورت 1280×720 —
-                        // فوق حد 1024px بالظبط، يعني `lg:` فعّالة وقت التستات)
-                        // وبيدوّروا على `data-testid="case-card"` مباشرة
-                        // (click/assert) في 6 ملفات spec على الأقل
-                        // (`utils.ts`, `cases.spec.ts`, `checklist-section.spec.ts`,
-                        // `case-parties-and-sessions.spec.ts`, `notes.spec.ts`,
-                        // `archive.spec.ts`, `admin-archive-lifecycle.spec.ts`) —
-                        // لو الكروت اختفت من الـDOM على فيوبورت Desktop Chrome
-                        // (وده بالظبط اللي `lg:hidden` هيعمله)، كل التستات دي
-                        // هتفشل فورًا. فبدل تطبيق نص الخطة بالحرف، طبّقت نفس
-                        // مبدأ التأجيل المستخدم مع CommandDock/AppHeader:
-                        // الكروت **تفضل ظاهرة دايمًا** (صفر `lg:hidden`)،
-                        // والجدول بيتضاف *جنب*ها على الديسكتوب (زي D1) لحد ما
-                        // يبقى فيه تغطية Playwright بفيوبورت موبايل (G3) تسمح
-                        // بإخفاء الكروت فعليًا على الديسكتوب من غير كسر أي
-                        // تست حالي. يعني حاليًا (بعد D2) الكروت + الجدول
-                        // ظاهرين مع بعض على الديسكتوب — مش الشكل النهائي
-                        // المقصود، بس الأكثر أمانًا. ──
-                        React.createElement('div', { className: "space-y-2" },
+                        // ⚡ H3 (16 أغسطس 2026): تطبيق نص الخطة الأصلي أخيرًا —
+                        // `lg:hidden` على حاوية الكروت. كان مؤجل من D2 لحد ما
+                        // تتوفر تغطية اختبار موبايل بديلة (G3، مُسلَّمة) +
+                        // الـ31 اختبار القديمة تتحدث لتستخدم `cases-desktop-table`
+                        // بدل `case-card` (e2e/utils.ts + الملفات المباشرة —
+                        // راجع تقرير تسليم H). دلوقتي الكروت بتظهر بس تحت
+                        // 1024px (موبايل/تابلت)، والجدول (D1-D3) بس فوقها —
+                        // صفر تداخل بصري.
+                        React.createElement('div', { className: "space-y-2 lg:hidden" },
                             cases.map((c: MappedCase) => renderCaseCard(c)),
                             !isSearching && cases.length < casesTotal && React.createElement('button', {
                                 onClick: () => { const p = casesPage + 1; fetchCases(p, casesFilter); },
