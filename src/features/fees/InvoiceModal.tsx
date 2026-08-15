@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { SanadMark } from '../../constants';
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { InvoiceModalState } from './hooks/useFeesActions';
 
 interface InvoiceModalProps {
@@ -15,13 +16,17 @@ interface InvoiceModalProps {
 function InvoiceModal({
   invoiceModal, setInvoiceModal, setDetailsFor, officeBrand, currency, printInvoice,
 }: InvoiceModalProps) {
+  // 🆕 (دفعة 2.3 — تقرير تشخيص تجربة سطح المكتب): مركزي أصلًا زي DeleteConfirmModal —
+  // بنستخدم الـ hook بس للأنيميشن.
+  const modalPresentation = useModalPresentation();
+
   return invoiceModal && createPortal(React.createElement('div',{
             className:"fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm px-3",
             'data-testid':'invoice-modal',
             onClick:()=>{ const fid=invoiceModal?.fee?.id||null; setInvoiceModal(null); setDetailsFor(fid); }
         },
             React.createElement('div',{
-                className:"w-full max-w-sm bg-premium-card border border-premium-gold/30 rounded-2xl overflow-y-auto max-h-[90vh] slide-up",
+                className:`w-full max-w-sm bg-premium-card border border-premium-gold/30 rounded-2xl overflow-y-auto max-h-[90vh] ${modalPresentation.panelAnimationClassName}`,
                 onClick:(e: React.MouseEvent<HTMLDivElement>) =>e.stopPropagation()
             },
                 // ─ رأس المودال ─
