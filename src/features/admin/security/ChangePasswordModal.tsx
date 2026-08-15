@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { I } from '../../../constants';
 import { IconKey, IconWarning } from '../icons';
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { ProfileRow } from '../../../types';
 import type { ChangePasswordPayload } from '../users/hooks/useAdminUsers';
 
@@ -22,14 +23,17 @@ function ChangePasswordModal({ user, onSave, onClose, saving }: ChangePasswordMo
   const strengthLabel = ['', 'ضعيفة', 'متوسطة', 'قوية'];
   const strengthColor = ['', 'text-red-400', 'text-[#C9A84C]', 'text-[#C9A84C]'];
   const strengthBg   = ['bg-slate-700', 'bg-red-500', 'bg-[#C9A84C]', 'bg-[#C9A84C]'];
+  // 🆕 (دفعة 2.2 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
+  // المُطبَّق في NewCaseModal.tsx.
+  const modalPresentation = useModalPresentation();
 
   return React.createElement('div',{
-    className:"fixed inset-0 z-50 flex items-end justify-center",
+    className:`fixed inset-0 z-50 flex ${modalPresentation.overlayAlignClassName} justify-center`,
     style:{background:'rgba(0,0,0,0.75)',backdropFilter:'blur(4px)'}
   },
     React.createElement('div',{
-      className:"w-full max-w-sm rounded-t-3xl p-5 space-y-4",
-      style:{background:'#0d1a2e',border:'1px solid rgba(212,175,55,0.15)',borderBottom:'none',maxHeight:'85vh',overflowY:'auto'}
+      className:`w-full max-w-sm ${modalPresentation.isDesktop ? 'rounded-3xl' : 'rounded-t-3xl'} p-5 space-y-4 ${modalPresentation.panelAnimationClassName}`,
+      style:{background:'#0d1a2e',border:'1px solid rgba(212,175,55,0.15)',borderBottom: modalPresentation.isDesktop ? '1px solid rgba(212,175,55,0.15)' : 'none',maxHeight:'85vh',overflowY:'auto'}
     },
       // هيدر
       React.createElement('div',{className:"flex items-center justify-between"},
