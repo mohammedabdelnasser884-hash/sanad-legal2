@@ -63,5 +63,6 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            e2e-visual-snapshots/
           if-no-files-found: warn
           retention-days: 7
