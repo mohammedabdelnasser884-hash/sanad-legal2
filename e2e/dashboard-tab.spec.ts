@@ -55,7 +55,7 @@ test('بطاقة اليوم: جلسة النهاردة تظهر على الدا�
   // — هنا لازم نرجع صراحةً لـnav-dashboard قبل ما نتأكد من ظهور الكارت.
   await page.getByTestId('case-detail-close').click();
   await page.getByTestId('case-detail-view').waitFor({ state: 'hidden', timeout: 10_000 });
-  await page.getByTestId('nav-dashboard').click();
+  await page.getByTestId('desktop-nav-dashboard').click();
 
   // بطاقة "اليوم" مفتوحة افتراضيًا — التأكد من ظهور الجلسة
   // 🔒 FIX (تحليل لوجز E2E — 30 يوليو 2026): رفعنا المهلة من 15 لـ30 ثانية.
