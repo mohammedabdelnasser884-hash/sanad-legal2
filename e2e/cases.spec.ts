@@ -15,7 +15,9 @@ test('إنشاء قضية جديدة والتأكد من ظهورها في ال�
   const caseTitle = `اختبار E2E - قضية ${Date.now()}`;
 
   // 1) الانتقال لتبويب القضايا
-  await page.getByTestId('nav-cases').click();
+  // ⚡ H (16 أغسطس 2026): `nav-cases` (CommandDock، موبايل) بقى
+  // `lg:hidden` على الديسكتوب — بديله `desktop-nav-cases` (DesktopSidebar).
+  await page.getByTestId('desktop-nav-cases').click();
 
   // 2) فتح مودال "تقييد قضية" وملء العنوان + أطراف الدعوى (بقوا إلزاميين)
   // — راجع خطة تعدد الأطراف (مرحلة 4): طرف مدعي واحد عليه ⭐ "موكلنا"
@@ -48,12 +50,15 @@ test('إنشاء قضية جديدة والتأكد من ظهورها في ال�
 
   // 3) بعد الحفظ الناجح، useCaseActions بيقفل المودال ويعمل fetchCases
   // تاني — يعني لازم نلاقي القضية الجديدة في القايمة (أول عنصر غالبًا).
-  const newCaseCard = page.getByTestId('case-card').filter({ hasText: caseTitle });
+  // ⚡ H (16 أغسطس 2026): `case-card` بقى `lg:hidden` على الديسكتوب —
+  // بديله `cases-table-row` (جدول الديسكتوب D1/D2).
+  const newCaseCard = page.getByTestId('cases-table-row').filter({ hasText: caseTitle });
   await expect(newCaseCard.first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId('new-case-title')).not.toBeVisible();
 
   // 4) فتح القضية اللي اتسجلت والتأكد إن دي فعلاً هي (مش قضية تانية)
-  await newCaseCard.first().click();
+  // زرار `cases-table-row-open` بدل النقر على الصف نفسه.
+  await newCaseCard.first().getByTestId('cases-table-row-open').click();
   await expect(page.getByTestId('case-detail-view')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('case-detail-title')).toHaveText(caseTitle);
 
