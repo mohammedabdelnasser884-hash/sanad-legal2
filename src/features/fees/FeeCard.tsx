@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { I } from '../../constants';
 import { ClientSearchSelect, type ClientSearchResult } from '@/shared/ui/ClientSearchSelect';
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { ClientRow, CaseFeeRow, FeePaymentRow, InvoiceRow, PaymentsByFeeId } from '../../types';
 import type { MappedCase } from '../../hooks/useAppData';
 import type { InvoiceModalState, ConfirmDeletePayState, FeeFormState } from './hooks/useFeesActions';
@@ -72,6 +73,9 @@ function FeeCard({
   const isFullyPaid = rem <= 0;
   const feePayments = payments[fee.id]||[];
   const showPays = expandedPayments[fee.id];
+  // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
+  // المُطبَّق في NewCaseModal.tsx.
+  const modalPresentation = useModalPresentation();
 
   return React.createElement(React.Fragment,{key:fee.id},
                         // ─ الكارت المضغوط ─
@@ -92,12 +96,12 @@ function FeeCard({
                         ),
                         // ─ مودال التفاصيل الكاملة ─
                         detailsFor===fee.id && createPortal(React.createElement('div',{
-                            className:"fixed inset-0 z-[70] flex items-end justify-center bg-black/80 backdrop-blur-sm",
+                            className:`fixed inset-0 z-[70] flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/80 backdrop-blur-sm`,
                             'data-testid':'fee-detail-modal',
                             onClick:(e: React.MouseEvent<HTMLDivElement>) => { if(e.target===e.currentTarget) setDetailsFor(null); }
                         },
                         React.createElement('div',{
-                            className:"bg-premium-card w-full max-w-lg rounded-t-3xl border-t border-white/10 shadow-2xl overflow-y-auto no-scrollbar max-h-[90vh] slide-up",
+                            className:`bg-premium-card w-full max-w-lg ${modalPresentation.panelShapeClassName} shadow-2xl overflow-y-auto no-scrollbar max-h-[90vh] ${modalPresentation.panelAnimationClassName}`,
                             onClick:(e: React.MouseEvent<HTMLDivElement>) =>e.stopPropagation()
                         },
                                 React.createElement('div',{className:"px-4 pt-4 pb-2"},
