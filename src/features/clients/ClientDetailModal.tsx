@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { I } from '../../constants';
 import { formatPhoneForWhatsApp } from '../../shared/lib/validation';
 import { useResolvedStorageUrl } from '../../shared/lib/storage';
+import { useModalPresentation } from '../../shared/hooks/useModalPresentation';
 import EditClientModal from './EditClientModal';
 import type { ClientRow } from '../../types';
 import type { MappedCase } from '../../hooks/useAppData';
@@ -52,8 +53,12 @@ function ClientDetailModal({client:c, cases, onClose, onDelete, onEdit, onOpenCa
     const contactInfo = c.contact_info as ClientContactInfo | null;
     const idImgUrl  = useResolvedStorageUrl('client-docs', contactInfo?.id_url);
     const poaImgUrl = useResolvedStorageUrl('client-docs', contactInfo?.poa_url);
+    // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
+    // المُطبَّق في NewCaseModal.tsx. عارض الصورة (imgViewer) بيفضل ملء الشاشة
+    // زي ما هو — برة نطاق هذه الدفعة.
+    const modalPresentation = useModalPresentation();
 
-    return React.createElement('div',{'data-testid':'client-detail-view',className:"fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-sm",onClick:(e: React.MouseEvent<HTMLDivElement>) =>{if(e.target===e.currentTarget)onClose();}},
+    return React.createElement('div',{'data-testid':'client-detail-view',className:`fixed inset-0 z-50 flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/75 backdrop-blur-sm`,onClick:(e: React.MouseEvent<HTMLDivElement>) =>{if(e.target===e.currentTarget)onClose();}},
         // عارض الصورة
         imgViewer&&React.createElement('div',{
             className:"fixed inset-0 z-[60] bg-black/95 flex items-center justify-center p-4",
@@ -63,7 +68,7 @@ function ClientDetailModal({client:c, cases, onClose, onDelete, onEdit, onOpenCa
             React.createElement('button',{className:"absolute top-6 left-6 text-white text-2xl font-black",onClick:()=>setImgViewer(null)},"✕")
         ),
 
-        React.createElement('div',{className:"bg-premium-card w-full max-w-lg rounded-t-3xl border-t border-white/10 shadow-2xl slide-up max-h-[92vh] overflow-y-auto no-scrollbar"},
+        React.createElement('div',{className:`bg-premium-card w-full max-w-lg ${modalPresentation.panelShapeClassName} shadow-2xl ${modalPresentation.panelAnimationClassName} max-h-[92vh] overflow-y-auto no-scrollbar`},
             // هيدر الكارت
             React.createElement('div',{className:"relative p-6 pb-4"},
                 React.createElement('div',{className:"w-10 h-1 bg-white/20 rounded-full mx-auto mb-5"}),
