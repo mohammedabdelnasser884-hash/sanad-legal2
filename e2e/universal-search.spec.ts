@@ -15,7 +15,9 @@ test('البحث الشامل: يفتح، يعرض نتيجة قضية حقيق�
   await createCase(page, caseTitle);
 
   // فتح المودال من زرار البحث في الهيدر
-  await page.getByTestId('header-search-open').click();
+  // ⚡ H1 (16 أغسطس 2026): AppHeader القديم بقى `lg:hidden` (H2) —
+  // desktop-header-search-open (DesktopHeader، B3) بديله على الديسكتوب.
+  await page.getByTestId('desktop-header-search-open').click();
   await page.getByTestId('universal-search-modal').waitFor({ state: 'visible', timeout: 10_000 });
 
   // كتابة جزء من عنوان القضية (أكتر من الحد الأدنى لعدد الحروف)
