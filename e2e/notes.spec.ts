@@ -78,8 +78,11 @@ test('تعارض تعديل ملاحظة عند التحديث المتزامن 
   const page2 = await context2.newPage();
   try {
     await login(page2);
-    await page2.getByTestId('nav-cases').click();
-    await page2.getByTestId('case-card').filter({ hasText: caseTitle }).first().click();
+    // ⚡ H (16 أغسطس 2026): `nav-cases`/`case-card` (موبايل) بقوا
+    // `lg:hidden` على الديسكتوب — بدائلهم `desktop-nav-cases` و
+    // `cases-table-row` + زرار الفتح.
+    await page2.getByTestId('desktop-nav-cases').click();
+    await page2.getByTestId('cases-table-row').filter({ hasText: caseTitle }).first().getByTestId('cases-table-row-open').click();
     await page2.getByTestId('case-detail-view').waitFor({ state: 'visible', timeout: 10_000 });
     await page2.getByTestId('case-tab-notes').click();
     const card2 = page2.getByTestId('note-card').filter({ hasText: original });
