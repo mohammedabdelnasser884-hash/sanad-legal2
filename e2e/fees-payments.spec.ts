@@ -18,8 +18,7 @@ function arNum(n: number): string {
 }
 
 async function createFee(page: Page, caseTitle: string, total: string): Promise<void> {
-  await page.getByTestId('nav-more-toggle').click();
-  await page.getByTestId('nav-more-fees').click();
+  await page.getByTestId('desktop-nav-fees').click();
   await page.getByTestId('add-fee-button').click();
   await page.getByTestId('fee-case-select').selectOption({ label: caseTitle });
   await page.getByTestId('fee-total').fill(total);
