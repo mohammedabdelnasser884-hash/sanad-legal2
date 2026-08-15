@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { I } from '../../constants';
 import { Inp } from '@/shared/ui/Inp';
 import DatePicker from '@/shared/ui/DatePicker';
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { ReminderRow } from '../../types';
 
 interface ReminderEditForm {
@@ -23,8 +24,11 @@ interface EditReminderModalProps {
 function EditReminderModal({
   editTarget, setEditTarget, editForm, setEditForm, handleEdit, editSaving,
 }: EditReminderModalProps) {
+  // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
+  // المُطبَّق في NewCaseModal.tsx.
+  const modalPresentation = useModalPresentation();
   return editTarget && createPortal(React.createElement('div',{
-        className:"fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm",
+        className:`fixed inset-0 z-50 flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/70 backdrop-blur-sm`,
         onClick:(e: React.MouseEvent<HTMLDivElement>) =>{ if(e.target===e.currentTarget) setEditTarget(null); }
     },
         // 🔒 FIX (27 يوليو 2026 — e2e/reminders-edit.spec.ts "فاليديشن" كانت
@@ -35,7 +39,7 @@ function EditReminderModal({
         // viewport من غير أي scroll container يوصله بيه — Playwright بيحاول
         // يعمل scroll طول 30 ثانية ومش لاقي حاوية تتحرك. max-h + overflow-y-auto
         // بيدّي المودال نفسه قدرة يتمرجل لو محتواه زاد عن الشاشة.
-        React.createElement('div',{className:"bg-premium-card w-full max-w-lg rounded-t-3xl border-t border-white/10 p-6 pb-10 shadow-2xl slide-up max-h-[85vh] overflow-y-auto",'data-testid':'reminder-edit-modal'},
+        React.createElement('div',{className:`bg-premium-card w-full max-w-lg ${modalPresentation.panelShapeClassName} p-6 pb-10 shadow-2xl ${modalPresentation.panelAnimationClassName} max-h-[85vh] overflow-y-auto`,'data-testid':'reminder-edit-modal'},
             React.createElement('div',{className:"w-10 h-1 bg-white/20 rounded-full mx-auto mb-5"}),
             React.createElement('div',{className:"flex items-center justify-between mb-4"},
                 React.createElement('h3',{className:"text-sm font-black text-white flex items-center gap-2"},
