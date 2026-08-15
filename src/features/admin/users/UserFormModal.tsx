@@ -3,6 +3,7 @@ import { toast } from '../../../shared/lib/notifications';
 import { I } from '../../../constants';
 import { Inp } from '@/shared/ui/Inp';
 import { ROLE_CONFIG } from '../icons';
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { AddUserForm } from './hooks/useAdminUsers';
 
 // فورم محلي للمودال ده تحديدًا — نفس حقول AddUserForm زائد is_active
@@ -29,6 +30,9 @@ function UserFormModal({ onClose, onSave, loading, title = 'إضافة مستخ�
     });
     const [showPass, setShowPass] = useState(false);
     const s = (k: keyof UserForm, v: string | boolean | Record<string, boolean>) => setForm((p: UserForm) => ({ ...p, [k]: v }));
+    // 🆕 (دفعة 2.2 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
+    // المُطبَّق في NewCaseModal.tsx.
+    const modalPresentation = useModalPresentation();
 
     const submit = () => {
         if (!form.full_name.trim() || !form.email.trim() || !form.password) {
@@ -41,11 +45,11 @@ function UserFormModal({ onClose, onSave, loading, title = 'إضافة مستخ�
     };
 
     return React.createElement('div', {
-        className: "fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm",
+        className: `fixed inset-0 z-50 flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/70 backdrop-blur-sm`,
         onClick: (e: React.MouseEvent<HTMLDivElement>) => { if (e.target === e.currentTarget) onClose(); }
     },
         React.createElement('div', {
-            className: "bg-premium-card w-full max-w-lg rounded-t-3xl border-t border-white/10 p-6 pb-10 shadow-2xl slide-up",
+            className: `bg-premium-card w-full max-w-lg ${modalPresentation.panelShapeClassName} p-6 pb-10 shadow-2xl ${modalPresentation.panelAnimationClassName}`,
             style: { maxHeight: '90vh', overflowY: 'auto' }
         },
             React.createElement('div', { className: "w-10 h-1 bg-white/20 rounded-full mx-auto mb-5" }),
