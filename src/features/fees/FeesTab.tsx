@@ -15,6 +15,7 @@ import FeeCard from './FeeCard';
 import type { ClientRow, ProfileRow } from '../../types';
 import type { MappedCase } from '../../hooks/useAppData';
 import type { NavigationState } from '../../useNavigation';
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 
 // ⚠️ FIX (14 يوليو 2026): كان متوقع CaseRow[] (الشكل الخام من قاعدة البيانات)،
 // لكن App.tsx بيبعت فعليًا `cases` المُطبَّعة (MappedCase[]) من useAppData —
@@ -70,6 +71,9 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
     const [detailsForRaw, setDetailsForRaw] = useState<string | null>(null); // معرف بطاقة الأتعاب المفتوحة تفاصيلها
     const detailsFor = nav.isOpen('feeDetail') ? detailsForRaw : null;
+    // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
+    // المُطبَّق في NewCaseModal.tsx، لمودال فورم الأتعاب الداخلي جوه هذا التاب.
+    const modalPresentation = useModalPresentation();
 
     // ⚠️ BUG-08 FIX (19 يوليو 2026): كل مودالات الأتعاب (الفورم، تفاصيل
     // البطاقة، تأكيد الحذف، الفاتورة) كانت React state محلي بحت، مش مسجّلة
@@ -220,28 +224,36 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             })
         ),
 
-        // ─ زر الملخص المالي (بقى هنا مكان شريط البحث القديم) ─
-        React.createElement('button',{
-            onClick:()=>setShowSummaryModal(true),
-            'data-testid':'fees-summary-open',
-            className:"w-full flex items-center justify-center gap-1.5 py-2.5 rounded-2xl bg-premium-gold/10 border border-premium-gold/25 text-premium-gold text-xs font-black active:scale-95 transition-all hover:bg-premium-gold/15"
-        },"📊 الملخص المالي الإجمالي"),
+        // 🆕 Phase 3 (تقرير تشخيص تجربة سطح المكتب — 15 أغسطس): زرار
+        // الملخص المالي وزرار الإضافة كانوا مكدّسين فوق بعض بعرض كامل
+        // (`w-full`) — شكل منطقي على الموبايل، لكن على الديسكتوب بيبقى
+        // زرارين طويلين ممدودين بعرض الشاشة كله. `lg:flex` بيحطهم جنب
+        // بعض بعرض متساوي (`lg:flex-1` على كل واحد) بدل الامتداد الكامل،
+        // بلا أي تغيير على شكل/سلوك الموبايل.
+        React.createElement('div',{className:"space-y-2 lg:space-y-0 lg:flex lg:gap-3"},
+            // ─ زر الملخص المالي (بقى هنا مكان شريط البحث القديم) ─
+            React.createElement('button',{
+                onClick:()=>setShowSummaryModal(true),
+                'data-testid':'fees-summary-open',
+                className:"w-full lg:flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl bg-premium-gold/10 border border-premium-gold/25 text-premium-gold text-xs font-black active:scale-95 transition-all hover:bg-premium-gold/15"
+            },"📊 الملخص المالي الإجمالي"),
 
-        // ─ زر الإضافة ─
-        React.createElement('button',{
-            onClick:()=>{setShowForm(!showForm);setEditId(null);setForm({case_id:'',client_id:'',client_name_manual:'',client_name_text:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); },
-            'data-testid':'add-fee-button',
-            className:"w-full py-3 border border-dashed border-premium-gold/30 rounded-2xl flex items-center justify-center gap-2 text-premium-gold text-xs font-black hover:bg-premium-gold/5 transition-all active:scale-[0.98]"
-        }, React.createElement(I.Plus), "إضافة أتعاب قضية"),
+            // ─ زر الإضافة ─
+            React.createElement('button',{
+                onClick:()=>{setShowForm(!showForm);setEditId(null);setForm({case_id:'',client_id:'',client_name_manual:'',client_name_text:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); },
+                'data-testid':'add-fee-button',
+                className:"w-full lg:flex-1 py-3 border border-dashed border-premium-gold/30 rounded-2xl flex items-center justify-center gap-2 text-premium-gold text-xs font-black hover:bg-premium-gold/5 transition-all active:scale-[0.98]"
+            }, React.createElement(I.Plus), "إضافة أتعاب قضية")
+        ),
 
         // ─ فورم الإضافة/التعديل (modal) ─
         showForm && createPortal(
             React.createElement('div',{
-                className:"fixed inset-0 z-[70] flex items-end justify-center bg-black/80 backdrop-blur-sm",
+                className:`fixed inset-0 z-[70] flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/80 backdrop-blur-sm`,
                 onClick:(e: React.MouseEvent) => { if(e.target===e.currentTarget) { setShowForm(false); setEditId(null); } }
             },
             React.createElement('div',{
-                className:"bg-premium-card w-full max-w-lg border-t border-premium-gold/20 rounded-t-3xl overflow-y-auto no-scrollbar p-5 space-y-3 shadow-2xl max-h-[90vh] slide-up",
+                className:`bg-premium-card w-full max-w-lg ${modalPresentation.isDesktop ? 'border border-premium-gold/20 rounded-3xl' : 'border-t border-premium-gold/20 rounded-t-3xl'} overflow-y-auto no-scrollbar p-5 space-y-3 shadow-2xl max-h-[90vh] ${modalPresentation.panelAnimationClassName}`,
                 onClick:(e: React.MouseEvent) =>e.stopPropagation()
             },
                     React.createElement('div',{className:"flex items-center justify-between mb-1"},
@@ -337,7 +349,14 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                 React.createElement('p',{className:"text-white/60 font-black text-sm"},"لا توجد نتائج"),
                 React.createElement('p',{className:"text-slate-500 text-xs"},'جرب كلمة بحث مختلفة')
               )
-            : React.createElement('div',{className:"space-y-3"},
+            // 🆕 Phase 3 (تقرير تشخيص تجربة سطح المكتب — 15 أغسطس): على
+            // الديسكتوب (lg:) الكروت المضغوطة (FeeCard) بتتوزع في شبكة
+            // عمودين (٣ أعمدة على شاشات أعرض xl:) بدل عمود واحد ممتد
+            // بعرض الشاشة كله. الكارت نفسه (بلا width ثابت، بيفتح تفاصيله
+            // في مودال مركزي أصلًا من دفعة 2.1) صالح للشبكة من غير أي
+            // تعديل داخلي. `lg:space-y-0` عشان `space-y-3` (margin-top
+            // بين العناصر) ميتعارضش مع `lg:gap-3` جوه الشبكة.
+            : React.createElement('div',{className:"space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start xl:grid-cols-3"},
                 filteredFees.map((fee) => React.createElement(FeeCard, {
                     key: fee.id, fee, cases, clients, currency, fmt, fmtDate, ensureClientsLoaded,
                     detailsFor, setDetailsFor,
