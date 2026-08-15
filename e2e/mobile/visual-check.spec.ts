@@ -49,6 +49,17 @@ const BREAKPOINTS = [
 for (const bp of BREAKPOINTS) {
   test.describe(`تحقق بصري — ${bp.name} (${bp.viewport.width}×${bp.viewport.height})`, () => {
     test.use({ viewport: bp.viewport });
+    // 🆕 (تشخيص محتوى فاضي بلا error — 16 أغسطس 2026): جربنا مستمعين
+    // pageerror/console.error في المحاولة اللي قبل كده وطلعوا نضاف —
+    // يعني المشكلة (لو موجودة لسه في cases/calendar) مش crash JS، وده
+    // بيستبعد أسهل تفسير. الخطوة الجاية المتاحة من غير متصفح حقيقي:
+    // تسجيل فيديو فعلي لكل تست هنا (`video: 'on'`، مش الإعداد الافتراضي
+    // `retain-on-failure` في playwright.config.ts — ده بس بيسجل لو
+    // التست فشل، والتست ده بينجح دايمًا لأن الـassertion بيفحص التنقل
+    // بس مش المحتوى). الفيديو هيتحفظ في test-results/ (موجودة أصلًا في
+    // مسارات رفع ci.yml)، وهيوري حرفيًا لحظة الضغط على تاب القضايا/
+    // الجلسات ولو فيه أي حركة (حتى لو خفيفة) قبل ما يفضل فاضي.
+    test.use({ video: 'on' });
 
     test(`لقطات الشاشات الأساسية — ${bp.name}`, async ({ page }) => {
       const outDir = path.join(SNAPSHOT_ROOT, bp.name);
@@ -91,21 +102,29 @@ for (const bp of BREAKPOINTS) {
       // وقت التقاط اللقطة القديمة الفورية. صفر تأثير على منطق الاختبار
       // نفسه (نفس الـassertions القديمة زي ما هي، مجرد انتظار إضافي).
       await page.waitForTimeout(400);
+      // 🆕 قياس مباشر لحجم محتوى <main> بدل ما نحكم بالعين على اللقطة
+      // بس — رقم واحد بسيط في نفس لوج e2e، بيفرّق فورًا بين "تاب فاضي
+      // فعليًا" (رقم قريب من صفر) و"تاب فيه محتوى بس مش باين واضح في
+      // اللقطة" (رقم كبير). نفس المنطق هيتكرر بعد كل تنقل تحت.
+      console.log(`📏 [main-html-len] [${bp.name}] dashboard = ${(await page.locator('main').innerHTML()).length}`);
       await page.screenshot({ path: path.join(outDir, '01-dashboard.png'), fullPage: true });
 
       await page.getByTestId(navCases).click();
       await expect(page.getByTestId(navCases)).toBeVisible();
       await page.waitForTimeout(400);
+      console.log(`📏 [main-html-len] [${bp.name}] cases = ${(await page.locator('main').innerHTML()).length}`);
       await page.screenshot({ path: path.join(outDir, '02-cases.png'), fullPage: true });
 
       await page.getByTestId(navCalendar).click();
       await expect(page.getByTestId(navCalendar)).toBeVisible();
       await page.waitForTimeout(400);
+      console.log(`📏 [main-html-len] [${bp.name}] calendar = ${(await page.locator('main').innerHTML()).length}`);
       await page.screenshot({ path: path.join(outDir, '03-calendar.png'), fullPage: true });
 
       await page.getByTestId(navReminders).click();
       await expect(page.getByTestId(navReminders)).toBeVisible();
       await page.waitForTimeout(400);
+      console.log(`📏 [main-html-len] [${bp.name}] reminders = ${(await page.locator('main').innerHTML()).length}`);
       await page.screenshot({ path: path.join(outDir, '04-reminders.png'), fullPage: true });
 
       // الموكلين (شاشة D3: كروت + جدول hidden lg:block). على الموبايل/
