@@ -253,7 +253,11 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
     ),
 
     // ── Nav Cards (الترتيب الجديد) ──
-    React.createElement('div',{className:"grid grid-cols-2 gap-2.5"},
+    // 🆕 Phase 3 (تقرير تشخيص تجربة سطح المكتب — 15 أغسطس): `lg:grid-cols-4`
+    // بدل عمودين ثابتين على كل الأحجام — على الديسكتوب الكروت بتوزع في 4
+    // أعمدة بدل عمودين ممطوطين بعرض الشاشة. الموبايل صفر تغيير (grid-cols-2
+    // الأصلي فاضل هو الافتراضي تحت lg:).
+    React.createElement('div',{className:"grid grid-cols-2 gap-2.5 lg:grid-cols-4 lg:gap-3"},
 
       // صف 1: الإحصائيات + المستخدمون
       ...([
@@ -528,8 +532,14 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
     // ══════════════════════════════════════
     //  FULL-SCREEN OVERLAY
     // ══════════════════════════════════════
+    // 🆕 Phase 3 (تقرير تشخيص تجربة سطح المكتب — 15 أغسطس): `lg:ps-[var(--app-sidebar-w)]`
+    // — نفس تقنية `App.tsx`/`<main>` بالظبط (مرحلة B4). الأوفرلاي ده
+    // `fixed inset-x-0` (بيتجاهل أي padding من الأب لأنه fixed)، فكان
+    // بيمتد فوق مساحة السايدبار على الديسكتوب. الـ padding-start بيحجز
+    // نفس مساحة السايدبار المحجوزة في باقي الشاشة، بلا أي تغيير على
+    // الموبايل (المتغير بيبقى 0px هناك أصلًا — useSidebarWidthVar.ts).
     section && React.createElement('div',{
-      className:"fixed inset-x-0 bottom-0 z-[60] flex flex-col bg-premium-bg slide-up-full",style:{top:"52px"}
+      className:"fixed inset-x-0 bottom-0 z-[60] flex flex-col bg-premium-bg slide-up-full lg:ps-[var(--app-sidebar-w)] lg:transition-[padding] lg:duration-200",style:{top:"52px"}
     },
 
       // ── هيدر القسم مع لون مميز لكل قسم ──
@@ -607,7 +617,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
           }, React.createElement(I.Plus), "قانون جديد")
         )
       ),
-      React.createElement('div',{className:"flex-1 overflow-y-auto no-scrollbar px-4 py-4 pb-32 space-y-3"},
+      React.createElement('div',{className:"flex-1 overflow-y-auto no-scrollbar px-4 py-4 pb-32 space-y-3 lg:max-w-5xl lg:mx-auto lg:w-full lg:px-8 lg:py-6"},
 
     // ══════════════════════════
     //  SECTION: الإحصائيات
