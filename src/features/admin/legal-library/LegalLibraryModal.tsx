@@ -3,6 +3,7 @@ import { toast } from '../../../shared/lib/notifications';
 import { I } from '../../../constants';
 import { Inp } from '@/shared/ui/Inp';
 import { Sel } from '@/shared/ui/Sel';
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { LawRow, LegalCategoryRow } from '../../../types';
 import type { LawForm } from './hooks/useAdminLegalLibrary';
 
@@ -26,6 +27,9 @@ function LegalLibraryModal({ onClose, onSave, saving, categories, editingLaw }: 
     });
     const [file, setFile] = useState<File|null>(null);
     const s = (k: keyof LawForm, v: string) => setForm((p: LawForm) => ({ ...p, [k]: v }));
+    // 🆕 (دفعة 2.2 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
+    // المُطبَّق في NewCaseModal.tsx.
+    const modalPresentation = useModalPresentation();
 
     const handleSubmit = () => {
         if (!form.title.trim()) { toast('يرجى إدخال اسم القانون', true); return; }
@@ -34,10 +38,10 @@ function LegalLibraryModal({ onClose, onSave, saving, categories, editingLaw }: 
     };
 
     return React.createElement('div', {
-        className: "fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm",
+        className: `fixed inset-0 z-50 flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/70 backdrop-blur-sm`,
         onClick: (e: React.MouseEvent<HTMLDivElement>) => { if (e.target === e.currentTarget) onClose(); }
     },
-        React.createElement('div', { className: "bg-premium-card w-full max-w-lg rounded-t-3xl border-t border-white/10 p-6 pb-10 shadow-2xl slide-up max-h-[88vh] overflow-y-auto no-scrollbar" },
+        React.createElement('div', { className: `bg-premium-card w-full max-w-lg ${modalPresentation.panelShapeClassName} p-6 pb-10 shadow-2xl ${modalPresentation.panelAnimationClassName} max-h-[88vh] overflow-y-auto no-scrollbar` },
             React.createElement('div', { className: "w-10 h-1 bg-white/20 rounded-full mx-auto mb-5" }),
             React.createElement('h3', { className: "text-sm font-black mb-5 text-white flex items-center gap-2" },
                 React.createElement('span', { className: "w-1 h-4 bg-amber-400 rounded-full" }),
