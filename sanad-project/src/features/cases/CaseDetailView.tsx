@@ -1,0 +1,838 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { toast } from '../../shared/lib/notifications';
+import { formatPhoneForWhatsApp } from '../../shared/lib/validation';
+import { Inp } from '@/shared/ui/Inp';
+import { Sel } from '@/shared/ui/Sel';
+import DatePicker from '@/shared/ui/DatePicker';
+import { db } from '../../supabaseClient';
+import { I, COUNTRY_CONFIGS, loadOfficeSetting } from '../../constants';
+import EditCaseModal from './EditCaseModal';
+import SessionUpdateModal from '@/features/calendar/sessions-calendar/SessionUpdateModal';
+import DeleteConfirmModal from '@/shared/modals/DeleteConfirmModal';
+import SessionsCalendar from '@/features/calendar/sessions-calendar/SessionsCalendar';
+import NotesSection from './case-detail/NotesSection';
+import InfoSection from './case-detail/InfoSection';
+import ChecklistSection from './case-detail/ChecklistSection';
+import DocsSection from './case-detail/DocsSection';
+import TimelineSection from './case-detail/TimelineSection';
+import PdfViewerModal from '@/shared/modals/PdfViewerModal';
+import { useCaseDetailActions } from './hooks/useCaseDetailActions';
+// 🆕 (مرحلة F2 — خطة Desktop): بيستخدم بس في overlay "تعديل القضية"
+// (showEditCase تحت) — الشاشة الرئيسية (case-detail-view) نفسها fullscreen
+// (fixed inset-0 fade-in) مش Bottom-Sheet/Centered، فمفيش داعي تطبيقه
+// عليها. راجع تعليقات showEditCase تحت لتفاصيل القرار.
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
+import type { CaseDocWithUrl, CasePartyRow } from './hooks/useCaseDetailActions';
+import type { MappedCase } from '../../hooks/useAppData';
+import type { ClientRow, ProfileRow } from '../../types';
+import type { CaseFormSubmitData } from './hooks/useCaseActions';
+import type { ClientModalContext } from '../clients/hooks/useClientActions';
+// 🆕 (خطة "المسمى القانوني" — مرحلة 5): نفس منطق العرض المستخدم في
+// InfoSection.tsx — يوحّد الهيدر العلوي وتاب البيانات على نفس المصدر
+// ونفس التنسيق (case_parties + المسمى القانوني)، بدل الأعمدة القديمة
+// المنفصلة (plaintiff/defendant) المستخدمة سابقًا في الهيدر بس (بند 4 من
+// قسم 5 في الخطة).
+import { summarizePartySide, effectiveLegalTitleForDisplay } from '../../shared/parties/partyDisplay';
+// 🆕 (خطة توحيد قفل الطرف — المرحلة 3، سد فجوة 5.3، 6 أغسطس 2026): مؤشر
+// orphan في الهيدر — كان مؤجل عمدًا في المرحلة 2 (linkedClients كانت
+// بتتجاهل الأطراف الـorphan بصمت، بلا أي مؤشر) لحد ما مرحلة الـBadges
+// تجهز مصدر الشارة الموحّد.
+import { isPartyOrphaned, type PartyDomainContext } from '../../shared/parties/partyDomainService';
+
+// شكل عنصر حالة القضية (نفس الحقول المستخدمة فعليًا في مصفوفة statuses تحت)
+interface CaseStatusOption {
+    key: string;
+    color: string;
+    icon: string;
+}
+
+// شكل عنصر رسالة واتساب الجاهزة (نفس الحقول المستخدمة فعليًا في مصفوفة messages تحت)
+interface WhatsAppMessageOption {
+    label: string;
+    icon: string;
+    text: string;
+}
+
+// شكل عنصر تبويب شاشة تفاصيل القضية
+interface CaseDetailTab {
+    key: string;
+    label: string;
+    icon: string;
+}
+
+interface CaseDetailViewProps {
+    caseData: MappedCase;
+    client: ClientRow | null;
+    clients?: ClientRow[];
+    // ⚡ FIX (باگ "الموكل محذوف" غلط — 8 أغسطس 2026): case_parties هنا
+    // بتتحمّل "live" (fresh) من قاعدة البيانات بعد فتح الشاشة (useCaseDetailActions)،
+    // وممكن تشاور على موكل لسه مش موجود في `clients` (المُمرّرة من فوق
+    // بالفعل موسّعة، لكن ده يغطي أي حالة سباق/تحديث بعد الفتح). لو
+    // موجودة، بتتنادى بقائمة client_id لأي طرف يظهر orphan عشان تتأكد
+    // إنه فعلاً محذوف مش بس مش محمّل. راجع useAppData.ts (ensureClientsLoaded).
+    onEnsureClientsLoaded?: (ids: (string | null | undefined)[]) => void | Promise<void>;
+    onClose: () => void;
+    onUpdate?: (newStatus: string) => void;
+    onDelete?: (caseId: string) => void | Promise<void>;
+    onEdit?: (caseId: string, form: CaseFormSubmitData) => void | boolean | Promise<void | boolean>;
+    onLinkClient?: (caseId: string, clientId: string) => void | Promise<void>;
+    // ⚡ NEW (خطة توحيد منطق إنشاء/ربط الموكل، Phase 3 — 4 أغسطس 2026): مرآة
+    // لـ onLinkClient فوق، بس بيربط طرف بعينه من case_parties (بدل القضية
+    // كلها) — شوف useCaseActions.ts (handleLinkClientForParty) وInfoSection.tsx.
+    onLinkClientForParty?: (caseId: string, partyId: string, clientId: string, isPrimaryParty: boolean, knownUpdatedAt: string | null, onAfterLink: () => void) => void | Promise<void>;
+    // ⚡ NEW (خطة توحيد مصدر بيانات الموكل، مرحلة 4): زرار "فك الربط" جوه
+    // EditCaseModal — بيصفّر client_id بس (handleUnlinkClient في App.tsx).
+    onUnlinkClient?: (caseId: string) => void | Promise<void>;
+    // ⚡ NEW (خطة توحيد مصدر بيانات الموكل، "إصلاح 5" — 5 أغسطس 2026): مرآة
+    // لـ onUnlinkClient فوق بس لطرف بعينه من case_parties (بدل القضية
+    // كلها) — شوف useCaseActions.ts (handleUnlinkClientForParty) وInfoSection.tsx.
+    onUnlinkClientForParty?: (caseId: string, partyId: string, isPrimaryParty: boolean, knownUpdatedAt: string | null, onAfterLink: () => void) => void | Promise<void>;
+    // ⚡ CHANGED (خطة توحيد إنشاء الموكل، Phase 1): مبقتش بترجع نتيجة تكرار
+    // ولا async — مجرد فتح لموديل "إنشاء موكل جديد" الموحّد (NewClientModal)
+    // مليان ببيانات المدعي. شوف App.tsx (handleOpenCreateClientForCase).
+    onCreateAndLinkClient?: (caseId: string, plaintiffName: string, plaintiffNationalId?: string | null, plaintiffPoa?: string | null, plaintiffAddress?: string | null) => void;
+    // ⚡ NEW (خطة تعدد الأطراف، مرحلة 13.1 — 23 يوليو 2026): زرار "إنشاء
+    // موكل" لطرف بعينه من أطراف القضية (case_parties) — نفس فكرة
+    // onCreateAndLinkClient فوق، بس بيستقبل صف الطرف نفسه بدل بيانات
+    // المدعي المفردة، عشان يدعم أكتر من طرف عليه ⭐ في نفس القضية. آخر
+    // باراميتر onAfterLink بيتنادى بعد نجاح الربط عشان caseParties هنا
+    // (useCaseDetailActions) تتحدّث فورًا (الزرار/الوسم يختفي/يتغير من
+    // غير ما نستنى إعادة فتح الشاشة) — شوف handleOpenCreateClientForParty
+    // في App.tsx (نفس الدالة المستخدمة في wizard الجلسة المستقلة، 7.2).
+    onCreateAndLinkClientForParty?: (caseId: string, party: CasePartyRow, isPrimaryParty: boolean, onAfterLink: () => void) => void;
+    onNotify?: (msg: string) => void | Promise<void>;
+    initialTab?: string;
+    profile?: ProfileRow | null;
+    country?: string | null;
+    // 🔒 FIX (تقرير الموثوقية — نتيجة 1): بتتمرر لـ EditCaseModal عشان تقفل
+    // زرار "حفظ التعديلات" أثناء الحفظ — نفس savingCase المستخدمة في
+    // NewCaseModal.
+    savingCase?: boolean;
+    // ⚡ NEW (خطة توحيد مصدر بيانات الموكل، مرحلة 2): زرار "✏️ عدّل من
+    // ملف الموكل" جوه EditCaseModal بيستخدم الكولباك ده لفتح تفاصيل
+    // الموكل الحقيقي (نفس آلية فتح تفاصيل الموكل الموجودة بالفعل).
+    onOpenClientProfile?: (client: ClientRow) => void;
+    // 🔒 FIX (باگ "عدّل من ملف الموكل جوه تعديل القضية بيرجّع لصفحة القضية
+    // مش لفورم التعديل" — 12 أغسطس 2026): بتوصل من AppModals.tsx وبتعكس
+    // إذا كان مودال تفاصيل/تعديل الموكل (ClientDetailModal) لسه مفتوح فعليًا
+    // (nav.isOpen('clientDetail')) — راجع useEffect تحت لتفاصيل الاستخدام.
+    clientProfileOpen?: boolean;
+    // ⚡ NEW (خطة تطوير أطراف الدعوى — مرحلة 4 خطوة 2، 23 يوليو 2026): بتوصل
+    // لـ EditCaseModal عشان زرار "إنشاء موكل جديد" جوه كارت أي طرف لسه مش
+    // مربوط بموكل — راجع App.tsx (openNewClientModal) وAppModals.tsx.
+    openNewClientModal?: (ctx: ClientModalContext) => void;
+}
+
+function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, onClose, onUpdate, onDelete, onEdit, onLinkClient, onLinkClientForParty, onUnlinkClient, onUnlinkClientForParty, onCreateAndLinkClient, onCreateAndLinkClientForParty, onNotify, initialTab='timeline', profile=null, country=null, savingCase=false, onOpenClientProfile, clientProfileOpen=false, openNewClientModal}: CaseDetailViewProps){
+    // 🆕 (F2): بيستخدم بس في overlay مودال "تعديل القضية" (showEditCase)
+    // اللي بيفتح من جوّه شاشة تفاصيل القضية دي — راجع تعليقات
+    // useModalPresentation.ts لتفاصيل السلوك.
+    const modalPresentation = useModalPresentation();
+    const [activeSection, setActiveSection] = useState(initialTab);
+    const [showEditCase, setShowEditCase] = useState(false);
+    // 🔒 FIX (نفس الباگ فوق): بنسجّل إننا قفلنا فورم تعديل القضية عشان
+    // نفتح ملف الموكل (زرار "عدّل من ملف الموكل")، عشان نعرف نرجّع فورم
+    // التعديل تاني لما مودال الموكل يتقفل (حفظ أو إلغاء أو ✕) — راجع
+    // الـuseEffect تحت اللي بيراقب clientProfileOpen.
+    const wasEditingCaseRef = useRef(false);
+    useEffect(() => {
+        if (!clientProfileOpen && wasEditingCaseRef.current) {
+            wasEditingCaseRef.current = false;
+            setShowEditCase(true);
+        }
+    }, [clientProfileOpen]);
+    const [linkingClient, setLinkingClient] = useState(false);
+    // ⚡ NEW: نفس نمط linkingClient — بيقفل زرار "فك الربط" جوه InfoSection
+    // أثناء التنفيذ.
+    const [unlinkingClient, setUnlinkingClient] = useState(false);
+    const [confirmDeleteCase, setConfirmDeleteCase] = useState(false);
+    const [docSearch, setDocSearch] = useState('');
+    const [viewingDoc, setViewingDoc] = useState<CaseDocWithUrl | null>(null);
+    // ⚡ FIX (تقرير التحقّق — النقطة 4 + الإصلاح 2): موكل مستهدف رسالة
+    // الواتساب — بيتحدد لما فيه أكتر من موكل مربوط بالقضية (شوف
+    // linkedClients + الـuseEffect تحت).
+    const [selectedWaClientId, setSelectedWaClientId] = useState<string | null>(null);
+
+    // ✅ FIX: كان هنا كاست إجباري (as unknown as CaseRow) لأن توقيع
+    // useCaseDetailActions كان بيطلب CaseRow خام، بينما caseData هنا فعليًا
+    // MappedCase (الشكل المُطبَّع بعد fetchCases في useAppData.ts) — نفس باگ
+    // case_type/case_number المعروف. اتصلح من الجذر بتغيير توقيع
+    // useCaseDetailActions نفسه ليقبل MappedCase مباشرة، فبقى الاستدعاء هنا
+    // بدون أي كاست.
+    const actions = useCaseDetailActions(caseData, onUpdate, onDelete, onNotify, undefined, client, profile);
+    const {
+      sessions, notes, docs, loadingSessions,
+      // ⚡ NEW (مرحلة 8): أطراف القضية الكاملة (case_parties) — بتتمرر
+      // لـ InfoSection عشان تعرض القايمة كاملة بدل عمودي plaintiff/defendant.
+      caseParties,
+      showAddSession, setShowAddSession,
+      editingNoteId, setEditingNoteId, editingNoteText, setEditingNoteText,
+      editingSession, setEditingSession,
+      deletingSessionId, setDeletingSessionId,
+      sessionUpdateTarget, setSessionUpdateTarget,
+      deletingNoteId, setDeletingNoteId,
+      showAddNote, setShowAddNote,
+      uploadingDoc, docCategory, setDocCategory, docLabel, setDocLabel,
+      showDocForm, setShowDocForm, pendingFile, setPendingFile,
+      deletingDocId, setDeletingDocId, fileInputRef,
+      savingSession, savingNote,
+      sessionForm, setSessionForm, noteText, setNoteText,
+      exportingPdf, showWhatsApp, setShowWhatsApp, officeWhatsAppName,
+      confirmDeleteSession, setConfirmDeleteSession,
+      confirmDeleteNote, setConfirmDeleteNote,
+      confirmDeleteDoc, setConfirmDeleteDoc,
+      fetchSessions, handleFileSelect, handleUploadDoc, handleDeleteDoc,
+      handleExportPdf, handleAddSession, handleAddNote, handleDeleteNote,
+      handleUpdateNote, handleDeleteSession, handleUpdateSession,
+    } = actions;
+
+    // ⚡ FIX (تقرير التحقّق — النقطة 4 + الإصلاح 2): الهيدر السريع + مودال
+    // الواتساب كانوا بيعتمدوا على `client` (الموكل الأساسي القديم من
+    // cases.client_id) بس، حتى لو القضية فيها أكتر من موكل مربوط فعليًا عبر
+    // case_parties (خطة تعدد الأطراف — نفس الجذر المعماري رقم 2 في التقرير).
+    // linkedClients بتجمع كل الموكلين المرتبطين فعليًا: أي طرف عليه client_id
+    // (بحث عن كل واحد في `clients`)، + `client` نفسه لو مش موجود أصلاً في
+    // case_parties (قضايا قديمة لسه معتمدة على العمود القديم بس).
+    const linkedClients = React.useMemo(() => {
+        const byId = new Map<string, ClientRow>();
+        if (client) byId.set(client.id, client);
+        for (const party of caseParties) {
+            if (!party.client_id) continue;
+            const found = clients.find((c) => c.id === party.client_id);
+            if (found) byId.set(found.id, found);
+        }
+        return Array.from(byId.values());
+    }, [client, caseParties, clients]);
+
+    // ⚡ FIX (8 أغسطس 2026 — باگ "الموكل محذوف" غلط، شاشة تفاصيل القضية):
+    // `client` جاي من الأب (AppModals.tsx) محسوب بـ
+    // `clients.find(cl.id === selectedCase?.client_id)` — نفس الاعتماد
+    // الحصري على العمود القديم اللي سبّب نفس المشكلة في CasesTab.tsx
+    // (كارت القضية في القائمة). القضايا القديمة اللي اترّبط فيها الطرف
+    // الأساسي بموكل بعد إنشائها بزمن (قبل ما مزامنة cases.client_id
+    // تتفعّل، أو لظرف لم يزامنها) ممكن يفضل cases.client_id فيها فاضي/غلط
+    // مع إن case_parties.client_id (المصدر الأحدث) سليم ومربوط فعليًا —
+    // فـ`client` بيوصل null والشاشة بتعرض "⚠️ الموكل محذوف" غلط رغم إن
+    // الموكل حي وشغال (زي ما ظهر في ملف الموكل نفسه). effectiveClient هنا
+    // بيرجع لأول طرف أساسي (is_client) عنده client_id لو `client` وصل
+    // null، قبل ما نحكم إنه فعلاً orphan.
+    const effectiveClient = React.useMemo(() => {
+        if (client) return client;
+        const primaryParty = caseParties.find((p) => p.is_client && p.client_id);
+        if (!primaryParty?.client_id) return null;
+        return clients.find((c) => c.id === primaryParty.client_id) || null;
+    }, [client, caseParties, clients]);
+    const effectivePrimaryClientId = effectiveClient?.id || caseData.client_id || null;
+
+    // ⚡ NEW (المرحلة 3 — سد فجوة 5.3): عدد الأطراف عندهم client_id لكن
+    // الموكل المربوط بيه اتحذف/مش مرئي (orphan) — بغض النظر لو أساسي
+    // (caseData.client_id) أو ثانوي، getPartyState/isPartyOrphaned هي
+    // اللي بتقرر. بيتحسب مرة واحدة لكل تغيير في caseParties/clients،
+    // نفس نمط linkedClients فوق بالظبط.
+    const orphanedPartiesCount = React.useMemo(() => {
+        const ctx: PartyDomainContext = { primaryClientId: effectivePrimaryClientId, clients };
+        return caseParties.filter((party) => isPartyOrphaned(party, ctx)).length;
+    }, [caseParties, clients, effectivePrimaryClientId]);
+
+    // ⚡ FIX (باگ "الموكل محذوف" غلط — 8 أغسطس 2026): caseParties هنا بتتحمّل
+    // live بعد فتح الشاشة، وممكن تشاور على موكل (أساسي أو طرف) لسه مش
+    // موجود في `clients` المُمرّرة (لو الفتح حصل قبل ما ensureClientsLoaded
+    // في App.tsx يخلص، أو موكل اتضاف/اتربط بعد التحميل الأول). بنتأكد هنا
+    // إنه فعلاً محذوف قبل ما نعرض الشارة/التحذير، بدل ما نفترض من غياب
+    // الـid عن القايمة المحلية بس.
+    useEffect(() => {
+        if (!onEnsureClientsLoaded) return;
+        const ids = [
+            caseData.client_id,
+            ...caseParties.map((p) => p.client_id),
+        ];
+        onEnsureClientsLoaded(ids);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [caseData.client_id, caseParties]);
+
+    // لما مودال الواتساب يتفتح، بنختار افتراضيًا أول موكل عنده رقم فعلي
+    // (أو أول واحد في القايمة لو مفيش حد عنده رقم) — نفس السلوك القديم
+    // بالظبط لو فيه موكل واحد بس.
+    useEffect(() => {
+        if (showWhatsApp) {
+            setSelectedWaClientId((linkedClients.find((c) => c.phone) || linkedClients[0])?.id || null);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showWhatsApp]);
+
+    const statuses: CaseStatusOption[] = [
+        {key:'نشطة', color:'emerald', icon:'⚡'},
+        {key:'مؤجلة', color:'amber', icon:'⏸'},
+        {key:'منتهية', color:'emerald', icon:'✅'},
+    ];
+
+    // جلب بيانات المكتب للواتساب
+    const [officeWA, setOfficeWA] = useState('');
+    useEffect(()=>{
+        Promise.all([
+            loadOfficeSetting('office_whatsapp'),
+            loadOfficeSetting('office_name'),
+        ]).then(([wa, name]: [string | null, string | null])=>{
+            actions.setOfficeWhatsAppName?.(name||'مكتب المحاماة');
+            setOfficeWA(wa||'');
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    },[]);
+
+    const statusStyle: Record<string, string> = {
+        'نشطة': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+        'مؤجلة': 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+        'منتهية': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+    };
+
+    const typeColors: Record<string, string> = {
+        'تجاري':'from-blue-600/30 to-blue-600/5 border-blue-500/20 text-blue-300',
+        'عمالي':'from-purple-600/30 to-purple-600/5 border-purple-500/20 text-purple-300',
+        'جنائي':'from-rose-600/30 to-rose-600/5 border-rose-500/20 text-rose-300',
+        'إداري':'from-cyan-600/30 to-cyan-600/5 border-cyan-500/20 text-cyan-300',
+        'مدني':'from-teal-600/30 to-teal-600/5 border-teal-500/20 text-teal-300',
+    };
+
+    const tColor = typeColors[caseData.type] || typeColors['تجاري'];
+
+    return React.createElement('div', {className: "fixed inset-0 z-50 bg-premium-bg flex flex-col fade-in", 'data-testid': 'case-detail-view'},
+
+        // ── SessionUpdateModal ──
+        sessionUpdateTarget && React.createElement(SessionUpdateModal, {
+            session: sessionUpdateTarget,
+            caseData: caseData,
+            db: db,
+            onClose: () => setSessionUpdateTarget(null),
+            onDone: () => fetchSessions(),
+            onNotify: onNotify
+        }),
+
+        // ── عرض المستند ──
+        viewingDoc && React.createElement(PdfViewerModal, {doc: viewingDoc, onClose: () => setViewingDoc(null)}),
+
+        // ── مودال تأكيد الحذف ──
+        confirmDeleteCase && React.createElement('div', {className: "fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"},
+            React.createElement('div', {className: "bg-premium-card border border-rose-500/20 rounded-3xl p-6 w-full max-w-sm slide-up shadow-2xl"},
+                React.createElement('div', {className: "w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center text-2xl mx-auto mb-4"}, "🗑"),
+                React.createElement('h3', {className: "text-sm font-black text-white text-center mb-2"}, "حذف القضية"),
+                React.createElement('p', {className: "text-xs text-slate-400 text-center mb-5 leading-relaxed"}, "هل أنت متأكد من حذف \""+caseData.title+"\"؟\nلن يمكن التراجع عن هذا الإجراء."),
+                React.createElement('div', {className: "flex gap-3"},
+                    React.createElement('button', {
+                        onClick: () => { onDelete?.(caseData.id); },
+                        className: "flex-1 py-3 bg-rose-500 text-white rounded-xl text-xs font-black active:scale-95 transition-all",
+                        'data-testid': 'case-delete-local-confirm'
+                    }, "نعم، احذف"),
+                    React.createElement('button', {
+                        onClick: () => setConfirmDeleteCase(false),
+                        className: "flex-1 py-3 bg-white/5 text-slate-300 rounded-xl text-xs font-black active:scale-95 transition-all"
+                    }, "إلغاء")
+                )
+            )
+        ),
+
+        // ── مودال تعديل القضية ──
+        // 🆕 (F2): items-end موبايل (زي الأصل) / items-center ديسكتوب —
+        // شكل الـpanel نفسه (rounded/border/animation) بيتحدد جوّه
+        // EditCaseModal.tsx (هو اللي بيرجّع الـdiv الداخلي فعليًا).
+        showEditCase && React.createElement('div', {className: `fixed inset-0 z-[60] flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/80 backdrop-blur-sm`},
+            React.createElement(EditCaseModal, {
+                caseData,
+                saving: savingCase,
+                onClose: () => setShowEditCase(false),
+                // 🔒 FIX (تشخيص لوجز E2E — 29 يوليو 2026): كان بيقفل مودال التعديل
+                // فورًا من غير ما ينتظر نتيجة onEdit (تكرار رقم قيد، فشل فاليديشن
+                // أطراف الدعوى...). دلوقتي بننتظر النتيجة ونقفل بس لو نجح فعلاً.
+                onSave: async (form: CaseFormSubmitData) => {
+                    const result = await onEdit?.(caseData.id, form);
+                    if (result !== false) setShowEditCase(false);
+                    // 🔒 FIX (قرارات مفتوحة — خطة حفظ المسودات، 3 أغسطس 2026):
+                    // بنرجّع النتيجة نفسها لـ EditCaseModal.tsx عشان يعرف يمسح
+                    // مسودة الفورم بس لو نجح الحفظ فعلاً (كانت بترجع undefined
+                    // دايمًا، فالمودال ماكانش عنده وسيلة يعرف بيها النتيجة).
+                    return result;
+                },
+                countryCourts: COUNTRY_CONFIGS[country as string]?.courts,
+                countryCaseTypes: COUNTRY_CONFIGS[country as string]?.caseTypes,
+                linkedClient: effectiveClient,
+                onOpenClientProfile: onOpenClientProfile ? (c: ClientRow) => { wasEditingCaseRef.current = true; setShowEditCase(false); onOpenClientProfile(c); } : undefined,
+                // ⚡ NEW (مرحلة 4 خطوة 2): لربط/إنشاء موكل لأي طرف جديد يتضاف
+                // أثناء التعديل (بخلاف linkedClient الأصلي المقفول بالفعل).
+                clients,
+                openNewClientModal,
+            })
+        ),
+
+        // ── مودال واتساب ──
+        showWhatsApp && (()=>{
+            const waNum = formatPhoneForWhatsApp(officeWA);
+            // ⚡ FIX (النقطة 4 + الإصلاح 2): بدل ما نعتمد على `client` (الأساسي
+            // القديم) بس، بنستهدف الموكل المختار حاليًا من linkedClients —
+            // نفس سلوك قديم بالظبط لو مفيش غير موكل واحد مرتبط.
+            const targetClient = linkedClients.find((c) => c.id === selectedWaClientId) || linkedClients[0] || client;
+            const clientPhone = formatPhoneForWhatsApp(targetClient?.phone);
+            const officeName = officeWhatsAppName || 'مكتب المحاماة';
+            const caseTitle = caseData.title || '—';
+            const caseNum = caseData.number && caseData.number!=='—' ? (()=>{const p=(caseData.number||'').split('/');return p.length===2?p[0]+' لسنة '+p[1]:caseData.number;})() : '';
+            const nextDate = caseData.date && caseData.date!=='—' ? caseData.date : '';
+            const clientName = targetClient?.full_name || 'الموكل الكريم';
+            const sig = `\n\nمع التقدير،\n${officeName}`;
+
+            const messages: WhatsAppMessageOption[] = [
+                {
+                    label: '📅 تأجيل الجلسة',
+                    icon: '📅',
+                    text: `السلام عليكم ورحمة الله وبركاته،\nأستاذ/ة ${clientName}،\n\nنحيطكم علماً بأنه تم تأجيل الجلسة،\nوسيتم إخطاركم بالموعد الجديد فور تحديده.${sig}`
+                },
+                {
+                    label: '📋 طلب مستندات',
+                    icon: '📋',
+                    text: `السلام عليكم ورحمة الله وبركاته،\nأستاذ/ة ${clientName}،\n\nتمهيداً للجلسة القادمة، نود إفادتكم بضرورة توفير المستندات التالية:\n- \n- \n\nيُرجى التواصل معنا في أسرع وقت ممكن.${sig}`
+                },
+                {
+                    label: '🎉 صدور حكم لصالحكم',
+                    icon: '🎉',
+                    text: `السلام عليكم ورحمة الله وبركاته،\nأستاذ/ة ${clientName}،\n\nيسعدنا إخطاركم بأن المحكمة قد أصدرت حكمها لصالحكم،\nوالحمد لله على هذا الفضل.${sig}`
+                },
+                {
+                    label: '⚖️ تحديد جلسة جديدة',
+                    icon: '⚖️',
+                    text: `السلام عليكم ورحمة الله وبركاته،\nأستاذ/ة ${clientName}،\n\nنفيدكم بأنه تم تحديد موعد الجلسة القادمة،\nوسيتم إخطاركم بالتفاصيل قريباً.${sig}`
+                },
+                {
+                    label: '📎 تسليم صورة الحكم',
+                    icon: '📎',
+                    text: `السلام عليكم ورحمة الله وبركاته،\nأستاذ/ة ${clientName}،\n\nنفيدكم بأن صورة الحكم أصبحت جاهزة للاستلام،\nيمكنكم التواصل معنا لتحديد موعد مناسب.${sig}`
+                },
+                {
+                    label: '💰 تذكير بالأتعاب',
+                    icon: '💰',
+                    text: `السلام عليكم ورحمة الله وبركاته،\nأستاذ/ة ${clientName}،\n\nتذكيراً ودياً، نرجو منكم إتمام سداد المستحقات المتفق عليها،\nوذلك حتى نتمكن من الاستمرار في تقديم أفضل خدمة قانونية لكم.${sig}`
+                },
+                {
+                    label: '✅ انتهاء القضية',
+                    icon: '✅',
+                    text: `السلام عليكم ورحمة الله وبركاته،\nأستاذ/ة ${clientName}،\n\nنسعد بإخطاركم بانتهاء إجراءات القضية،\nوقد كان شرفاً لنا خدمتكم، ونأمل أن نكون عند حسن ظنكم.${sig}`
+                },
+                {
+                    label: '📞 طلب تواصل',
+                    icon: '📞',
+                    text: `السلام عليكم ورحمة الله وبركاته،\nأستاذ/ة ${clientName}،\n\nنرجو التكرم بالتواصل معنا في أقرب وقت ممكن لمناقشة بعض المستجدات المتعلقة بقضيتكم.${sig}`
+                },
+            ];
+
+            const sendWA = (text: string) => {
+                if(!clientPhone){ toast('⚠️ لا يوجد رقم واتساب مسجل للموكل', true); return; }
+                const url = `https://wa.me/${clientPhone}?text=${encodeURIComponent(text)}`;
+                window.open(url, '_blank');
+            };
+
+            return React.createElement('div', {
+                className: "fixed inset-0 z-[70] flex items-end justify-center bg-black/80 backdrop-blur-sm",
+                onClick: (e: React.MouseEvent<HTMLDivElement>) =>{ if(e.target===e.currentTarget) setShowWhatsApp(false); }
+            },
+                React.createElement('div', {className: "bg-premium-card w-full max-w-lg rounded-t-3xl border-t border-white/10 shadow-2xl slide-up max-h-[85vh] flex flex-col"},
+                    // Header
+                    React.createElement('div', {className: "px-6 pt-5 pb-4 border-b border-white/5 shrink-0"},
+                        React.createElement('div', {className: "w-10 h-1 bg-white/20 rounded-full mx-auto mb-4"}),
+                        React.createElement('div', {className: "flex items-center justify-between"},
+                            React.createElement('div', {className: "flex items-center gap-2.5"},
+                                React.createElement('div', {className: "w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center text-lg"}, "💬"),
+                                React.createElement('div', null,
+                                    React.createElement('p', {className: "text-sm font-black text-white"}, "مراسلة الموكل"),
+                                    React.createElement('p', {className: "text-[10px] text-slate-500"}, clientPhone ? `📱 ${targetClient?.phone}` : "لا يوجد رقم واتساب مسجل للموكل")
+                                )
+                            ),
+                            React.createElement('button', {onClick: ()=>setShowWhatsApp(false), className: "w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-slate-400"}, "✕")
+                        ),
+                        // ⚡ NEW (الإصلاح 2): لو فيه أكتر من موكل مرتبط بالقضية، بنعرض
+                        // شرائط اختيار المستلم بدل ما نرسل بصمت للموكل الأساسي القديم
+                        // بس — القضية ممكن يكون فيها مدعي ومدعى عليه كلاهما موكلين مثلاً.
+                        linkedClients.length > 1 && React.createElement('div', {className: "flex flex-wrap gap-1.5 mt-3"},
+                            linkedClients.map((c: ClientRow) => React.createElement('button', {
+                                key: c.id,
+                                type: 'button',
+                                onClick: () => setSelectedWaClientId(c.id),
+                                className: `text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-colors ${c.id === selectedWaClientId ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' : 'bg-white/5 border-white/10 text-slate-400'}`,
+                            }, c.full_name || 'بلا اسم'))
+                        )
+                    ),
+                    // رسائل
+                    React.createElement('div', {className: "overflow-y-auto no-scrollbar p-4 space-y-2.5"},
+                        messages.map((msg: WhatsAppMessageOption, i: number) =>
+                            React.createElement('button', {
+                                key: i,
+                                onClick: () => sendWA(msg.text),
+                                className: "w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white/3 border border-white/8 hover:bg-emerald-500/10 hover:border-emerald-500/20 active:scale-[0.98] transition-all text-right"
+                            },
+                                React.createElement('span', {className: "text-xl shrink-0"}, msg.icon),
+                                React.createElement('div', {className: "flex-1"},
+                                    React.createElement('p', {className: "text-xs font-black text-white"}, msg.label),
+                                    React.createElement('p', {className: "text-[10px] text-slate-500 mt-0.5 line-clamp-1"},
+                                        msg.text.split('\n').filter((l: string) =>l.trim()&&!l.includes('السلام'))[0]||''
+                                    )
+                                ),
+                                React.createElement('span', {className: "text-emerald-400 text-sm shrink-0"}, "↗")
+                            )
+                        )
+                    )
+                )
+            );
+        })(),
+
+        // ── Hero Header ──
+        React.createElement('div', {className: `relative bg-gradient-to-b ${tColor.split(' ').slice(0,2).join(' ')} border-b border-white/5 pb-0 overflow-hidden`},
+            // خلفية زخرفية
+            React.createElement('div', {className: "absolute inset-0 overflow-hidden pointer-events-none"},
+                React.createElement('div', {className: "absolute -top-20 -right-20 w-64 h-64 rounded-full bg-white/3 blur-3xl"}),
+                React.createElement('div', {className: "absolute top-10 left-10 w-32 h-32 rounded-full bg-premium-gold/5 blur-2xl"}),
+                // خطوط زخرفية
+                React.createElement('div', {style:{position:'absolute',top:0,right:0,width:'100%',height:'100%',backgroundImage:'repeating-linear-gradient(45deg, transparent, transparent 40px, rgba(255,255,255,0.01) 40px, rgba(255,255,255,0.01) 80px)', pointerEvents:'none'}})
+            ),
+
+            // شريط التنقل العلوي
+            React.createElement('div', {className: "relative z-10 flex items-center justify-between px-4 pt-4 pb-3"},
+                React.createElement('button', {
+                    onClick: onClose,
+                    'data-testid': 'case-detail-close',
+                    className: "flex items-center gap-1.5 text-white/70 hover:text-white transition-colors active:scale-95"
+                },
+                    React.createElement(I.ChevronLeft),
+                    React.createElement('span', {className: "text-xs font-bold"}, "القضايا")
+                ),
+                React.createElement('div', {className: "flex items-center gap-2"},
+                    // زر تصدير PDF
+                    React.createElement('button', {
+                        onClick: handleExportPdf,
+                        disabled: exportingPdf,
+                        title: "تصدير PDF",
+                        className: "w-8 h-8 rounded-xl bg-premium-gold/10 border border-premium-gold/20 flex items-center justify-center text-premium-gold hover:bg-premium-gold/20 active:scale-90 transition-all disabled:opacity-50"
+                    }, exportingPdf ? React.createElement(I.Spin) : React.createElement('span',{className:"text-sm"},"📄")),
+                    // زر واتساب
+                    React.createElement('button', {
+                        onClick: () => setShowWhatsApp(true),
+                        title: "مراسلة الموكل واتساب",
+                        className: "w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 hover:bg-emerald-500/20 active:scale-90 transition-all"
+                    }, React.createElement('span', {className: "text-sm"}, "💬")),
+                    // زر تعديل
+                    React.createElement('button', {
+                        onClick: () => setShowEditCase(true),
+                        'data-testid': 'edit-case-trigger',
+                        className: "w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-premium-gold hover:border-premium-gold/30 active:scale-90 transition-all"
+                    }, React.createElement(I.Edit)),
+                    // زر حذف
+                    React.createElement('button', {
+                        onClick: () => setConfirmDeleteCase(true),
+                        className: "w-8 h-8 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 hover:bg-rose-500/20 active:scale-90 transition-all",
+                        'data-testid': 'case-delete-trigger'
+                    }, React.createElement(I.Trash)),
+                    // بادج الحالة (عرض فقط - التغيير من مودال التعديل)
+                    React.createElement('div', {
+                        className: `flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[10px] font-black ${statusStyle[caseData.status] || statusStyle['نشطة']}`
+                    },
+                        React.createElement('span', null, statuses.find((s: CaseStatusOption) =>s.key===caseData.status)?.icon || '⚡'),
+                        React.createElement('span', null, caseData.status || 'نشطة')
+                    )
+                )
+            ),
+
+            // معلومات القضية الرئيسية
+            React.createElement('div', {className: "relative z-10 px-5 pb-5"},
+                // نوع القضية badge
+                React.createElement('div', {className: "inline-flex items-center gap-1.5 mb-3"},
+                    React.createElement('div', {className: `px-2.5 py-1 rounded-lg border text-[9px] font-black tracking-widest uppercase ${tColor.split(' ').slice(2).join(' ')}`},
+                        React.createElement(I.Scale),
+                    ),
+                    React.createElement('span', {className: "text-[10px] font-black text-white/60 tracking-wider"}, caseData.type)
+                ),
+
+                React.createElement('h1', {className: "text-lg font-black text-white leading-tight mb-2 ml-2", 'data-testid': 'case-detail-title'}, caseData.title),
+
+                // أسماء الخصوم
+                (()=>{
+                    // 🆕 (خطة "المسمى القانوني" — مرحلة 5، بند 4): مصدر البيانات
+                    // الموحّد الجديد — لو caseParties فيها صفوف (القضية دخل عليها
+                    // بيانات فعليًا من الفورم الجديد)، الهيدر بيعرض من هنا بالظبط
+                    // زي InfoSection.tsx (نفس summarizePartySide)، بدل الأعمدة
+                    // القديمة (plaintiff/defendant) اللي كان بيقرا منها بس قبل كده
+                    // — تفاديًا لظهور بيانات مختلفة بين الهيدر وتاب "بيانات
+                    // القضية" لنفس القضية (المشكلة الموثّقة في قسم 5-4 من الخطة).
+                    // لو الجهة فيها أكتر من شخص ومسمى قانوني مكتوب: بيتعرض المسمى
+                    // بدل اسم أول شخص، والـ "+N آخرين" مكان الصفة.
+                    const fromParties = (side: 'plaintiff' | 'defendant') => {
+                        const list = caseParties.filter((row) => row.side === side);
+                        const summary = summarizePartySide(list);
+                        if (!summary) return null;
+                        const legalTitle = (side === 'plaintiff' ? caseData.plaintiff_legal_title : caseData.defendant_legal_title) || '';
+                        if (summary.othersCount > 0) {
+                            // ⚡ FIX (توحيد المسمى القانوني الجامع — 8 أغسطس 2026):
+                            // لو المسمى المكتوب صفة إجرائية عامة بس (زي "متهمين")
+                            // بدل مسمى مميّز فعلي (زي "ورثة فلان")، مبنستخدموش هنا
+                            // خالص — بيرجع الاسم الحقيقي بدل ما يطلع تركيب شاذ
+                            // زي "متهمين ضد فلان". شوف effectiveLegalTitleForDisplay.
+                            return {
+                                name: effectiveLegalTitleForDisplay(legalTitle) || summary.primaryName,
+                                capacity: `+${summary.othersCount} ${summary.othersCount === 1 ? 'آخر' : 'آخرين'}`,
+                            };
+                        }
+                        return { name: summary.primaryName, capacity: summary.primaryCapacity };
+                    };
+
+                    // ⚡ فولباك للقضايا القديمة (لسه معندهاش أي صف في case_parties):
+                    // نفس منطق الاستخراج القديم بالحرف — كان بيتم استخراج الصفة
+                    // بـ regex من نص plaintiff/defendant (نمط "الاسم (الصفة)")،
+                    // رغم إن عمود plaintiff_role/defendant_role موجود ومتعبي
+                    // فعليًا في جدول cases. دلوقتي بنعرض من العمود المخصص مباشرة —
+                    // الـ fallback على الـ regex بس لصفوف قديمة لسه معندهاش
+                    // plaintiff_role (قبل تشغيل migration الـ backfill).
+                    // ⚠️ وبيتقسم بس لو اللي جوه القوسين كلمة صفة قانونية معروفة، عشان
+                    // مايتقطعش جزء من اسم شركة زي "(ش.م.م)".
+                    const knownCapacityPattern = /مدعي|مدعى عليه|مستأنف|طاعن|مطعون ضده|متهم|مجني عليه|محكوم عليه|خصم|مدين|دائن|موكل|وكيل|طالب|مطلوب ضده|منفذ ضده/;
+                    const splitParty = (val: string | null) => {
+                        if(!val) return {name:'—', capacity:''};
+                        const m = val.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+                        if(m && knownCapacityPattern.test(m[2])) return {name:m[1].trim(), capacity:m[2].trim()};
+                        return {name:val, capacity:''};
+                    };
+                    const legacyP = caseData.plaintiff_role
+                        ? {name: caseData.plaintiff || '—', capacity: caseData.plaintiff_role}
+                        : splitParty(caseData.plaintiff);
+                    const legacyD = caseData.defendant_role
+                        ? {name: caseData.defendant || '—', capacity: caseData.defendant_role}
+                        : splitParty(caseData.defendant);
+
+                    const hasPartyRows = caseParties.length > 0;
+                    // ⚠️ fromParties بترجع null لو الجهة فاضية بالكامل (لسه حصل
+                    // نادرًا — case_parties موجودة للقضية لكن جهة فيها صفر صفوف
+                    // مسمّاة) — بنرجع لنفس شكل '—' الفارغ الافتراضي القديم.
+                    const p = (hasPartyRows ? fromParties('plaintiff') : legacyP) || {name:'—', capacity:''};
+                    const d = (hasPartyRows ? fromParties('defendant') : legacyD) || {name:'—', capacity:''};
+                    const shouldRender = hasPartyRows ? (fromParties('plaintiff') || fromParties('defendant')) : (caseData.plaintiff || caseData.defendant);
+                    return shouldRender && React.createElement('div',{className:"flex items-center gap-2 mb-3 flex-wrap"},
+                        React.createElement('div',{className:"flex flex-col"},
+                            React.createElement('span',{className:"text-[11px] font-black text-emerald-400 leading-tight"},p.name),
+                            p.capacity && React.createElement('span',{className:"text-[9px] font-bold text-emerald-400/60 leading-tight"},p.capacity)
+                        ),
+                        React.createElement('span',{className:"text-[10px] font-black text-purple-400 px-1.5 py-0.5 rounded-md shrink-0",style:{background:'rgba(168,85,247,0.12)'}},"ضد"),
+                        React.createElement('div',{className:"flex flex-col"},
+                            React.createElement('span',{className:"text-[11px] font-black text-rose-400 leading-tight"},d.name),
+                            d.capacity && React.createElement('span',{className:"text-[9px] font-bold text-rose-400/60 leading-tight"},d.capacity)
+                        )
+                    );
+                })(),
+
+                React.createElement('div', {className: "flex flex-wrap gap-x-4 gap-y-2"},
+                    caseData.number !== '—' && React.createElement('div', {className: "flex items-center gap-1.5"},
+                        React.createElement('span', {className: "text-[9px] text-white/40 font-bold"}, "رقم القيد"),
+                        React.createElement('span', {className: "text-[10px] text-premium-gold font-black font-mono"},
+                            (()=>{const p=(caseData.number||'').split('/');return p.length===2?p[0]+' لسنة '+p[1]:caseData.number;})()
+                        )
+                    ),
+                    React.createElement('div', {className: "flex items-center gap-1.5"},
+                        React.createElement('span', {className: "text-[9px] text-white/40 font-bold"}, "المحكمة"),
+                        React.createElement('span', {className: "text-[10px] text-white/80 font-bold"}, caseData.court)
+                    ),
+                    // ⚡ FIX (تقرير التحقّق — النقطة 4 + الإصلاح 2): كان بيعرض
+                    // `client` (الأساسي القديم) بس — دلوقتي بيعرض كل الموكلين
+                    // المرتبطين فعليًا (linkedClients)، بعنوان "الموكل"/"الموكلون (N)".
+                    (linkedClients.length > 0 || orphanedPartiesCount > 0) && React.createElement('div', {className: "flex items-center gap-1.5 flex-wrap"},
+                        linkedClients.length > 0 && React.createElement(React.Fragment, null,
+                            React.createElement('span', {className: "text-[9px] text-white/40 font-bold"}, linkedClients.length > 1 ? `الموكلون (${linkedClients.length})` : "الموكل"),
+                            ...linkedClients.map((c: ClientRow) => React.createElement('span', {key: c.id, className: "flex items-center gap-1"},
+                                React.createElement('span', {className: "text-[10px] text-emerald-400 font-black"}, c.full_name),
+                                c.phone && React.createElement('a',{href:`tel:${c.phone}`,className:"text-[9px] text-slate-500"},c.phone)
+                            ))
+                        ),
+                        // ⚡ NEW (المرحلة 3 — سد فجوة 5.3): شارة "موكل محذوف" لو فيه
+                        // طرف عنده client_id لكن الموكل اتمسح — بتظهر جنب قائمة
+                        // الموكلين الأحياء، أو لوحدها لو مفيش أي موكل حي أصلًا.
+                        orphanedPartiesCount > 0 && React.createElement('span', {
+                            className: "text-[9px] px-1.5 py-0.5 rounded-full border text-violet-400 bg-violet-500/10 border-violet-500/20 font-bold",
+                            'data-testid': 'case-detail-orphaned-clients-badge',
+                        }, `🟣 ${orphanedPartiesCount} موكل محذوف`)
+                    )
+                )
+            ),
+
+            // Tabs
+            React.createElement('div', {className: "relative z-10 flex border-t border-white/5"},
+                ([
+                    {key:'timeline', label:'الجلسات', icon:'🗓'},
+                    {key:'notes', label:'الملاحظات', icon:'📝'},
+                    {key:'docs', label:'المستندات', icon:'📁'},
+                    {key:'info', label:'البيانات', icon:'📋'},
+                    {key:'checklist', label:'المراجعة', icon:'🩺'},
+                ] as CaseDetailTab[]).map((tab) =>
+                    React.createElement('button', {
+                        key: tab.key,
+                        onClick: () => setActiveSection(tab.key),
+                        'data-testid': 'case-tab-' + tab.key,
+                        className: `flex-1 flex flex-col items-center gap-0.5 py-3 text-[9px] font-black transition-all ${activeSection === tab.key ? 'text-premium-gold border-b-2 border-premium-gold' : 'text-white/40 border-b-2 border-transparent'}`
+                    },
+                        React.createElement('span', {className: "text-base leading-none"}, tab.icon),
+                        tab.label
+                    )
+                )
+            )
+        ),
+
+        // ── المحتوى ──
+        React.createElement('div', {className: "flex-1 overflow-y-auto no-scrollbar px-4 py-4 pb-28"},
+
+            // ═══ Timeline الجلسات ═══
+            activeSection === 'timeline' && React.createElement(TimelineSection, { showAddSession, setShowAddSession, sessionForm, setSessionForm, handleAddSession, savingSession, loadingSessions, sessions, editingSession, setEditingSession, handleUpdateSession, setSessionUpdateTarget, deletingSessionId, setConfirmDeleteSession }), // end sessions outer div
+
+            // ═══ الملاحظات ═══
+            activeSection === 'notes' && React.createElement(NotesSection, { showAddNote, setShowAddNote, noteText, setNoteText, handleAddNote, savingNote, loadingSessions, notes, editingNoteId, setEditingNoteId, editingNoteText, setEditingNoteText, handleUpdateNote, deletingNoteId, setConfirmDeleteNote }),
+
+            // ═══ المستندات ═══
+            activeSection === 'docs' && React.createElement(DocsSection, { fileInputRef, handleFileSelect, showDocForm, setShowDocForm, pendingFile, setPendingFile, docLabel, setDocLabel, docCategory, setDocCategory, handleUploadDoc, uploadingDoc, docs, docSearch, setDocSearch, loadingSessions, setViewingDoc, setConfirmDeleteDoc, deletingDocId }),
+
+            // ═══ البيانات ═══
+            activeSection === 'info' && React.createElement(InfoSection, {
+                caseData, client: effectiveClient, sessions, notes, docs, clients, linkingClient,
+                caseParties,
+                // ⚡ NEW (توسيع كارت الموكل — 8 أغسطس 2026): linkedClients
+                // كانت محسوبة فوق أصلًا (الهيدر السريع + مودال الواتساب)
+                // ومش بتوصّل لـInfoSection — بنمررها هنا عشان كارت
+                // "— الموكلين —" الجديد يعرض كل الموكلين المرتبطين فعليًا.
+                linkedClients,
+                onLinkClient: async (clientId: string) => {
+                    if (!onLinkClient) return;
+                    setLinkingClient(true);
+                    try { await onLinkClient(caseData.id, clientId); }
+                    finally { setLinkingClient(false); }
+                },
+                // ⚡ NEW (Phase 3 — 4 أغسطس 2026): مرآة لـ onLinkClient فوق بس
+                // لطرف بعينه — onAfterLink بتنادي fetchSessions() تاني عشان
+                // caseParties (والوسم/الزرار الخاص بالطرف ده) تتحدّث فورًا،
+                // بنفس نمط onCreateAndLinkClientForParty تحت بالظبط.
+                onLinkClientForParty: onLinkClientForParty
+                    ? async (partyId: string, clientId: string, isPrimaryParty: boolean, knownUpdatedAt: string | null) => {
+                        setLinkingClient(true);
+                        try { await onLinkClientForParty(caseData.id, partyId, clientId, isPrimaryParty, knownUpdatedAt, () => fetchSessions()); }
+                        finally { setLinkingClient(false); }
+                      }
+                    : undefined,
+                onCreateAndLinkClient: onCreateAndLinkClient
+                    ? () => onCreateAndLinkClient(caseData.id, caseData.plaintiff || '', caseData.plaintiff_national_id, caseData.plaintiff_power_of_attorney, caseData.plaintiff_address)
+                    : undefined,
+                // ⚡ NEW (مرحلة 13.1): onAfterLink بتنادي fetchSessions تاني —
+                // caseParties (وبالتبعية الوسم/الزرار الخاص بالطرف ده) بتتحدّث
+                // فورًا من غير ما نستنى إعادة فتح تفاصيل القضية.
+                onCreateAndLinkClientForParty: onCreateAndLinkClientForParty
+                    ? (party: CasePartyRow, isPrimaryParty: boolean) =>
+                        onCreateAndLinkClientForParty(caseData.id, party, isPrimaryParty, () => fetchSessions())
+                    : undefined,
+                unlinkingClient,
+                onUnlinkClient: onUnlinkClient ? async () => {
+                    setUnlinkingClient(true);
+                    try { await onUnlinkClient(caseData.id); }
+                    finally { setUnlinkingClient(false); }
+                } : undefined,
+                // ⚡ NEW ("إصلاح 5" — 5 أغسطس 2026): مرآة لـ onUnlinkClient فوق
+                // بس لطرف بعينه — onAfterLink بتنادي fetchSessions() تاني عشان
+                // caseParties (والوسم/الزرار الخاص بالطرف ده) تتحدّث فورًا،
+                // بنفس نمط onLinkClientForParty فوق بالظبط.
+                onUnlinkClientForParty: onUnlinkClientForParty
+                    ? async (partyId: string, isPrimaryParty: boolean, knownUpdatedAt: string | null) => {
+                        setUnlinkingClient(true);
+                        try { await onUnlinkClientForParty(caseData.id, partyId, isPrimaryParty, knownUpdatedAt, () => fetchSessions()); }
+                        finally { setUnlinkingClient(false); }
+                      }
+                    : undefined,
+            }),
+
+            // ═══ المراجعة (نواقص الملف) — Rule-based بدون AI، المرحلة 1 من خطة المساعد الذكي ═══
+            activeSection === 'checklist' && React.createElement(ChecklistSection, { caseData, client: effectiveClient, sessions, notes, docs, caseParties, onGoToTab: setActiveSection })
+        ),
+
+        // ── مودال تأكيد حذف الجلسة ──
+        confirmDeleteSession && React.createElement('div', {className: "fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"},
+            React.createElement('div', {className: "bg-premium-card border border-rose-500/20 rounded-3xl p-6 w-full max-w-sm slide-up shadow-2xl"},
+                React.createElement('div', {className: "w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center text-2xl mx-auto mb-4"}, "🗑"),
+                React.createElement('h3', {className: "text-sm font-black text-white text-center mb-2"}, "حذف الجلسة"),
+                React.createElement('p', {className: "text-xs text-slate-400 text-center mb-5 leading-relaxed"},
+                    "هل أنت متأكد من حذف جلسة " + (confirmDeleteSession.date || '—') + "؟\nلن يمكن التراجع عن هذا الإجراء."
+                ),
+                React.createElement('div', {className: "flex gap-3"},
+                    React.createElement('button', {
+                        onClick: async () => {
+                            const id = confirmDeleteSession.id;
+                            setConfirmDeleteSession(null);
+                            setDeletingSessionId(id);
+                            await handleDeleteSession(id);
+                            setDeletingSessionId(null);
+                        },
+                        'data-testid': 'confirm-delete-session-yes',
+                        className: "flex-1 py-3 bg-rose-500 text-white rounded-xl text-xs font-black active:scale-95 transition-all"
+                    }, "نعم، احذف"),
+                    React.createElement('button', {
+                        onClick: () => setConfirmDeleteSession(null),
+                        'data-testid': 'confirm-delete-session-cancel',
+                        className: "flex-1 py-3 bg-white/5 text-slate-300 rounded-xl text-xs font-black active:scale-95 transition-all"
+                    }, "إلغاء")
+                )
+            )
+        ),
+
+        // ── مودال تأكيد حذف الملاحظة ──
+        confirmDeleteNote && React.createElement('div', {className: "fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"},
+            React.createElement('div', {className: "bg-premium-card border border-rose-500/20 rounded-3xl p-6 w-full max-w-sm slide-up shadow-2xl"},
+                React.createElement('div', {className: "w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center text-2xl mx-auto mb-4"}, "🗑"),
+                React.createElement('h3', {className: "text-sm font-black text-white text-center mb-2"}, "حذف الملاحظة"),
+                React.createElement('p', {className: "text-xs text-slate-400 text-center mb-5 leading-relaxed"},
+                    confirmDeleteNote.preview
+                        ? "\"" + confirmDeleteNote.preview + (confirmDeleteNote.preview.length >= 40 ? "…" : "") + "\"\n\nهل أنت متأكد من الحذف؟ لن يمكن التراجع."
+                        : "هل أنت متأكد من حذف الملاحظة؟ لن يمكن التراجع."
+                ),
+                React.createElement('div', {className: "flex gap-3"},
+                    React.createElement('button', {
+                        onClick: async () => {
+                            const id = confirmDeleteNote.id;
+                            setConfirmDeleteNote(null);
+                            setDeletingNoteId(id);
+                            await handleDeleteNote(id);
+                            setDeletingNoteId(null);
+                        },
+                        'data-testid': 'note-delete-confirm',
+                        className: "flex-1 py-3 bg-rose-500 text-white rounded-xl text-xs font-black active:scale-95 transition-all"
+                    }, "نعم، احذف"),
+                    React.createElement('button', {
+                        onClick: () => setConfirmDeleteNote(null),
+                        'data-testid': 'note-delete-cancel',
+                        className: "flex-1 py-3 bg-white/5 text-slate-300 rounded-xl text-xs font-black active:scale-95 transition-all"
+                    }, "إلغاء")
+                )
+            )
+        ),
+
+        // ── مودال تأكيد حذف المستند (BUG-14 FIX) ──
+        confirmDeleteDoc && React.createElement('div', {className: "fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"},
+            React.createElement('div', {className: "bg-premium-card border border-rose-500/20 rounded-3xl p-6 w-full max-w-sm slide-up shadow-2xl"},
+                React.createElement('div', {className: "w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center text-2xl mx-auto mb-4"}, "📄"),
+                React.createElement('h3', {className: "text-sm font-black text-white text-center mb-2"}, "حذف المستند"),
+                React.createElement('p', {className: "text-xs text-slate-400 text-center mb-5 leading-relaxed"},
+                    "\"" + confirmDeleteDoc.file_name + "\"\n\nسيُحذف من التخزين وقاعدة البيانات ولا يمكن التراجع."
+                ),
+                React.createElement('div', {className: "flex gap-3"},
+                    React.createElement('button', {
+                        'data-testid': 'doc-delete-confirm',
+                        onClick: async () => {
+                            const doc = confirmDeleteDoc;
+                            setConfirmDeleteDoc(null);
+                            await handleDeleteDoc(doc);
+                        },
+                        className: "flex-1 py-3 bg-rose-500 text-white rounded-xl text-xs font-black active:scale-95 transition-all"
+                    }, "نعم، احذف"),
+                    React.createElement('button', {
+                        'data-testid': 'doc-delete-cancel',
+                        onClick: () => setConfirmDeleteDoc(null),
+                        className: "flex-1 py-3 bg-white/5 text-slate-300 rounded-xl text-xs font-black active:scale-95 transition-all"
+                    }, "إلغاء")
+                )
+            )
+        )
+    );
+}
+
+export default CaseDetailView;
