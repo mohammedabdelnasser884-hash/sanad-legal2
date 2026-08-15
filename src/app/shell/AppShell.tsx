@@ -65,7 +65,7 @@ export interface AppShellProps {
     /** كل أبناء الـ shell الجذري — نفس الأبناء الموجودين حاليًا داخل
      *  الـ div الجذري في App.tsx (Header + HeaderMenu + main + CommandDock
      *  + AppModals + ExitConfirmModal)، ممرّرين زي ما هم من غير أي تعديل. */
-    children: React.ReactNode;
+    children?: React.ReactNode;
     /** أي className إضافي (اختياري) — يتضاف بعد الافتراضي، بدون استبداله. */
     className?: string;
     /** التاب الحالي — لو متوفر مع setTab، AppShell بيقرر عرض DesktopSidebar
