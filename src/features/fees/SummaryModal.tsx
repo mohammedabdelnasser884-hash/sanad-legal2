@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { CaseFeeRow } from '../../types';
 
 interface SummaryModalProps {
@@ -17,13 +18,18 @@ function SummaryModal({
   showSummaryModal, setShowSummaryModal, loadingSummary, fmt,
   grandTotal, grandPaid, grandRemaining, feesByCategory,
 }: SummaryModalProps) {
+  // 🆕 (دفعة 2.3 — تقرير تشخيص تجربة سطح المكتب): نفس نمط SessionUpdateModal.tsx/
+  // FeesTab.tsx — حدود ذهبية كاملة (border-t) مش border-white/10، فبنستبدل بس
+  // جزء الاستدارة/الأنيميشن/المحاذاة ونسيب لون الحدود زي ما هو.
+  const modalPresentation = useModalPresentation();
+
   return showSummaryModal && createPortal(React.createElement('div',{
             'data-testid':'fees-summary-modal',
-            className:"fixed inset-0 z-[70] flex items-end justify-center bg-black/80 backdrop-blur-sm",
+            className:`fixed inset-0 z-[70] flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/80 backdrop-blur-sm`,
             onClick:(e: React.MouseEvent<HTMLDivElement>) => { if(e.target===e.currentTarget) setShowSummaryModal(false); }
         },
         React.createElement('div',{
-            className:"bg-premium-card w-full max-w-lg border-t border-premium-gold/20 rounded-t-3xl overflow-y-auto no-scrollbar shadow-2xl max-h-[90vh] slide-up",
+            className:`bg-premium-card w-full max-w-lg ${modalPresentation.isDesktop ? 'border border-premium-gold/20 rounded-3xl' : 'border-t border-premium-gold/20 rounded-t-3xl'} overflow-y-auto no-scrollbar shadow-2xl max-h-[90vh] ${modalPresentation.panelAnimationClassName}`,
             onClick:(e: React.MouseEvent<HTMLDivElement>) =>e.stopPropagation()
         },
             React.createElement('div',{className:"p-5 space-y-4"},
