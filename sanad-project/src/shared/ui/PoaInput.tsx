@@ -1,0 +1,115 @@
+import React from 'react';
+import { onlyDigits as onlyDigitsN } from '../lib/sanitize';
+
+// ══════════════════════════════════════════════════════════════
+//  PoaInput — حقل "بيانات التوكيل" الموحّد، مستخدم في كل الفورمات
+//  اللي فيها رقم توكيل (إضافة/تعديل موكل، جلسة مستقلة، إضافة/تعديل
+//  قضية). سطر واحد فيه 4 خانات: رقم / حرف / سنة / مكتب التوثيق —
+//  بيتخزنوا في عمود نص واحد بصيغة "رقم/حرف/سنة/مكتب" (نفس فاصل "/"
+//  اللي كان مستخدم أصلاً في placeholder القديم "2024/أ/1234").
+// ══════════════════════════════════════════════════════════════
+
+export interface PoaValue {
+    number: string;
+    letters: string;
+    year: string;
+    office: string;
+}
+
+
+// حروف عربية فقط (بدون أرقام أو رموز)، بحد أقصى معيّن من الخانات
+const onlyArabicLetters = (v: string, max: number) => v.replace(/[^\u0600-\u06FF]/g, '').slice(0, max);
+
+/**
+ * يحوّل النص المخزّن (عمود واحد) لـ 4 أجزاء منفصلة.
+ * لو النص مش بصيغة "رقم/حرف/سنة/مكتب" (مثلاً بيانات قديمة اتكتبت حرة قبل
+ * ما الحقل يتقسّم) — بنحط النص كله في خانة "مكتب التوثيق" الحرة عشان
+ * البيانات القديمة متضيعش، والمستخدم يقدر يعيد صياغتها بالتقسيم الجديد.
+ */
+export function parsePoaString(v: string | null | undefined): PoaValue {
+    // 🔒 FIX (3 أغسطس 2026): كان .trim() هنا بيتطبّق على السلسلة كلها،
+    // ومكتب التوثيق هو آخر جزء فيها — فأي مسافة يكتبها المستخدم داخل
+    // اسم المكتب (بين كلمتين) كانت تقع آخر حرف في السلسلة كلها لحظيًا
+    // وتُمسح فورًا في كل re-render، فيتحول "مكتب الشهر" إلى "مكتبالشهر"
+    // بلا مسافة أبدًا. الـ.trim() دلوقتي بس لفحص الفراغ، مش بيعدّل raw
+    // نفسها المستخدمة في split.
+    const raw = v || '';
+    if (!raw.trim()) return { number: '', letters: '', year: '', office: '' };
+    const parts = raw.split('/');
+    if (parts.length === 4) {
+        return {
+            number: onlyDigitsN(parts[0], 5),
+            letters: onlyArabicLetters(parts[1], 2),
+            year: onlyDigitsN(parts[2], 4),
+            // بلا .trim() هنا — نفس السبب فوق؛ التنظيف من مسافات زايدة في
+            // الطرفين (لو حصلت) بيحصل وقت الحفظ الفعلي في الفورم الأب،
+            // مش هنا في كل ضغطة مفتاح.
+            office: parts[3],
+        };
+    }
+    return { number: '', letters: '', year: '', office: raw.trim() };
+}
+
+/** يجمّع الـ 4 أجزاء في نص واحد جاهز للتخزين في عمود الداتابيز */
+export function formatPoaValue(v: PoaValue): string {
+    if (!v.number && !v.letters && !v.year && !v.office) return '';
+    return [v.number, v.letters, v.year, v.office].join('/');
+}
+
+const boxCls = 'w-full px-2 py-2.5 text-[11px] text-center rounded-lg border border-white/10 bg-premium-bg text-white placeholder-slate-600 transition-colors';
+const boxStyle = { fontFamily: 'Cairo,sans-serif' };
+
+// ⚡ NEW (خطة توحيد مصدر بيانات الموكل، مرحلة 2): دعم readOnly عشان
+// EditCaseModal يقدر يقفل حقل التوكيل لما القضية مربوطة بموكل من النظام
+// (نفس فكرة قفل باقي حقول الموكل — القيمة الحية بتيجي من ملف الموكل نفسه).
+const boxClsReadOnly = 'w-full px-2 py-2.5 text-[11px] text-center rounded-lg border border-white/10 bg-white/5 text-slate-300 cursor-not-allowed';
+
+// 🔒 FIX (تحليل لوجز E2E — 12 أغسطس 2026): مفيش data-testid خالص على أي
+// من الخانات الأربعة، فمن ساعة ما "بيانات التوكيل" بقت إجبارية عند إضافة
+// موكل جديد (اليوم نفسه)، E2E مبقتش قادرة تملأ الحقل ده أصلاً بـ
+// getByTestId — كل تست بيعمل createClient() كان بيقف على توست
+// "بيانات التوكيل إجبارية" ومايكملش. بنضيف testIdPrefix اختياري (زي tid()
+// في PartyFields.tsx) عشان كل مكان يستخدم PoaInput يقدر يدّي بادئة فريدة
+// (منعًا لتكرار نفس الـtestid لو المكوّن اتكرر أكتر من مرة في نفس الصفحة،
+// زي كل طرف في PartyFieldsGroup).
+export const PoaInput = ({ label = 'بيانات التوكيل', value, onChange, required, readOnly, testIdPrefix }: {
+    label?: string; value: string; onChange: (next: string) => void; required?: boolean; readOnly?: boolean; testIdPrefix?: string;
+}) => {
+    const parsed = parsePoaString(value);
+    const update = (patch: Partial<PoaValue>) => onChange(formatPoaValue({ ...parsed, ...patch }));
+    const cls = readOnly ? boxClsReadOnly : boxCls;
+    const tid = (suffix: string) => testIdPrefix ? `${testIdPrefix}-${suffix}` : undefined;
+
+    return React.createElement('div', null,
+        label && React.createElement('label', { className: 'block text-[10px] font-bold text-slate-400 mb-1.5' },
+            label,
+            required && React.createElement('span', { className: 'text-rose-400 mr-1' }, '*')
+        ),
+        // سطر واحد بـ 4 خانات: رقم (ضيقة) / حرف (ضيقة) / سنة (ضيقة) / مكتب توثيق (واسعة)
+        React.createElement('div', { className: 'grid gap-1.5', style: { gridTemplateColumns: '1.1fr 0.9fr 1.1fr 2fr' } },
+            React.createElement('input', {
+                value: parsed.number, readOnly,
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) => update({ number: onlyDigitsN(e.target.value, 5) }),
+                placeholder: 'رقم', inputMode: 'numeric', maxLength: 5,
+                className: cls, style: boxStyle, 'data-testid': tid('number'),
+            }),
+            React.createElement('input', {
+                value: parsed.letters, readOnly,
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) => update({ letters: onlyArabicLetters(e.target.value, 2) }),
+                placeholder: 'حرف', maxLength: 2,
+                className: cls, style: boxStyle, 'data-testid': tid('letters'),
+            }),
+            React.createElement('input', {
+                value: parsed.year, readOnly,
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) => update({ year: onlyDigitsN(e.target.value, 4) }),
+                placeholder: 'سنة', inputMode: 'numeric', maxLength: 4,
+                className: cls, style: boxStyle, 'data-testid': tid('year'),
+            }),
+            React.createElement('input', {
+                value: parsed.office, readOnly,
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) => update({ office: e.target.value }),
+                placeholder: 'مكتب التوثيق', className: cls, style: { ...boxStyle, textAlign: 'right' as const }, 'data-testid': tid('office'),
+            }),
+        )
+    );
+};
