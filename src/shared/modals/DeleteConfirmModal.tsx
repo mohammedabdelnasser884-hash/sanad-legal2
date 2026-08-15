@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { I } from '../../constants';
+import { useModalPresentation } from '../hooks/useModalPresentation';
 
 interface DeleteConfirmModalProps {
     title?: string;
@@ -26,6 +27,12 @@ function DeleteConfirmModal({ title, itemName, itemType, onConfirm, onConfirmArc
     const [typed, setTyped] = useState('');
     const [chosenMode, setChosenMode] = useState<'delete' | 'archive' | null>(null);
     const isMatch = typed.trim() === (itemName||'').trim();
+    // 🆕 (دفعة 2.3 — تقرير تشخيص تجربة سطح المكتب): المودال ده أصلًا مركزي
+    // (items-center + rounded-3xl) حتى على الموبايل — مش Bottom Sheet خالص —
+    // فمش محتاج overlayAlignClassName/panelShapeClassName. المطلوب بس توحيد
+    // الأنيميشن مع باقي المودالات عن طريق الـ hook (slide-up مناسب لموبايل،
+    // فاضي على ديسكتوب) بدل تثبيته يدويًا.
+    const modalPresentation = useModalPresentation();
 
     const forcedMode = mode; // لو موجودة، ميتعرضش شاشة اختيار خالص (توافق كامل مع الاستخدام الحالي)
     const effectiveMode = forcedMode ?? chosenMode;
@@ -36,7 +43,7 @@ function DeleteConfirmModal({ title, itemName, itemType, onConfirm, onConfirmArc
             className:"fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-sm p-5",
             onClick: (e: React.MouseEvent<HTMLDivElement>) => { if(e.target===e.currentTarget) onCancel(); }
         },
-            React.createElement('div',{className:"w-full max-w-sm bg-premium-card border border-white/10 rounded-3xl p-6 slide-up shadow-2xl space-y-5"},
+            React.createElement('div',{className:`w-full max-w-sm bg-premium-card border border-white/10 rounded-3xl p-6 ${modalPresentation.panelAnimationClassName} shadow-2xl space-y-5`},
                 React.createElement('div',null,
                     React.createElement('h3',{className:"text-sm font-black text-white"},title||`حذف ${itemType}`),
                     React.createElement('p',{className:"text-[10px] text-slate-400 font-bold mt-1"},itemName)
@@ -85,7 +92,7 @@ function DeleteConfirmModal({ title, itemName, itemType, onConfirm, onConfirmArc
         className:"fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-sm p-5",
         onClick: (e: React.MouseEvent<HTMLDivElement>) => { if(e.target===e.currentTarget) onCancel(); }
     },
-        React.createElement('div',{className:"w-full max-w-sm bg-premium-card border border-rose-500/30 rounded-3xl p-6 slide-up shadow-2xl space-y-5"},
+        React.createElement('div',{className:`w-full max-w-sm bg-premium-card border border-rose-500/30 rounded-3xl p-6 ${modalPresentation.panelAnimationClassName} shadow-2xl space-y-5`},
             // أيقونة + عنوان
             React.createElement('div',{className:"flex items-start gap-4"},
                 React.createElement('div',{className:"w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/20 flex items-center justify-center text-2xl shrink-0"},isArchive?'📦':'🗑️'),
