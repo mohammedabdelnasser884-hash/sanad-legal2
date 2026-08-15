@@ -267,7 +267,9 @@ function ClientsTab({ cases, clients, clientSearch, setClientSearch, clientsPage
                 : "اضغط على موكل جديد للإضافة."
           )
         )
-      : React.createElement('div',{className:"space-y-2"},
+      // ⚡ H3 (16 أغسطس 2026): `lg:hidden` — نفس التطبيق في CasesTab.tsx.
+      // الكروت بقت مقصورة على موبايل/تابلت، والجدول (D3) بس على الديسكتوب.
+      : React.createElement('div',{className:"space-y-2 lg:hidden"},
           filtered.map((c: MappedClient) => {
             const caseCount = caseCountFor(c.id);
             const ent = isEntity(c);
