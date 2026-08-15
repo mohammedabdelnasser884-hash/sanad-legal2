@@ -34,6 +34,14 @@ export interface CaseTableRowData {
     id: string;
     number: string;
     clientName: string;
+    /**
+     * 🆕 مرحلة H (16 أغسطس 2026) — موضوع/مسمى القضية (`c.title`).
+     * مش موجود من D1/D2 الأصليين — الجدول كان بيعرض الموكل/المحكمة/الحالة
+     * بس، من غير أي إشارة لموضوع القضية نفسه (اللي المستخدم فعليًا بيتعرف
+     * بيه القضية بصريًا في الكروت). اتضاف كسطر ثانوي صغير تحت اسم الموكل
+     * (مش عمود سابع مستقل) عشان نتفادى زحمة بصرية إضافية على صف الجدول.
+     */
+    title: string;
     court: string;
     status: string;
     nextSessionLabel: string; // نص جاهز للعرض (تاريخ منسّق أو "—") — د2 هيحسبها من بيانات حقيقية
@@ -51,7 +59,10 @@ function CaseTableRow({ data, onOpen }: CaseTableRowProps) {
         className: 'border-b border-white/5 hover:bg-white/[0.03] transition-colors',
     },
         React.createElement('td', { className: 'px-3 py-2.5 text-[11px] font-mono font-black text-amber-300 whitespace-nowrap' }, data.number),
-        React.createElement('td', { className: 'px-3 py-2.5 text-[12px] font-bold text-white truncate max-w-[220px]' }, data.clientName),
+        React.createElement('td', { className: 'px-3 py-2.5 max-w-[220px]' },
+            React.createElement('div', { className: 'text-[12px] font-bold text-white truncate' }, data.clientName),
+            data.title && React.createElement('div', { className: 'text-[10px] text-slate-500 truncate mt-0.5' }, data.title)
+        ),
         React.createElement('td', { className: 'px-3 py-2.5 text-[11px] text-slate-400 truncate max-w-[160px]' }, data.court),
         React.createElement('td', { className: 'px-3 py-2.5' },
             React.createElement('span', {
