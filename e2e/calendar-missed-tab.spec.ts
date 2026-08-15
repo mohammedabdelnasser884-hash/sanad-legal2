@@ -23,7 +23,7 @@ test('تبويب الفائتة: جلسة بدون قرار تظهر وفتحه�
   await page.getByTestId('case-detail-close').click();
   await page.getByTestId('case-detail-view').waitFor({ state: 'hidden', timeout: 10_000 });
 
-  await page.getByTestId('nav-calendar').click();
+  await page.getByTestId('desktop-nav-calendar').click();
   await page.getByTestId('calendar-subtab-missed').click();
 
   const card = page.getByTestId('missed-session-card').filter({ hasText: caseTitle });
