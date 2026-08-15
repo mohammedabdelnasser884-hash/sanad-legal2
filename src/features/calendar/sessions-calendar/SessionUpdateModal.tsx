@@ -6,6 +6,7 @@ import { copySessionPartiesToNewSession, makeSessionGroupId } from '../hooks/cas
 import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
 import DatePicker from '@/shared/ui/DatePicker';
 import { I } from '../../../constants';
+import { useModalPresentation } from '../../../shared/hooks/useModalPresentation';
 import type { CaseSessionRow, ClientRow } from '../../../types';
 import type { MappedCase } from '../../../hooks/useAppData';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -44,6 +45,11 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onNotify, 
     const [nextDate, setNextDate] = useState('');
     const [nextRequired, setNextRequired] = useState(session.next_action || '');
     const [saving, setSaving] = useState(false);
+    // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
+    // المُطبَّق في NewCaseModal.tsx. هنا الحدود بالفعل كاملة (border-premium-gold/20)
+    // مش border-t زي باقي المودالات، فبنستبدل بس جزء الاستدارة/الأنيميشن/المحاذاة
+    // ونسيب لون وسمك الحدود الحالي زي ما هو.
+    const modalPresentation = useModalPresentation();
 
     const handleSave = async () => {
         if (!nextDate) { toast('⚠️ حدد تاريخ الجلسة القادمة', true); return; }
@@ -145,12 +151,12 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onNotify, 
 
     return createPortal(
         React.createElement('div', {
-            className: "fixed inset-0 z-50 flex items-end justify-center",
+            className: `fixed inset-0 z-50 flex ${modalPresentation.overlayAlignClassName} justify-center`,
             style: { background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' },
             onClick: (e: React.MouseEvent<HTMLDivElement>) => { if (e.target === e.currentTarget) onClose(); }
         },
             React.createElement('div', {
-                className: "w-full max-w-lg bg-premium-bg border border-premium-gold/20 rounded-t-3xl p-5 space-y-4 slide-up",
+                className: `w-full max-w-lg bg-premium-bg border border-premium-gold/20 ${modalPresentation.isDesktop ? 'rounded-3xl' : 'rounded-t-3xl'} p-5 space-y-4 ${modalPresentation.panelAnimationClassName}`,
                 style: { maxHeight: '90vh', overflowY: 'auto' },
                 'data-testid': 'session-update-modal',
             },
