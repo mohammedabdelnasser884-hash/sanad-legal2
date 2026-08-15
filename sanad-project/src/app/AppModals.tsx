@@ -1,0 +1,396 @@
+import React from 'react';
+import { createPortal } from 'react-dom';
+import { db } from '../supabaseClient';
+import { recordError } from '../systemHealth';
+import { COUNTRY_CONFIGS } from '../constants';
+import type { TabName } from '../useNavigation';
+import type { NavigationState } from '../useNavigation';
+import type { DeleteConfirmState, CaseFormSubmitData } from '@/features/cases/hooks/useCaseActions';
+import type { ClientFormData, ClientModalContext } from '@/features/clients/hooks/useClientActions';
+import type { OpenCreateClientForSession, OpenCreateClientForCase, OpenCreateClientForParty, OpenCreateClientForSessionParty } from '@/features/calendar/hooks/useClientLinking';
+import type { MappedCase, MappedClient } from '../hooks/useAppData';
+import type { ProfileRow } from '../types';
+import NewCaseModal from '../features/cases/NewCaseModal';
+import NewClientModal from '../features/clients/NewClientModal';
+import UserFormModal from '@/features/admin/users/UserFormModal';
+import ClientDetailModal from '../features/clients/ClientDetailModal';
+import UniversalSearchModal from '../shared/modals/UniversalSearchModal';
+import AILegalAssistant from '../features/ai/AILegalAssistant';
+import AIComingSoonModal from '../shared/modals/AIComingSoonModal';
+import DeleteConfirmModal from '@/shared/modals/DeleteConfirmModal';
+import NewStandaloneSessionModal from '../features/calendar/NewStandaloneSessionModal';
+import CaseDetailView from '../features/cases/CaseDetailView';
+
+interface AppModalsProps {
+    // ── بيانات أساسية ──
+    cases: MappedCase[];
+    // ⚡ FIX (باگ "القضايا المرتبطة" غلط لموكل مش أساسي — 9 أغسطس 2026):
+    // `cases` فوق مقيّدة بصفحة واحدة (PAGE_SIZE) + فلتر الحالة الحالي —
+    // موكل تاني على قضية عنده أكتر من موكل ممكن تكون قضيته مش من ضمن الـ15
+    // المحمّلين. casesWithExtras/ensureCasesLoaded (من useAppData) بيجيبوا
+    // أي قضية بالـid مباشرة من قاعدة البيانات بغض النظر عن الصفحة — نفس
+    // الآلية المستخدمة فعليًا في CaseDetailView لموكلين الأطراف.
+    casesWithExtras: MappedCase[];
+    ensureCasesLoaded: (ids: (string | null | undefined)[]) => void | Promise<void>;
+    clients: MappedClient[];
+    // ⚡ FIX (باگ "الموكل محذوف" غلط — 8 أغسطس 2026): بتوصّل لـ
+    // CaseDetailView عشان تجيب أي موكل طرف لسه مش محمّل بالـid مباشرة
+    // بعد ما case_parties الحقيقية (live) تتحمّل. راجع useAppData.ts.
+    ensureClientsLoaded?: (ids: (string | null | undefined)[]) => void | Promise<void>;
+    lawyers: ProfileRow[];
+    profile: ProfileRow | null;
+    country: string;
+    isAdmin: boolean;
+    casesFilter: string;
+    nav: NavigationState;
+
+    // ── حالات إظهار المودالات ──
+    showSearch: boolean;
+    showAI: boolean;
+    showAIComingSoon: boolean;
+    showCaseModal: boolean;
+    showNewSessionModal: boolean;
+    showLawyerModal: boolean;
+    showClientModal: boolean;
+    savingCase: boolean;
+    savingLawyer: boolean;
+    savingClient: boolean;
+    deleteConfirm: DeleteConfirmState | null;
+    selectedClient: MappedClient | null;
+    selectedClientEditMode?: boolean;
+    selectedCase: MappedCase | null;
+    selectedCaseInitialTab: string;
+    // ⚡ NEW: سياق فتح موديل "إنشاء موكل جديد" من جوه قضية/جلسة —
+    // شوف useClientActions.ts (ClientModalContext) وApp.tsx.
+    clientModalContext: ClientModalContext | null;
+    openNewClientModal: (ctx: ClientModalContext) => void;
+
+    // ── setters ──
+    setShowSearch: (v: boolean) => void;
+    setShowAI: (v: boolean) => void;
+    setShowAIComingSoon: (v: boolean) => void;
+    setShowCaseModal: (v: boolean) => void;
+    setShowNewSessionModal: (v: boolean) => void;
+    setShowLawyerModal: (v: boolean) => void;
+    setShowClientModal: (v: boolean) => void;
+    setTab: (tab: TabName) => void;
+    setSelectedCase: (caseOrUpdater: React.SetStateAction<MappedCase | null>, initialTab?: string) => void;
+    setSelectedClient: (clientOrNull: MappedClient | null, openInEditMode?: boolean) => void;
+    _setDeleteConfirm: React.Dispatch<React.SetStateAction<DeleteConfirmState | null>>;
+    _setSelectedClient: React.Dispatch<React.SetStateAction<MappedClient | null>>;
+    _setSelectedCase: React.Dispatch<React.SetStateAction<MappedCase | null>>;
+    setCases: React.Dispatch<React.SetStateAction<MappedCase[]>>;
+    setCasesFilter: (filter: string) => void;
+    setCasesPage: (page: number) => void;
+
+    // ── دوال fetch ──
+    fetchCases: (page?: number, filter?: string) => Promise<void>;
+    fetchTodaySessions: () => Promise<void>;
+    fetchUpcomingSessions: () => Promise<void>;
+    // 🔒 FIX (تشخيص لوجز E2E — 30 يوليو 2026): مطلوبة عشان نقدر نعمل ريفريش
+    // كامل لقوائم جلسات الداشبورد (اليوم/القادم/الفائتة) لما نقفل تفاصيل
+    // القضية — راجع onClose الخاص بـ CaseDetailView تحت.
+    fetchMissedSessions: () => Promise<void>;
+    // ⚡ [جديد] عشان SessionsCalendar (في App.tsx) يعمل refresh فوري لما
+    // جلسة مستقلة جديدة تتحفظ من هنا — راجع SessionsCalendar.tsx
+    // externalRefreshSignal.
+    onStandaloneSessionSaved: () => void;
+    fetchClients: (page?: number, search?: string) => void | Promise<void>;
+    clientSearch: string;
+
+    // ── هاندلرز ──
+    handleSaveCase: (form: CaseFormSubmitData) => void | boolean | Promise<void | boolean>;
+    handleDeleteCase: (caseId: string) => void | Promise<void>;
+    handleUpdateCase: (caseId: string, form: CaseFormSubmitData) => void | boolean | Promise<void | boolean>;
+    handleLinkClient: (caseId: string, clientId: string) => void | Promise<void>;
+    // ⚡ NEW (خطة توحيد منطق إنشاء/ربط الموكل، Phase 3 — 4 أغسطس 2026): مرآة
+    // لـ handleLinkClient فوق، بس بيربط طرف بعينه من case_parties (بدل
+    // القضية كلها) — شوف useCaseActions.ts (handleLinkClientForParty)
+    // وInfoSection.tsx.
+    handleLinkClientForParty: (caseId: string, partyId: string, clientId: string, isPrimaryParty: boolean, knownUpdatedAt: string | null, onAfterLink: () => void) => void | Promise<void>;
+    // ⚡ NEW (خطة توحيد مصدر بيانات الموكل، مرحلة 4): عكس handleLinkClient.
+    handleUnlinkClient: (caseId: string) => void | Promise<void>;
+    // ⚡ NEW (خطة توحيد مصدر بيانات الموكل، "إصلاح 5" — 5 أغسطس 2026): مرآة
+    // لـ handleUnlinkClient فوق بس لطرف بعينه — شوف useCaseActions.ts
+    // (handleUnlinkClientForParty) وInfoSection.tsx (زرار فك الربط لكل طرف).
+    handleUnlinkClientForParty: (caseId: string, partyId: string, isPrimaryParty: boolean, knownUpdatedAt: string | null, onAfterLink: () => void) => void | Promise<void>;
+    // ⚡ CHANGED (خطة توحيد إنشاء الموكل، Phase 1): بقت مجرد فتح لموديل
+    // "إنشاء موكل جديد" الموحّد — شوف App.tsx (handleOpenCreateClientForCase).
+    handleCreateAndLinkClient: (caseId: string, plaintiffName: string, plaintiffNationalId?: string | null, plaintiffPoa?: string | null, plaintiffAddress?: string | null) => void;
+    // ⚡ NEW (خطة توحيد إنشاء الموكل، Phase 3): نفس فكرة handleCreateAndLinkClient
+    // بس لـ "إضافة الموكل لقائمة الموكلين فقط" من جلسة مستقلة — شوف App.tsx.
+    handleOpenCreateClientForSession: OpenCreateClientForSession;
+    // ⚡ NEW (خطة توحيد إنشاء الموكل، Phase 2): نفس handleCreateAndLinkClient
+    // (Phase 1) بس ممرّرة لـ NewStandaloneSessionModal — "إنشاء موكل جديد
+    // وربطه" بعد تحويل جلسة مستقلة لقضية — شوف App.tsx.
+    handleOpenCreateClientForSessionCase: OpenCreateClientForCase;
+    // ⚡ NEW (خطة تعدد الأطراف، 7.2 جزء 2 بند 2.3 — 23 يوليو 2026): نفس
+    // فكرة handleOpenCreateClientForSessionCase بس لطرف بعينه وسط wizard
+    // "طرف واحد في المرة" — شوف App.tsx (handleOpenCreateClientForParty)
+    // وuseClientLinking.ts (OpenCreateClientForParty).
+    handleOpenCreateClientForSessionParty: OpenCreateClientForParty;
+    // ⚡ NEW (خطة تعدد الأطراف، مرحلة 13 جزء 2 — 23 يوليو 2026): مرآة لـ
+    // handleOpenCreateClientForSessionParty فوق، بس لخطوة "idle" (زرار
+    // "إضافة الموكل لقائمة الموكلين فقط" — قبل حتى ما نعرف الجلسة هتتحول
+    // لقضية ولا لأ، فمفيش caseId خالص) — شوف App.tsx
+    // (handleOpenCreateClientForSessionPartyOnly) وuseClientLinking.ts
+    // (OpenCreateClientForSessionParty).
+    handleOpenCreateClientForSessionPartyOnly: OpenCreateClientForSessionParty;
+    // ⚡ NEW (خطة تعدد الأطراف، مرحلة 13.1 — 23 يوليو 2026): نفس الدالة
+    // بالظبط (handleOpenCreateClientForParty في App.tsx) بس ممرّرة كمان
+    // لـ CaseDetailView — زرار "إنشاء موكل" لكل طرف عليه ⭐ ومش مربوط في
+    // تفاصيل القضية (InfoSection.tsx)، مش بس وسط wizard الجلسة المستقلة.
+    handleOpenCreateClientForCaseParty: OpenCreateClientForParty;
+    handleSaveClient: (form: ClientFormData, idFile: File | null, poaFile: File | null) => void | boolean | Promise<void | boolean>;
+    handleDeleteClient: (clientId: string) => void | Promise<void>;
+    handleUpdateClient: (clientId: string, form: ClientFormData, idFile?: File | null, poaFile?: File | null) => void | boolean | Promise<void | boolean>;
+    handleSaveLawyer: (form: { email: string; password: string; full_name: string; role?: string }) => void | Promise<void>;
+    sendTelegram: (msg: string) => void | Promise<void>;
+}
+
+// ─────────────────────────────────────────────────────────
+//  AppModals — منقول حرفيًا من App.tsx (دفعة 4): كل المودالات
+//  اللي كانت بتترسم بعد الـ Command Dock (البحث، الذكاء الاصطناعي،
+//  الإعدادات، تأكيد الحذف، الموديلات الجديدة لقضية/جلسة/محامي/موكل،
+//  تفاصيل الموكل، تفاصيل القضية). صفر تغيير في المنطق أو الترتيب أو
+//  شروط العرض — استبدلنا فقط الاعتماد من closure لـ props.
+//  (ExitConfirmModal فضل في App.tsx زي ما هو — مش جزء من كتلة
+//  "Modals" الأصلية، وده مكوّن منفصل خالص اتعمل من قبل.)
+// ─────────────────────────────────────────────────────────
+function AppModals({
+    cases, casesWithExtras, ensureCasesLoaded, clients, ensureClientsLoaded, lawyers, profile, country, isAdmin, casesFilter, nav,
+    showSearch, showAI, showAIComingSoon, showCaseModal, showNewSessionModal,
+    showLawyerModal, showClientModal, savingCase, savingLawyer, savingClient,
+    deleteConfirm, selectedClient, selectedClientEditMode, selectedCase, selectedCaseInitialTab,
+    clientModalContext, openNewClientModal,
+    setShowSearch, setShowAI, setShowAIComingSoon, setShowCaseModal, setShowNewSessionModal,
+    setShowLawyerModal, setShowClientModal, setTab,
+    setSelectedCase, setSelectedClient, _setDeleteConfirm, _setSelectedClient, _setSelectedCase,
+    setCases, setCasesFilter, setCasesPage,
+    fetchCases, fetchTodaySessions, fetchUpcomingSessions, fetchMissedSessions, onStandaloneSessionSaved,
+    fetchClients, clientSearch,
+    handleSaveCase, handleDeleteCase, handleUpdateCase, handleLinkClient, handleLinkClientForParty, handleUnlinkClient, handleUnlinkClientForParty, handleCreateAndLinkClient,
+    handleOpenCreateClientForSession, handleOpenCreateClientForSessionCase,
+    handleOpenCreateClientForSessionParty, handleOpenCreateClientForCaseParty,
+    handleOpenCreateClientForSessionPartyOnly,
+    handleSaveClient, handleDeleteClient, handleUpdateClient, handleSaveLawyer,
+    sendTelegram,
+}: AppModalsProps) {
+    // ⚡ FIX (باگ "القضايا المرتبطة" غلط لموكل تاني على نفس القضية — 9
+    // أغسطس 2026): "القضايا المرتبطة" في ملف الموكل كانت بتفلتر بس
+    // `cases.filter(c => c.client_id === selectedClient.id)` — عمود
+    // `cases.client_id` القديم بياخد موكل واحد بس للقضية، فموكل تاني
+    // (مربوط فعليًا في case_parties) ميظهرش خالص، وحتى الموكل الصح كان
+    // ممكن تفوته القضية لو مش من ضمن الـ15 قضية المحمّلين في الصفحة
+    // الحالية. هنا بنجيب كل قضايا الموكل ده مباشرة من قاعدة البيانات
+    // (case_parties.client_id + عمود cases.client_id القديم للقضايا اللي
+    // لسه معتمدة عليه بس) وقت فتح مودال تفاصيل الموكل، وبعدين بنستخدم
+    // ensureCasesLoaded عشان نجيب القضايا دي كاملة بغض النظر عن الصفحة.
+    const clientDetailOpen = nav.isOpen('clientDetail');
+    const selectedClientId = selectedClient?.id ?? null;
+    const [linkedCaseIds, setLinkedCaseIds] = React.useState<string[] | null>(null);
+
+    React.useEffect(() => {
+        if (!selectedClientId || !clientDetailOpen) {
+            setLinkedCaseIds(null);
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            const [partyRes, legacyRes] = await Promise.all([
+                db.from('case_parties').select('case_id').eq('client_id', selectedClientId),
+                db.from('cases').select('id').eq('client_id', selectedClientId).is('deleted_at', null),
+            ]);
+            if (partyRes.error) recordError('db_case_parties_by_client', partyRes.error.message);
+            if (legacyRes.error) recordError('db_cases_by_client_id', legacyRes.error.message);
+            if (cancelled) return;
+            const idSet = new Set<string>();
+            (partyRes.data || []).forEach((r: { case_id: string | null }) => { if (r.case_id) idSet.add(r.case_id); });
+            (legacyRes.data || []).forEach((r: { id: string }) => idSet.add(r.id));
+            const idList = Array.from(idSet);
+            if (idList.length > 0) await ensureCasesLoaded(idList);
+            if (!cancelled) setLinkedCaseIds(idList);
+        })();
+        return () => { cancelled = true; };
+        // ⚠️ ensureCasesLoaded مقصودة برة الـdeps: هي useCallback بتتغيّر
+        // reference بتاعها كل ما cases/extraCases تتحدّث (useAppData.ts) —
+        // ضمّها هنا كان هيعيد نفس الاستعلام تكرارًا كل تغيير صفحة/قضية
+        // من غير أي داعي وقت ما مودال الموكل فاضل مفتوح. الاستعلام أصلاً
+        // بيتعمل مرة واحدة لكل موكل (selectedClientId) أو لما المودال
+        // يتفتح/يتقفل (clientDetailOpen)، وده الوحيد اللي محتاج يعيد التشغيل.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedClientId, clientDetailOpen]);
+
+    // لحد ما الاستعلام يخلص، بنسيب السلوك القديم كحالة انتقالية بدل ما
+    // نعرض "لا توجد قضايا" غلط للحظة.
+    const selectedClientCases = linkedCaseIds
+        ? casesWithExtras.filter((c) => linkedCaseIds.includes(c.id))
+        : cases.filter((c) => c.client_id === selectedClientId);
+
+    return React.createElement(React.Fragment, null,
+        // ⚠️ ملحوظة نوع (بدون تغيير سلوك): نتيجة بحث القضايا (SearchCaseResult
+        // داخل UniversalSearchModal.tsx) شكلها أضيق من MappedCase الكامل —
+        // ناقصها year/session_time. الحقلين دول مش بيتقراهم حد فعليًا في
+        // CaseDetailView (اتأكد بالفحص) — يعني الفجوة خاملة (inert)، مالهاش
+        // أثر وقت التشغيل. الكاست هنا بيحافظ على نفس السلوك الحالي بالظبط.
+        // (فجوة بيانات الموكل المشابهة — notes/cr_number/contact_info/type —
+        // اتقفلت: SearchClientResult بقت بتجيب الحقول دي فعليًا من الاستعلام.)
+        showSearch && React.createElement(UniversalSearchModal, {
+            cases, clients,
+            onClose: () => setShowSearch(false),
+            onOpenCase: (c) => { setSelectedCase(c as MappedCase, 'timeline'); },
+            // ⚡ FIX (12 أغسطس 2026 — نفس باگ "عدّل من ملف الموكل" بالظبط):
+            // setTab('clients') بعد setSelectedClient كانت بتقفل مودال
+            // تفاصيل الموكل فورًا (navigateTo بتمسح الـmodalStack عند أي
+            // تبديل تاب). المودال بيتعرض فوق أي تاب من غير الحاجة لتبديله.
+            onOpenClient: (c) => { setSelectedClient(c as MappedClient); }
+        }),
+        showAI && createPortal(React.createElement(AILegalAssistant, { onClose: () => setShowAI(false), cases, clients, profile, country }), document.body),
+        // ⚡ NEW (قفل قسم الـAI مؤقتًا — 12 أغسطس 2026): بيتفتح بدل القسم
+        // الحقيقي لكل المستخدمين ما عدا السوبر أدمن — راجع handleAIButtonClick
+        // في App.tsx.
+        showAIComingSoon && createPortal(React.createElement(AIComingSoonModal, { onClose: () => setShowAIComingSoon(false) }), document.body),
+        deleteConfirm && nav.isOpen('delete') && createPortal(React.createElement(DeleteConfirmModal, {
+            title: deleteConfirm.title, itemName: deleteConfirm.name, itemType: deleteConfirm.itemType,
+            // ⚠️ mode ميتبعتش افتراض ثابت هنا: لو deleteConfirm.mode مش متحدد
+            // (القضايا والموكلين الاتنين دلوقتي بعد باتش 1.1/1.2)، المودال
+            // بيعرض شاشة اختيار (أرشفة/حذف نهائي) لوحده. الاستخدام الوحيد
+            // اللي لسه بيثبّت mode صراحة هو حذف دفعة أتعاب فردية فى
+            // FeesTab.tsx (مفيش معنى لأرشفة دفعة لوحدها — حذف نهائي بس).
+            mode: deleteConfirm.mode,
+            onConfirm: deleteConfirm.onConfirm,
+            onConfirmArchive: deleteConfirm.onConfirmArchive,
+            onConfirmDelete: deleteConfirm.onConfirmDelete,
+            deleteConsequences: deleteConfirm.deleteConsequences,
+            onCancel: () => { nav.closeModal('delete'); _setDeleteConfirm(null); },
+            loading: false,
+            inputTestId: 'archive-confirm-input',
+            confirmTestId: 'archive-confirm-button',
+            cancelTestId: 'archive-cancel-button',
+            choiceTestId: 'archive-confirm-choice',
+        }), document.body),
+        showCaseModal && React.createElement(NewCaseModal, {
+            onClose: () => setShowCaseModal(false), onSave: handleSaveCase, loading: savingCase,
+            lawyers, isAdmin, clients,
+            countryCourts: COUNTRY_CONFIGS[country]?.courts,
+            countryCaseTypes: COUNTRY_CONFIGS[country]?.caseTypes,
+            openNewClientModal,
+        }),
+        showNewSessionModal && React.createElement(NewStandaloneSessionModal, {
+            onClose: () => setShowNewSessionModal(false),
+            // ⚡ FIX (تحليل لوجز E2E — 9 أغسطس 2026): لما الحفظ بيحصل أوفلاين
+            // (queued)، مفيش حاجة اتغيرت فعليًا على السيرفر — الريفريش
+            // (fetchTodaySessions/fetchUpcomingSessions/fetchCases) هيفشل
+            // برضو وهيرجع لنسخة الكاش، وكل واحدة من الدوال دي بتعرض توست
+            // "أنت أوف لاين — بتشوف آخر نسخة محفوظة من..." الخاص بيها —
+            // اللي بيكتب فوق توست "📥 الجلسة المستقلة محفوظة محلياً"
+            // (نفس عنصر #toast، آخر نداء بيكسب) خلال أجزاء من الثانية،
+            // فالمستخدم (والتست) عمره ما بيشوف توست التأكيد الصحيح.
+            // onStandaloneSessionSaved() (تحديث محلي/إشارة ريفريش للكالندر)
+            // لسه بيتنفذ عادي في الحالتين.
+            onSaved: (skipRefetch?: boolean) => {
+                if (!skipRefetch) { fetchTodaySessions(); fetchUpcomingSessions(); fetchCases(0, casesFilter); }
+                onStandaloneSessionSaved();
+            },
+            onClientAdded: () => { fetchClients(0, clientSearch); },
+            onNotify: sendTelegram,
+            onOpenCreateClient: handleOpenCreateClientForSession,
+            onOpenCreateClientForCase: handleOpenCreateClientForSessionCase,
+            onOpenCreateClientForParty: handleOpenCreateClientForSessionParty,
+            onOpenCreateClientForSessionParty: handleOpenCreateClientForSessionPartyOnly,
+            // ⚡ NEW (توحيد "المحكمة"/"نوع القضية" مع فورمي القضية — 12
+            // أغسطس 2026): نفس props بالظبط اللي فوق بتتبعت لـNewCaseModal.
+            countryCourts: COUNTRY_CONFIGS[country]?.courts,
+            countryCaseTypes: COUNTRY_CONFIGS[country]?.caseTypes,
+        }),
+        showLawyerModal && React.createElement(UserFormModal, { onClose: () => setShowLawyerModal(false), onSave: handleSaveLawyer, loading: savingLawyer }),
+        showClientModal && React.createElement(NewClientModal, {
+            onClose: () => setShowClientModal(false), onSave: handleSaveClient, loading: savingClient,
+            initialData: clientModalContext?.initialData,
+            contextLabel: clientModalContext?.contextLabel,
+        }),
+        selectedClient && nav.isOpen('clientDetail') && React.createElement(ClientDetailModal, {
+            client: selectedClient,
+            cases: selectedClientCases,
+            onClose: () => { nav.closeModal('clientDetail'); _setSelectedClient(null); },
+            onDelete: handleDeleteClient, onEdit: handleUpdateClient,
+            // 🔒 FIX (تقرير الموثوقية — نتيجة 1): EditClientModal ما كانش عنده
+            // أي حماية دبل كليك خالص — بنمرر savingClient نفسها المستخدمة في
+            // NewClientModal فوق (نفس الـ state، الاتنين بيستخدموا
+            // handleSaveClient/handleUpdateClient من useClientActions.ts).
+            savingClient,
+            // ⚡ NEW (بيانات الموكل مش قابلة للتعديل من داخل القضية/الجلسة):
+            // لو جينا هنا عن طريق زرار "✏️ عدّل من ملف الموكل"، نفتح فورم
+            // التعديل على طول بدل ما المستخدم يحتاج يضغط تاني.
+            initialEditMode: !!selectedClientEditMode,
+            onOpenCase: (ca) => { nav.closeModal('clientDetail'); _setSelectedClient(null); setSelectedCase(ca); }
+        }),
+        selectedCase && nav.isOpen('caseDetail') && React.createElement(CaseDetailView, {
+            caseData: selectedCase,
+            client: clients.find((cl) => cl.id === selectedCase?.client_id) || null,
+            clients,
+            // ⚡ FIX (باگ "الموكل محذوف" غلط): CaseDetailView بيجيب
+            // case_parties حيّة (fresh) بعد ما يفتح — لو فيها موكل لسه مش
+            // موجود في `clients` (المُمرّرة فوق أصلاً clientsWithExtras من
+            // App.tsx)، بيستخدم الدالة دي يجيبه بالـid مباشرة.
+            onEnsureClientsLoaded: ensureClientsLoaded,
+            initialTab: selectedCaseInitialTab,
+            // 🔒 FIX (تشخيص لوجز E2E — 30 يوليو 2026): إضافة/تعديل/حذف جلسة
+            // جوه تبويب جلسات القضية (CaseDetailView) ما كانش بيرجّع أي إشارة
+            // لداشبورد قوائم الجلسات (اليوم/القادم/الفائتة) — فجلسة اتضافت
+            // النهاردة من جوه القضية كانت تفضل غايبة عن بطاقة "اليوم" في
+            // الداشبورد لحد ما يحصل reload كامل للصفحة (dashboard-tab.spec.ts).
+            // دلوقتي بنعمل ريفريش لتلات القوائم لما نقفل شاشة تفاصيل القضية.
+            onClose: () => { nav.closeModal('caseDetail'); _setSelectedCase(null); fetchTodaySessions(); fetchUpcomingSessions(); fetchMissedSessions(); },
+            onUpdate: (newStatus: string) => {
+                setSelectedCase((p) => ({ ...p, status: newStatus } as MappedCase));
+                setCases((prev) => prev.map((c) => c.id === selectedCase?.id ? { ...c, status: newStatus } : c));
+                setCasesFilter(newStatus); setCasesPage(0); fetchCases(0, newStatus);
+            },
+            onDelete: handleDeleteCase, onEdit: handleUpdateCase, onLinkClient: handleLinkClient, onLinkClientForParty: handleLinkClientForParty, onUnlinkClient: handleUnlinkClient, onUnlinkClientForParty: handleUnlinkClientForParty, onCreateAndLinkClient: handleCreateAndLinkClient,
+            // ⚡ NEW (مرحلة 13.1): زرار "إنشاء موكل" لكل طرف عليه ⭐ في تفاصيل القضية.
+            // 🔧 FIX (بناء فشل — عدم تطابق تواقيع): CaseDetailView بيستخدم
+            // امضاء مبسّط (caseId, party, isPrimaryParty, onAfterLink) بينما
+            // handleOpenCreateClientForCaseParty من نوع OpenCreateClientForParty
+            // (9 باراميترات مفصّلة) — بنلف هنا بدالة موائمة (adapter) بتفكّك
+            // حقول party (CasePartyRow) لنفس ترتيب باراميترات OpenCreateClientForParty.
+            onCreateAndLinkClientForParty: (caseId, party, isPrimaryParty, onAfterLink) =>
+                handleOpenCreateClientForCaseParty(
+                    party.id, caseId, isPrimaryParty, party.name, party.national_id,
+                    party.power_of_attorney, party.address, undefined, onAfterLink,
+                ),
+            onNotify: sendTelegram, profile, country,
+            // 🔒 FIX (تقرير الموثوقية — نتيجة 1): EditCaseModal ما كانش عنده
+            // أي حماية دبل كليك خالص.
+            savingCase,
+            // ⚡ NEW (خطة تطوير أطراف الدعوى — مرحلة 4 خطوة 2): بتوصل لـ
+            // EditCaseModal عشان زرار "إنشاء موكل جديد" جوه كارت أي طرف.
+            openNewClientModal,
+            // ⚡ FIX (12 أغسطس 2026 — "عدّل من ملف الموكل" بيفتح تاب الموكلين
+            // بدل ملف الموكل): setTab('clients') كانت بتتنفذ *بعد*
+            // setSelectedClient (اللي بتفتح مودال 'clientDetail' فعليًا).
+            // setTab بترادف nav.navigateTo، وnavigateTo بتمسح كل الـ
+            // modalStack كأثر جانبي لأي تبديل تاب — فمودال الموكل اللي
+            // فتحناه لسه كان بيتقفل فورًا تاني. المودال بيتعرض فوق أي تاب
+            // بغض النظر عنه، فمفيش داعي لتبديل التاب أصلًا هنا.
+            // 🔒 FIX (12 أغسطس 2026 — نفس اليوم، تكملة الفيكس فوق): كان
+            // لسه فيه nav.closeModal('caseDetail') هنا (فضلت من قبل فيكس
+            // setTab) — كانت بتقفل مودال تفاصيل/تعديل القضية بالكامل قبل
+            // فتح مودال الموكل. modalStack أصلاً بيدعم أكتر من مودال مفتوح
+            // فوق بعض (راجع useNavigation.ts)، فمفيش داعي لقفل caseDetail
+            // خالص — نفس المنطق اللي اتطبق في onOpenClient بتاع
+            // UniversalSearchModal فوق بالظبط. من غير الفيكس ده، قفل مودال
+            // الموكل (حفظ أو إلغاء) كان بيرجّع المستخدم للتاب الرئيسي بدل
+            // ما يرجعله فورم تعديل القضية اللي كان شغال عليه.
+            onOpenClientProfile: (c) => { setSelectedClient(c as MappedClient, true); },
+            // 🔒 FIX (باگ "عدّل من ملف الموكل جوه تعديل القضية بيرجّع لصفحة
+            // القضية مش لفورم التعديل" — 12 أغسطس 2026): بتوصّل لـCaseDetailView
+            // عشان تعرف تفرّق بين "لسه مودال الموكل مفتوح" و"اتقفل" وترجّع
+            // فورم تعديل القضية تلقائيًا بعد ما مودال الموكل يتقفل (حفظ أو
+            // إلغاء أو ✕) — راجع التعليق في CaseDetailView.tsx.
+            clientProfileOpen: !!(selectedClient && nav.isOpen('clientDetail')),
+        }),
+    );
+}
+
+export default AppModals;
