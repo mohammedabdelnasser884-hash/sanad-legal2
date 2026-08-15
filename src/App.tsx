@@ -21,7 +21,14 @@ import FeesTab from './features/fees/FeesTab';
 import SessionsCalendar from '@/features/calendar/sessions-calendar/SessionsCalendar';
 import RemindersTab from './features/reminders/RemindersTab';
 import ArchiveTab from './features/dashboard/ArchiveTab';
-import AdminPanel from './features/admin/AdminPanel';
+// ⚡ FIX (تقرير تشخيص الديسكتوب، Phase 4، بند 4 — تقسيم حزمة الـ JS، 15
+// أغسطس 2026): AdminPanel وكل الأقسام الإدارية التسعة اللي بيستوردها
+// (~9000 سطر تقريبًا) كانوا بيتحملوا statically ضمن الـ bundle الرئيسي
+// لكل المستخدمين، مع إنهم مقصورين على الأدمن بس وما بيتفتحوش غالبًا إلا
+// لما المستخدم يدوس على تاب "الإدارة" فعليًا. اتحول لـ React.lazy عشان
+// Vite يطلعه في chunk منفصل يتحمّل عند الحاجة بس (راجع الاستخدام تحت مع
+// React.Suspense في مكان الرندر).
+const AdminPanel = React.lazy(() => import('./features/admin/AdminPanel'));
 
 // ─── Dashboard Components ─────────────────
 import AppHeader from './features/dashboard/AppHeader';
@@ -579,7 +586,17 @@ function App() {
                 // بدل clients الخام — useAdminArchive بيدوّر بـ clients.find(id) عشان
                 // client_name في سجل موكل مؤرشف، فممكن يرجع فاضي لموكل مش من ضمن
                 // أول صفحة محمّلة.
-                ? React.createElement(AdminPanel, { profile, lawyers, clients: clientsWithExtras, fetchLawyers, country, onCountryChange: (c: string) => { setCountry(c); }, nav, casesTotal, clientsTotal })
+                // ⚡ Suspense مطلوب هنا لأن AdminPanel بقى React.lazy (بند 4 فوق) —
+                // الـ fallback بسيط (سبينر) وبيبان لحظيًا بس أول ما الـ chunk
+                // يتحمّل (أغلب الوقت من الكاش بعد أول زيارة)، صفر تغيير على شكل
+                // AdminPanel نفسه بعد التحميل.
+                ? React.createElement(React.Suspense, {
+                      fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                          React.createElement(I.Spin)
+                      )
+                  },
+                      React.createElement(AdminPanel, { profile, lawyers, clients: clientsWithExtras, fetchLawyers, country, onCountryChange: (c: string) => { setCountry(c); }, nav, casesTotal, clientsTotal })
+                  )
                 : React.createElement('div', { className: 'flex flex-col items-center justify-center pt-24 gap-3' },
                     React.createElement('div', { className: 'w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center' },
                         React.createElement(I.Shield, { className: 'w-7 h-7 text-red-400' })
