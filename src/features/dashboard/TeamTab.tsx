@@ -16,7 +16,11 @@ function TeamTab({ lawyers, setShowLawyerModal }: TeamTabProps) {
         ),
         lawyers.length===0
             ?React.createElement('div',{className:"bg-premium-card border border-white/5 rounded-xl p-8 text-center text-slate-500 text-xs"},"لا يوجد مستخدمون مضافون بعد")
-            :React.createElement('div',{className:"space-y-3"},
+            :React.createElement('div',{className:"space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 xl:grid-cols-3"},
+                // 🆕 Phase 3 (تقرير تشخيص تجربة سطح المكتب — 15 أغسطس): نفس
+                // نمط FeesTab/RemindersTab — كارت العضو بلا width ثابت ولا
+                // حالة داخلية، فبيتوزع في شبكة على الديسكتوب بدل عمود واحد
+                // ممتد. الموبايل صفر تغيير.
                 lawyers.map((l: ProfileRow)=>
                     React.createElement('div',{key:l.id,className:"bg-premium-card border border-white/5 rounded-2xl p-4 flex items-center justify-between gap-3"},
                         React.createElement('div',{className:"flex items-center gap-3"},
