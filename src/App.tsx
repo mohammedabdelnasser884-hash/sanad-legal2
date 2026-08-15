@@ -482,7 +482,27 @@ function App() {
             // البصرية، و`ps-[calc(...)]` واحد بس بيجمع مساحة السايدبار +
             // المسافة البصرية المطلوبة لنفس الحافة، فمفيش تعارض ممكن يحصل
             // بغض النظر عن ترتيب الـcascade.
-            className: `flex-1 overflow-y-auto no-scrollbar lg:transition-[padding] lg:duration-200 ${tab === 'admin' ? 'lg:ps-[var(--app-sidebar-w)]' : 'px-4 py-4 pb-32 lg:ps-[calc(var(--app-sidebar-w)+2rem)] lg:pe-8 lg:py-6 xl:ps-[calc(var(--app-sidebar-w)+3rem)] xl:pe-12'}`,
+            //
+            // 🔒 FIX (تشخيص لوجز CI — 15 أغسطس 2026، تاني): نفس فئة الباج
+            // فوق بالظبط لكن على `padding-bottom` بدل `padding-right`.
+            // `lg:py-6` (اللي C1 ضافته) هي shorthand بتحط `padding-top`
+            // *و* `padding-bottom` مع بعض. عند ≥1024px، الاتنين (`pb-32`
+            // و`lg:py-6`) بيستهدفوا نفس الخاصية الفيزيائية على نفس
+            // العنصر بنفس الـspecificity — وقاعدة `lg:py-6` (جوه
+            // `@media`) بتيجي بعد قاعدة `pb-32` (من غير media query) في
+            // stylesheet Tailwind المولّد، فبتكسب الـcascade وتصفّر
+            // مسافة الـ8rem (128px) المحجوزة لـCommandDock لـ1.5rem
+            // (24px) بس — أقل بكتير من ارتفاع الدوك الفعلي (~74px)،
+            // فمحتوى الديسكتوب (زي كارت "اليوم"/كروت الكالندر) بيتمد
+            // تحت أزرار الدوك ويصير غير قابل للنقر (سبب فشل
+            // dashboard-tab.spec.ts وsession-update.spec.ts
+            // وstandalone-sessions.spec.ts في CI — كلهم بس على مشروع
+            // chromium/Desktop Chrome، أبدًا على mobile، لأن `lg:` مالهاش
+            // تأثير تحت 1024px). الحل: `lg:pt-6` بدل `lg:py-6` — بيدي
+            // نفس تحسين المسافة العلوية اللي C1 قصدها بالظبط، من غير ما
+            // يلمس `padding-bottom` خالص، فـ`pb-32` (غير الـprefixed،
+            // بتفضل سارية على كل الأحجام) بترجع تحكم فعليًا.
+            className: `flex-1 overflow-y-auto no-scrollbar lg:transition-[padding] lg:duration-200 ${tab === 'admin' ? 'lg:ps-[var(--app-sidebar-w)]' : 'px-4 py-4 pb-32 lg:ps-[calc(var(--app-sidebar-w)+2rem)] lg:pe-8 lg:pt-6 xl:ps-[calc(var(--app-sidebar-w)+3rem)] xl:pe-12'}`,
             style: showMenu ? { filter: 'blur(3px) brightness(0.4)', transition: 'filter 0.2s ease', pointerEvents: 'none' } : { transition: 'filter 0.2s ease' }
         },
             // ⚡ C1: `max-width` + توسيط اتحط على **wrapper جوّه `<main>`**
