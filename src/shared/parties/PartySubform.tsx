@@ -4,6 +4,7 @@ import { PartyFields } from './PartyFields';
 import { Inp } from '../ui/Inp';
 import { I } from '../../constants';
 import { useNestedModalBackButton } from '../lib/useNestedModalBackButton';
+import { useModalPresentation } from '../hooks/useModalPresentation';
 import type { UsePartyFieldsReturn } from './usePartyFields';
 import type { PartySide, PartyFieldValue } from './partyTypes';
 import type { PartyLinkState } from './partyDomainService';
@@ -52,6 +53,10 @@ export function PartySubform({
     isOpen, side, title, addLabel, controller, testIdPrefix, renderPartyExtra, renderPartyReadOnly, getPartyState, onClose,
 }: PartySubformProps) {
     useNestedModalBackButton(isOpen, onClose);
+    // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
+    // المُطبَّق في NewCaseModal.tsx — items-end/rounded-t-3xl موبايل (زي الأصل
+    // بالحرف)، items-center/rounded-3xl ديسكتوب.
+    const modalPresentation = useModalPresentation();
 
     if (!isOpen) return null;
 
@@ -107,10 +112,10 @@ export function PartySubform({
     // document.body مباشرة (راجع تعليق الـFIX فوق) — عشان يفضل fixed
     // نسبةً للشاشة الحقيقية دايمًا، مش نسبةً لصندوق الموديل الأساسي. ──
     return createPortal(React.createElement('div', {
-        className: 'fixed inset-0 z-[60] flex items-end justify-center bg-black/70 backdrop-blur-sm',
+        className: `fixed inset-0 z-[60] flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/70 backdrop-blur-sm`,
         onClick: (e: React.MouseEvent<HTMLDivElement>) => { if (e.target === e.currentTarget) onClose(); },
     },
-        React.createElement('div', { className: 'bg-premium-card w-full max-w-lg rounded-t-3xl border-t border-white/10 p-6 pb-10 shadow-2xl slide-up max-h-[90vh] overflow-y-auto no-scrollbar' },
+        React.createElement('div', { className: `bg-premium-card w-full max-w-lg ${modalPresentation.panelShapeClassName} p-6 pb-10 shadow-2xl ${modalPresentation.panelAnimationClassName} max-h-[90vh] overflow-y-auto no-scrollbar` },
             React.createElement('div', { className: 'w-10 h-1 bg-white/20 rounded-full mx-auto mb-5' }),
             React.createElement('div', { className: 'flex items-center justify-between mb-5' },
                 React.createElement('h3', { className: 'text-sm font-black text-white flex items-center gap-2' },
