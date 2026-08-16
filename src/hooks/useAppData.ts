@@ -4,6 +4,7 @@ import { recordError, recordSuccess } from '../systemHealth';
 import { ilikeOrClause } from '../shared/lib/sanitize';
 import { toast } from '../shared/lib/notifications';
 import { createFetchGuard } from '../shared/lib/offlineGuard';
+import { isAdminRole } from '../shared/lib/permissions';
 import type { CaseRow, ClientRow, ProfileRow } from '../types';
 // ⚡ NEW (خطة تفكيك الأعمدة القديمة، المرحلة B.4 — 6 أغسطس 2026): نفس
 // شكل صف الطرف المستخدم في B.1/B.2/B.3 (`PartyDisplayRow`) — بيتاح دلوقتي
@@ -234,7 +235,9 @@ function loadOfflineCache<T>(key: string, tenantId: string | null | undefined): 
 }
 
 export function useAppData(profile: ProfileRow | null) {
-    const isAdmin = profile?.role === 'admin';
+    // 🆕 (بند 6) — بدل التكرار الحرفي؛ نفس المنطق في App.tsx الآن
+    // مستورد من مصدر واحد (shared/lib/permissions.ts).
+    const isAdmin = isAdminRole(profile);
     const PAGE_SIZE = 15;
 
     // ── State ──────────────────────────────────────────────
