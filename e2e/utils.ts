@@ -217,6 +217,34 @@ export async function openAdminSection(
 // (disposable) عبر UserFormModal الحقيقي (useAdminUsers.handleAddUser →
 // callAdminAction({action:'create_lawyer'})). بيفترض إن القسم مش مفتوح
 // أصلًا فبيفتحه بنفسه (openAdminSection) عشان يبقى قابل للاستدعاء من
+// 🩺 TEMP DEBUG (تشخيص فشل permissions-matrix.spec.ts — 16 أغسطس 2026):
+// تستين lawyer/viewer بيلاقوا desktop-nav-fees ظاهر رغم إن navConfig.ts/
+// DesktopSidebar.tsx بيفلتروه صح بناءً على isAdmin (=profile.role==='admin').
+// مراجعة الكود من غير وصول لقاعدة البيانات الحية مالقتش أي باج منطقي —
+// فده نداء تشخيصي مباشر لقاعدة البيانات (service_role، نفس المفتاح
+// المتاح فعليًا في e2e job كـSUPABASE_SERVICE_ROLE_KEY) بيطبع role/
+// is_super_admin/tenant_id الفعليين للمستخدم اللي اتعمله create فورًا،
+// عشان اللوج القادم يوريّنا القيمة الحقيقية بدل التخمين. مؤقت، يتشال
+// بعد ما نلاقي السبب الجذري.
+export async function debugPrintProfileByEmail(email: string): Promise<void> {
+  const url = process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    console.log('[DEBUG profile] SUPABASE_SERVICE_ROLE_KEY/VITE_SUPABASE_URL مش متوفرين، مقدرش أجيب البروفايل');
+    return;
+  }
+  try {
+    const res = await fetch(
+      `${url}/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=email,role,is_active,is_super_admin,tenant_id,permissions`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+    );
+    const rows = await res.json();
+    console.log('[DEBUG profile]', email, '→', JSON.stringify(rows));
+  } catch (err) {
+    console.log('[DEBUG profile] فشل النداء:', err instanceof Error ? err.message : String(err));
+  }
+}
+
 // أول التست مباشرة. بيرجّع البريد/كلمة السر المستخدمة عشان تستات
 // "تغيير كلمة المرور" تقدر تتأكد من القيمة الجديدة لو احتاجت.
 export async function createTestUser(
