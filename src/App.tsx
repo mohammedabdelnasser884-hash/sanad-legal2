@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { I, COUNTRY_CONFIGS, loadOfficeSetting } from './constants';
 import { useNavigation } from './useNavigation';
 import type { TabName } from './useNavigation';
-import { isAdminRole, usePermission } from './shared/lib/permissions';
+import { isAdminRole, checkPermission } from './shared/lib/permissions';
 import type { DeleteConfirmState } from '@/features/cases/hooks/useCaseActions';
 import type { MappedCase, MappedClient } from './hooks/useAppData';
 import LoginScreen from './pages/Login/LoginScreen';
@@ -379,10 +379,10 @@ function App() {
     // ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3 — 16 أغسطس 2026):
     // can_view_fees مقفول بلا استثناء لغير admin (قرار 2.1 من الخطة —
     // مفيش أي استثناء صريح ممكن يفتحه)، فعمليًا هو نفس isAdmin دايمًا،
-    // لكن بنستخدم usePermission() صراحةً هنا (مش isAdmin مباشرة) عشان
+    // لكن بنستخدم checkPermission() صراحةً هنا (مش isAdmin مباشرة) عشان
     // يفضل متوافق تلقائيًا لو القرار ده اتغيّر يومًا ما (has_permission()
     // على القاعدة هو المرجع الحقيقي دايمًا).
-    const canViewFees = usePermission(profile, 'can_view_fees');
+    const canViewFees = checkPermission(profile, 'can_view_fees');
 
     // ── Initial data fetch + إعادة تحميل بعد المزامنة الأوفلاين ──
     useInitialDataSync({
