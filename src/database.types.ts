@@ -1255,6 +1255,12 @@ export interface Database {
           role: string | null
           created_at: string | null
           tenant_id: string | null
+          /** ⚠️ LEGACY (بند 4.3 من تقرير مراجعة الصلاحيات، 16 أغسطس 2026):
+           *  عمود موجود في الـ schema لكن غير مستخدم في أي منطق حالي —
+           *  اتأكد ده في تعليق داخل database/tests/phase1-tenant-isolation-test.sql.
+           *  الدور الفعلي المستخدم في كل الكود هو `role` (فوق)، مش `rbac_role`.
+           *  الاسم القريب من بعضه ممكن يسبب لبس — لو مفيش خطة لاستخدامه
+           *  قريبًا، فكّر تشيله من الـ schema بدل ما يفضل ميت. */
           rbac_role: string | null
           is_super_admin: boolean | null
           is_active: boolean | null
