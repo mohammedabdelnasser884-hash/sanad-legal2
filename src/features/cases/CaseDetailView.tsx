@@ -42,7 +42,7 @@ import { isPartyOrphaned, type PartyDomainContext } from '../../shared/parties/p
 // "تعديل"/"حذف" فى هيدر القضية محكومين بـcan_edit_cases/can_delete_cases.
 // الدفاع الحقيقي (useCaseActions.ts + RLS) موجود بالفعل من غير ده — هنا
 // بس تجربة مستخدم (إخفاء الزرار) عشان لا يظهر أصلًا لمن ليس له صلاحية.
-import { usePermission } from '../../shared/lib/permissions';
+import { checkPermission } from '../../shared/lib/permissions';
 
 // شكل عنصر حالة القضية (نفس الحقول المستخدمة فعليًا في مصفوفة statuses تحت)
 interface CaseStatusOption {
@@ -167,8 +167,8 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
     const actions = useCaseDetailActions(caseData, onUpdate, onDelete, onNotify, undefined, client, profile);
     // ⚡ NEW (مرحلة 3 خطة الصلاحيات): can_edit_cases/can_delete_cases —
     // لزراري "تعديل"/"حذف" فى الهيدر تحت.
-    const canEditCase = usePermission(profile, 'can_edit_cases');
-    const canDeleteCase = usePermission(profile, 'can_delete_cases');
+    const canEditCase = checkPermission(profile, 'can_edit_cases');
+    const canDeleteCase = checkPermission(profile, 'can_delete_cases');
     const {
       sessions, notes, docs, loadingSessions,
       // ⚡ NEW (مرحلة 8): أطراف القضية الكاملة (case_parties) — بتتمرر
