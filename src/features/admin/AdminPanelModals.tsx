@@ -20,6 +20,8 @@ interface AdminPanelModalsProps {
   setEditUser: (u: ProfileRow | null) => void;
   handleEditUser: (form: EditUserForm) => void;
   saving: boolean;
+  // 🔒 مطلوبة عشان نحسب isSelf في EditUserModal (راجع تعليق isSelf هناك)
+  profile?: ProfileRow | null;
 
   // إضافة مستخدم
   showAddUser: boolean;
@@ -65,7 +67,7 @@ interface AdminPanelModalsProps {
 
 export default function AdminPanelModals(props: AdminPanelModalsProps) {
   const {
-    editUser, setEditUser, handleEditUser, saving,
+    editUser, setEditUser, handleEditUser, saving, profile,
     showAddUser, setShowAddUser, handleAddUser,
     showAddPortalUser, setShowAddPortalUser, clients, portalAccess, handleSavePortal, savingPortal,
     portalClient, setPortalClient,
@@ -79,7 +81,8 @@ export default function AdminPanelModals(props: AdminPanelModalsProps) {
 
     editUser && React.createElement(EditUserModal, {
       user: editUser, onSave: handleEditUser,
-      onClose: () => setEditUser(null), saving
+      onClose: () => setEditUser(null), saving,
+      isSelf: !!profile && editUser.id === profile.id
     }),
 
     showAddUser && React.createElement(UserFormModal, {
