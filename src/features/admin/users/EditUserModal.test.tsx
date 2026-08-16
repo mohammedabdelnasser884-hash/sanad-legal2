@@ -1,8 +1,37 @@
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import EditUserModal from './EditUserModal';
 import type { ProfileRow } from '../../../types';
+
+// 🔒 FIX (بعد أول تشغيل فعلي في CI، 16 أغسطس 2026): EditUserModal.tsx
+// بتستورد `I` من `../../../constants` (لأيقونة X في الهيدر)، وconstants.ts
+// بيستورد `db` من `../../../supabaseClient` على مستوى الموديول —
+// `supabaseClient.ts` بينادي `createClient(SUPA_URL, SUPA_KEY)` وقت
+// التحميل نفسه (side effect)، وده بيكراش فورًا في بيئة CI اللي مفيهاش
+// VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY (`Error: supabaseUrl is
+// required`) — التست كان بيفشل بالكامل (0 test اتشغل خالص) قبل حتى ما
+// يوصل لأي assertion. نفس الحل المستخدم في LoginScreen.test.tsx: mock
+// لموديول supabaseClient قبل أي import حقيقي ليه. EditUserModal.tsx
+// نفسها مبتنادي أي method على `db` مباشرة (الاستيراد الوحيد الحقيقي —
+// مش type-only — اللي بيوصّل لـsupabaseClient هو `constants.ts` بس عن
+// طريق `I`)، فـstub فاضي بمنهجية chainable آمن كفاية هنا.
+vi.mock('../../../supabaseClient', () => ({
+  db: {
+    from: () => ({
+      select: () => ({ data: null, error: null }),
+      update: () => ({ eq: () => ({ data: null, error: null }) }),
+      insert: () => ({ data: null, error: null }),
+    }),
+    functions: { invoke: () => Promise.resolve({ data: null, error: null }) },
+    auth: { setSession: () => Promise.resolve({ error: null }) },
+  },
+  callAdminAction: () => Promise.resolve({ data: null, error: null }),
+}));
+
+// ⚠️ استيراد EditUserModal بعد الـmock فوق عن قصد — vi.mock بيتعمله
+// hoist لفوق كل الاستيرادات تلقائيًا في vitest، فالترتيب هنا للتوضيح
+// بس مش شرط فعلي، لكن أوضح للقاري إن السطر ده بيعتمد على الـmock فوق.
+import EditUserModal from './EditUserModal';
 
 // ⚠️ نفس ملاحظة LoginScreen.test.tsx: vitest.config.ts شغّال بـ
 // `globals: false`، فمفيش afterEach global مسجّل تلقائيًا لتنظيف
