@@ -22,7 +22,6 @@ function UsersSection({
         : lawyers.map((user) => {
             // permissions أعمدة Json في قاعدة البيانات — نفس الكاست الموثّق
             // المستخدم فعليًا في EditUserModal.tsx لقراءتها كـ Record<string, boolean>.
-            const userPermissions = (user.permissions as Record<string, boolean>) || {};
             const rc = ROLE_CONFIG[user.role || ''] || ROLE_CONFIG.viewer;
             const isInactive = user.is_active === false;
             return React.createElement('div',{
@@ -45,16 +44,17 @@ function UsersSection({
                   ),
                   React.createElement('p',{className:"text-[10px] text-slate-500 truncate"},user.email||''),
                   React.createElement('div',{className:"flex items-center gap-2 mt-1"},
-                    React.createElement('span',{className:`text-[9px] font-bold px-2 py-0.5 rounded-full border ${rc.bg} ${rc.color} ${rc.border}`},rc.label),
-                    Object.keys(userPermissions).length > 0 &&
-                      React.createElement('span',{className:"text-[9px] text-slate-600"},
-                        Object.values(userPermissions).filter(Boolean).length + " صلاحية")
+                    React.createElement('span',{className:`text-[9px] font-bold px-2 py-0.5 rounded-full border ${rc.bg} ${rc.color} ${rc.border}`},rc.label)
                   )
                 ),
 
                 // أزرار
                 React.createElement('div',{className:"flex gap-1.5"},
-                  React.createElement('button',{
+                  // 🔒 FIX (مراجعة أمان صلاحيات أعضاء المكتب — 16 أغسطس 2026): مستثنى
+                  // على نفس نمط زرار الحذف تحت — تريجر prevent_self_privilege_escalation
+                  // بيمنع الأدمن يعدّل is_active بتاعه هو، فالزرار ده كان هياخد error
+                  // عام غير مفهوم لو ضغط عليه على صف نفسه.
+                  user.id !== profile?.id && React.createElement('button',{
                     onClick:()=>toggleUserActive(user),
                     'data-testid':'admin-user-toggle-active',
                     className:`w-8 h-8 rounded-xl flex items-center justify-center border transition-all active:scale-90 ${isInactive?'bg-[#C9A84C]/15 border-[#C9A84C]/30 text-[#C9A84C]':'bg-red-500/10 border-red-500/20 text-red-400'}`
