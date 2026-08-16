@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../supabaseClient';
 import { toast } from '../shared/lib/notifications';
 import { recordError } from '../systemHealth';
@@ -50,6 +50,22 @@ export function useAuthProfile() {
     const [authUser,   setAuthUser]   = useState<{ id: string; email?: string | null } | null>(null);
     const [authLoading,setAuthLoading]= useState(true);
 
+    // 🔒 FIX (تحليل race condition — 17 أغسطس 2026): loadProfile بيتنادى
+    // من onAuthStateChange، واللي ممكن يطلق أكتر من نداء متتالي بسرعة
+    // (مثلًا logout سريع بعده login تاني — سيناريو e2e/utils.ts
+    // logout()+loginAs()). لو نداء قديم (لمستخدم اتسجّل دخوله واتسجّل
+    // خروجه بالفعل) اتأخر في الاستجابة لأي سبب (شبكة، حمل على
+    // Supabase...) وكمّل ووصل بعد نداء أحدث لمستخدم مختلف، كان بيكتب
+    // فوق الـprofile الصح ببيانات المستخدم القديم من غير أي تحذير —
+    // فمثلاً بعد تبديل حساب من أدمن للواير، ممكن يفضل profile.role
+    // يرجع "admin" غلط لو رد الأدمن القديم وصل متأخر. الحل: نتتبّع
+    // أحدث user.id مطلوب فعليًا (ref، مش state، عشان القيمة تتحدّث
+    // فورًا من غير انتظار re-render)، ولما أي نداء يخلص، لو الـuser.id
+    // اللي طلبه بيه مش هو نفسه أحدث نداء لسه، بنتجاهل النتيجة بالكامل
+    // (مفيش setProfile/setAuthUser/setAuthLoading) — النداء الأحدث هو
+    // اللي هيحدّث الشاشة النهائي.
+    const latestRequestedUserId = useRef<string | null>(null);
+
     // ── Auth ──────────────────────────────────────────────────
     // ⚠️ FIX: قبل كده كان الكود بيتجاهل error تحميل البروفايل تمامًا.
     // لو المستخدم مسجّل دخول فعليًا في Supabase Auth بس صف البروفايل
@@ -60,6 +76,10 @@ export function useAuthProfile() {
     // الصف مش موجود) وبنعرض toast واضح لو حصل أي error فعلي (زي تكرار
     // بيانات أو رفض RLS).
     const loadProfile = useCallback(async (user: { id: string; email?: string | null } | null) => {
+        // ⚡ أي نداء (حتى لو بـuser=null، يعني logout) بيبقى هو "أحدث
+        // نداء" لحظة ما يتنادى — أي نداء سابق لسه معلّق هيتجاهل ردّه
+        // تلقائيًا لما يوصل (راجع الفحص تحت).
+        latestRequestedUserId.current = user?.id ?? null;
         if (!user) { setProfile(null); setAuthUser(null); return; }
         setAuthUser(user);
         // ⚡ NEW (فيكس "شاشة اللوجو بتفضل ثابتة كتير" — 9 أغسطس 2026):
@@ -90,6 +110,10 @@ export function useAuthProfile() {
                 clearTimeout(timeoutId);
             }
         }
+        // 🔒 لو فيه نداء أحدث اتطلب لمستخدم مختلف (أو logout) من ساعة ما
+        // النداء ده ابتدى، النتيجة دي بقت قديمة — نتجاهلها بالكامل عشان
+        // منكتبش فوق حالة أحدث وصحيحة.
+        if (latestRequestedUserId.current !== user.id) return;
         if (error) {
             // ⚡ لو السبب المرجّح إننا أوف لاين (أو الطلب طوّل واتقفل بالـ
             // timeout فوق)، جرّب ترجع لآخر نسخة بروفايل محفوظة لنفس
@@ -128,7 +152,14 @@ export function useAuthProfile() {
         });
         const { data: listener } = db.auth.onAuthStateChange((_event, session) => {
             if (session?.user) loadProfile(session.user);
-            else { setProfile(null); setAuthUser(null); }
+            else {
+                // 🔒 نفس فيكس الـrace condition فوق — لازم نصفّر الـref هنا
+                // كمان (مش بس جوه loadProfile) عشان أي نداء profile قديم
+                // لسه معلّق لمستخدم قبل الـlogout يتجاهل نفسه لما يوصل.
+                latestRequestedUserId.current = null;
+                setProfile(null);
+                setAuthUser(null);
+            }
         });
         return () => listener.subscription.unsubscribe();
     }, [loadProfile]);
