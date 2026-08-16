@@ -552,6 +552,137 @@ describe('admin-actions — action=delete_user', () => {
   });
 });
 
+describe('admin-actions — action=update_profile (بند 4: نقل تعديل profiles من الفرونت إند)', () => {
+  it('من غير profile_id → رد خطأ', async () => {
+    const res = await handler(req({ action: 'update_profile', full_name: 'اسم جديد' }));
+    const data = await res.json();
+    expect(data.error).toBe('profile_id مطلوب');
+  });
+
+  it('أدمن بيعدّل عضو تاني في نفس المكتب (دور + حالة) → ينجح ويبعت PATCH بالأعمدة الصح', async () => {
+    const res = await handler(req({
+      action: 'update_profile',
+      profile_id: 'row-target-1',
+      user_id: 'target-1',
+      full_name: 'محمد الجديد',
+      role: 'viewer',
+      is_active: false,
+      permissions: { can_view_fees: true },
+    }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls).toHaveLength(1);
+    // قرار 2.5: تغيير role بيصفّر permissions تلقائيًا ({}) حتى لو
+    // الطلب نفسه بعت قيمة صريحة (can_view_fees: true) — التصفير بياخد
+    // أولوية عشان استثناء دور قديم ميفضلش شغال بعد تغيير الدور.
+    expect(state.patchProfilesCalls[0].body).toEqual({
+      full_name: 'محمد الجديد',
+      role: 'viewer',
+      is_active: false,
+      permissions: {},
+    });
+  });
+
+  it('أدمن بيغيّر role بس (من غير permissions فى نفس الطلب) → برضه بيتصفّر تلقائيًا', async () => {
+    const res = await handler(req({
+      action: 'update_profile',
+      profile_id: 'row-target-1',
+      user_id: 'target-1',
+      role: 'lawyer',
+    }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls[0].body).toEqual({
+      role: 'lawyer',
+      permissions: {},
+    });
+  });
+
+  it('أدمن بيبعت permissions بس (من غير role) → بتتحفظ زي ما هي من غير تصفير', async () => {
+    const res = await handler(req({
+      action: 'update_profile',
+      profile_id: 'row-target-1',
+      user_id: 'target-1',
+      permissions: { can_export_data: true },
+    }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls[0].body).toEqual({
+      permissions: { can_export_data: true },
+    });
+  });
+
+  it('محاولة تعديل الدور/الحالة/الصلاحيات على حساب المستدعي نفسه → مرفوض حتى لو أدمن', async () => {
+    const res = await handler(req({
+      action: 'update_profile',
+      profile_id: 'row-caller-1',
+      user_id: 'caller-1', // نفس الطالب
+      role: 'lawyer',
+    }));
+    const data = await res.json();
+    expect(data.error).toBe('لا يمكنك تعديل دورك أو حالة حسابك أو صلاحياتك بنفسك — لازم أدمن تاني يعمل ده');
+    expect(state.patchProfilesCalls).toEqual([]);
+  });
+
+  it('تعديل الاسم فقط على حساب المستدعي نفسه → مسموح (مش من الأعمدة الحساسة)', async () => {
+    const res = await handler(req({
+      action: 'update_profile',
+      profile_id: 'row-caller-1',
+      user_id: 'caller-1',
+      full_name: 'اسمي الجديد',
+    }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls[0].body).toEqual({ full_name: 'اسمي الجديد' });
+  });
+
+  it('أدمن من تينانت مختلف عن المستهدف → غير مسموح، من غير PATCH', async () => {
+    state.profilesById['target-1'] = { role: 'lawyer', tenant_id: 'tenant-b', is_active: true };
+    const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', role: 'admin' }));
+    const data = await res.json();
+    expect(data.error).toBe('غير مسموح لك بتنفيذ هذا الإجراء');
+    expect(state.patchProfilesCalls).toEqual([]);
+  });
+
+  it('دور غير صالح → مرفوض من غير PATCH', async () => {
+    const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', role: 'superhero' }));
+    const data = await res.json();
+    expect(data.error).toBe('دور غير صالح');
+    expect(state.patchProfilesCalls).toEqual([]);
+  });
+
+  it('بدون أي حقل للتعديل → رد واضح من غير PATCH', async () => {
+    const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1' }));
+    const data = await res.json();
+    expect(data.error).toBe('لا يوجد تغييرات لحفظها');
+    expect(state.patchProfilesCalls).toEqual([]);
+  });
+});
+
+describe('admin-actions — action=toggle_lock (بند 4)', () => {
+  it('أدمن بيقفل حساب عضو في نفس المكتب → PATCH بـ is_locked=true من غير لمس failed_login_attempts', async () => {
+    const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: true }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls[0].body).toEqual({ is_locked: true });
+  });
+
+  it('فتح حساب → PATCH بـ is_locked=false وتصفير failed_login_attempts', async () => {
+    const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: false }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls[0].body).toEqual({ is_locked: false, failed_login_attempts: 0 });
+  });
+
+  it('طالب مش أدمن → غير مسموح', async () => {
+    state.profilesById['caller-1'] = { role: 'lawyer', tenant_id: 'tenant-a', is_active: true };
+    const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: true }));
+    const data = await res.json();
+    expect(data.error).toBe('غير مسموح لك بتنفيذ هذا الإجراء');
+    expect(state.patchProfilesCalls).toEqual([]);
+  });
+});
+
 describe('admin-actions — action غير معروف وأخطاء عامة', () => {
   it('action مش من ضمن الأنواع التلاتة → 200 + error، مش 400', async () => {
     // ⚠️ ملحوظة سلوك: على عكس saas-admin (اللي بيرجع 400 للـ action
