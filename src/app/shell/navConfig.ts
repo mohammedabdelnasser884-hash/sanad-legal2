@@ -48,10 +48,15 @@ export const primaryNavItems: NavItem[] = [
 
 // عناصر "المزيد" — الشبكة اللي بتفتح من زرار nav-more-toggle في الموبايل
 // (بنفس الترتيب والـ testids الموجودين في CommandDock.tsx بالظبط)
+// ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3 — 16 أغسطس 2026):
+// 'fees' بقى adminOnly زي 'admin' بالظبط — can_view_fees مقفول بلا
+// استثناء لغير admin (قرار 2.1 من الخطة)، يعني عمليًا نفس isAdmin
+// دايمًا. راجع نفس التعديل فى CommandDock.tsx (اللي بيبني قائمته
+// الخاصة بشكل مستقل، مش عن طريق المصفوفة دي).
 export const moreNavItems: NavItem[] = [
     { tab: 'clients',   icon: I.Person, label: 'الموكلين',    testId: 'nav-more-clients' },
     { tab: 'documents', icon: I.Folder, label: 'المستندات',   testId: 'nav-more-documents' },
-    { tab: 'fees',      icon: I.Money,  label: 'الأتعاب',     testId: 'nav-more-fees' },
+    { tab: 'fees',      icon: I.Money,  label: 'الأتعاب',     testId: 'nav-more-fees', adminOnly: true },
     { tab: 'admin',     icon: I.Shield, label: 'لوحة الإدارة', testId: 'nav-more-admin', adminOnly: true },
 ];
 
