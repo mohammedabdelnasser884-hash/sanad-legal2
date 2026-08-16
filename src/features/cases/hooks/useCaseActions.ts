@@ -17,7 +17,7 @@ import { validateParties } from '../../../shared/lib/casePartiesValidation';
 // على القاعدة اللي اتفعّلت فى مرحلة 1). فحص هنا (funnel واحد لكل
 // عملية) بيغطي كل نقاط الدخول البديلة (زرار مباشر، أي مسار تاني بينده
 // نفس الدالة) بضربة واحدة، بدل ما نعتمد بس على إخفاء الزرار فى الواجهة.
-import { usePermission } from '../../../shared/lib/permissions';
+import { checkPermission } from '../../../shared/lib/permissions';
 
 // شكل البيانات اللي بتوصل فعليًا من NewCaseModal/EditCaseModal لـ onSave —
 // اتحقق من كل استخدام حقيقي في handleSaveCase/handleUpdateCase تحت، وبيغطي
@@ -192,7 +192,7 @@ export function useCaseActions(params: {
         // 🔒 NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3): can_add_cases —
         // نفس فحص has_permission('can_add_cases') على القاعدة (RLS INSERT
         // على cases)، هنا بس كتجربة مستخدم أسرع من الاستنى فشل السيرفر.
-        if (!usePermission(profile, 'can_add_cases')) {
+        if (!checkPermission(profile, 'can_add_cases')) {
             toast('❌ ليس لديك صلاحية إضافة قضايا جديدة', true);
             return false;
         }
@@ -558,7 +558,7 @@ export function useCaseActions(params: {
         // النهائي الفعلي محكوم كمان على مستوى RLS بنفس المفتاح (DELETE
         // على cases)، والأرشفة (UPDATE) محكومة هناك بـcan_edit_cases —
         // القفل هنا أوسع شوية بقصد (بساطة نقطة دخول واحدة بدل تقسيمها).
-        if (!usePermission(profile, 'can_delete_cases')) {
+        if (!checkPermission(profile, 'can_delete_cases')) {
             toast('❌ ليس لديك صلاحية حذف القضايا', true);
             return;
         }
@@ -625,7 +625,7 @@ export function useCaseActions(params: {
         // 🔒 NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3): can_edit_cases —
         // نفس فحص has_permission('can_edit_cases') على القاعدة (RLS UPDATE
         // على cases).
-        if (!usePermission(profile, 'can_edit_cases')) {
+        if (!checkPermission(profile, 'can_edit_cases')) {
             toast('❌ ليس لديك صلاحية تعديل القضايا', true);
             return false;
         }
