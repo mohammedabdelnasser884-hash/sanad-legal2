@@ -4,45 +4,20 @@ import { useAdminUsers } from './useAdminUsers';
 import type { ProfileRow } from '../../../../types';
 
 // ══════════════════════════════════════════════════════════════════
-// Mock db (supabaseClient) — بيغطي الاستخدامات الفعلية في useAdminUsers.ts
-// (اتأكدت منها بقراءة الكود، مفيش تخمين):
-//   - db.from('profiles').update({...}).eq('id', x)   [handleEditUser, toggleUserActive, handleToggleLock]
-// handleAddUser/handleDeleteUser/handleChangePassword/handleSignOutAllDevices
-// بيعدّوا عن طريق callAdminAction فقط (من نفس ملف supabaseClient) — مفيش
-// db.from('profiles').delete() في handleDeleteUser (كان كده قبل كده، اتصلح:
-// كان بيحذف صف profiles بس وبيسيب حساب auth.users معلّق، دلوقتي بيستدعي
-// admin-actions action=delete_user اللي بيحذف Auth أولاً وبعدين profiles).
-// toggleUserActive كمان بتستخدم callAdminAction (action:'force_signout')
-// جوه try/catch منفصل — الفشل فيها ما بيوقفش باقي العملية (FIX موثّق في
-// تعليق الكود نفسه).
+// Mock supabaseClient — محدّث (16 أغسطس 2026) بعد بند 4 من تقرير مراجعة
+// الصلاحيات: handleEditUser/toggleUserActive/handleToggleLock بقوا كلهم
+// بيعدّوا عن طريق callAdminAction (action: update_profile / toggle_lock)
+// بدل db.from('profiles').update() المباشر من المتصفح — نفس السبب اللي
+// خلّى handleDeleteUser يتحول لـaction:delete_user قبل كده. النتيجة: db
+// من supabaseClient بقى مش بيتستخدم مباشرة في الهوك خالص (بس لسه بيتمرر
+// كأول آرجيومنت لـlogActivity، اللي هو نفسه متعمَل mock منفصل تحت).
+// toggleUserActive بتستدعي callAdminAction مرتين (update_profile الأول،
+// وforce_signout بعده لو الحساب بيتقفل وليه user_id) — الفشل في التاني
+// جوه try/catch منفصل وما بيوقفش باقي العملية (FIX موثّق في تعليق الكود).
 // ══════════════════════════════════════════════════════════════════
-type Result = { error?: { message?: string } | null };
-
-function makeMockDb() {
-  const configured: Record<string, Result> = {};
-  const updateSpy = vi.fn();
-  const deleteSpy = vi.fn();
-
-  const setResult = (key: string, result: Result) => { configured[key] = result; };
-  const get = (key: string) => configured[key] ?? { error: null };
-
-  const from = vi.fn((table: string) => ({
-    update: vi.fn((payload: Record<string, unknown>) => {
-      updateSpy(table, payload);
-      return { eq: vi.fn((col: string, val: unknown) => { updateSpy('eq', col, val); return Promise.resolve(get(`${table}:update`)); }) };
-    }),
-    delete: vi.fn(() => ({
-      eq: vi.fn((col: string, val: unknown) => { deleteSpy(col, val); return Promise.resolve(get(`${table}:delete`)); }),
-    })),
-  }));
-
-  return { from, setResult, updateSpy, deleteSpy };
-}
-
-let mockDb = makeMockDb();
 const callAdminAction = vi.fn();
 vi.mock('../../../../supabaseClient', () => ({
-  db: { from: (...a: Parameters<typeof mockDb.from>) => mockDb.from(...a) },
+  db: {},
   callAdminAction: (...a: unknown[]) => callAdminAction(...a),
 }));
 
@@ -59,8 +34,9 @@ const PROFILE = { id: 'admin-1', full_name: 'أحمد المدير' } as unknown
 const TARGET_USER = { id: 'u1', user_id: 'auth-u1', full_name: 'محمد المحامي', is_active: true, is_locked: false, failed_login_attempts: 3 } as unknown as ProfileRow;
 
 beforeEach(() => {
-  mockDb = makeMockDb();
-  callAdminAction.mockClear();
+  // mockReset (مش mockClear بس) عشان يمسح أي mockResolvedValue/mockRejectedValue
+  // اتحط في تست سابق — من غير كده تست بعده ممكن يورث implementation غلط.
+  callAdminAction.mockReset();
   toast.mockClear();
   logActivity.mockClear();
   recordError.mockClear();
@@ -77,7 +53,8 @@ function setup(fetchLawyers = vi.fn(), ...profileArg: [ProfileRow | null | undef
 
 describe('useAdminUsers', () => {
   describe('handleEditUser', () => {
-    it('نجاح → update بالحقول الأربعة، توست نجاح، logActivity بـ userName من البروفايل، setEditUser(null)، fetchLawyers', async () => {
+    it('نجاح → callAdminAction بـ action:update_profile بالحقول الأربعة، توست نجاح، logActivity بـ userName من البروفايل، setEditUser(null)، fetchLawyers', async () => {
+      callAdminAction.mockResolvedValue({ ok: true });
       const fetchLawyers = vi.fn();
       const { result } = setup(fetchLawyers);
       act(() => { result.current.setEditUser(TARGET_USER); });
@@ -86,16 +63,15 @@ describe('useAdminUsers', () => {
         await result.current.handleEditUser({ full_name: 'محمد المعدّل', role: 'lawyer', is_active: true, permissions: { cases: true } });
       });
 
-      expect(mockDb.updateSpy).toHaveBeenCalledWith('profiles', { full_name: 'محمد المعدّل', role: 'lawyer', is_active: true, permissions: { cases: true } });
-      expect(mockDb.updateSpy).toHaveBeenCalledWith('eq', 'id', 'u1');
+      expect(callAdminAction).toHaveBeenCalledWith({ action: 'update_profile', profile_id: 'u1', user_id: 'auth-u1', full_name: 'محمد المعدّل', role: 'lawyer', is_active: true, permissions: { cases: true } });
       expect(toast).toHaveBeenCalledWith('✅ تم تحديث بيانات المستخدم');
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تعديل مستخدم', { userName: 'أحمد المدير', entity_type: 'user', entity_id: 'u1', details: 'محمد المعدّل' });
       expect(result.current.editUser).toBeNull();
       expect(fetchLawyers).toHaveBeenCalledTimes(1);
     });
 
-    it('فشل الـ update → توست فشل، من غير logActivity/setEditUser(null)/fetchLawyers', async () => {
-      mockDb.setResult('profiles:update', { error: { message: 'db error' } });
+    it('فشل الـ update_profile → توست فشل، من غير logActivity/setEditUser(null)/fetchLawyers', async () => {
+      callAdminAction.mockRejectedValue(new Error('db error'));
       const fetchLawyers = vi.fn();
       const { result } = setup(fetchLawyers);
       act(() => { result.current.setEditUser(TARGET_USER); });
@@ -104,7 +80,8 @@ describe('useAdminUsers', () => {
         await result.current.handleEditUser({ full_name: 'x', role: 'lawyer', is_active: true, permissions: {} });
       });
 
-      expect(toast).toHaveBeenCalledWith('❌ فشل الحفظ، يرجى المحاولة مرة أخرى', true);
+      expect(toast).toHaveBeenCalledWith('❌ تعذّر حفظ التعديلات. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', true);
+      expect(recordError).toHaveBeenCalledWith('admin_update_profile', 'db error', expect.objectContaining({ label: 'تعديل مستخدم' }));
       expect(logActivity).not.toHaveBeenCalled();
       expect(result.current.editUser).toEqual(TARGET_USER);
       expect(fetchLawyers).not.toHaveBeenCalled();
@@ -213,10 +190,11 @@ describe('useAdminUsers', () => {
       const fetchLawyers = vi.fn();
       const { result } = setup(fetchLawyers);
       const inactiveUser = { ...TARGET_USER, is_active: false };
+      callAdminAction.mockResolvedValue({ ok: true });
       await act(async () => { await result.current.toggleUserActive(inactiveUser); });
 
-      expect(mockDb.updateSpy).toHaveBeenCalledWith('profiles', { is_active: true });
-      expect(callAdminAction).not.toHaveBeenCalled();
+      expect(callAdminAction).toHaveBeenCalledWith({ action: 'update_profile', profile_id: 'u1', user_id: 'auth-u1', is_active: true });
+      expect(callAdminAction).toHaveBeenCalledTimes(1); // مفيش نداء force_signout لأننا بنفعّل مش بنعطّل
       expect(toast).toHaveBeenCalledWith('✅ تم تفعيل الحساب');
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تفعيل مستخدم', expect.objectContaining({ entity_id: 'u1' }));
       expect(fetchLawyers).toHaveBeenCalledTimes(1);
@@ -227,14 +205,20 @@ describe('useAdminUsers', () => {
       const { result } = setup();
       await act(async () => { await result.current.toggleUserActive(TARGET_USER); });
 
-      expect(mockDb.updateSpy).toHaveBeenCalledWith('profiles', { is_active: false });
-      expect(callAdminAction).toHaveBeenCalledWith({ action: 'force_signout', user_id: 'auth-u1' });
+      expect(callAdminAction).toHaveBeenNthCalledWith(1, { action: 'update_profile', profile_id: 'u1', user_id: 'auth-u1', is_active: false });
+      expect(callAdminAction).toHaveBeenNthCalledWith(2, { action: 'force_signout', user_id: 'auth-u1' });
       expect(toast).toHaveBeenCalledWith('⚠️ تم تعطيل الحساب وإنهاء جلساته');
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تعطيل مستخدم', expect.objectContaining({ entity_id: 'u1' }));
     });
 
     it('تعطيل حساب نشط + force_signout بترمي استثناء → مفيش وقف للعملية، رسالة توضيحية مختلفة "تعذر إنهاء جلساته"، لكن logActivity وfetchLawyers لسه بيتنادوا', async () => {
-      callAdminAction.mockRejectedValue(new Error('network down'));
+      // update_profile (النداء الأول) لازم ينجح، وforce_signout (التاني) بس هو اللي يفشل —
+      // مينفعش نستخدم mockRejectedValue العام هنا لأنه هيفشّل الاتنين، والنداء الأول لازم ينجح
+      // عشان نوصل أصلاً لمحاولة force_signout.
+      callAdminAction.mockImplementation((args: unknown) => {
+        const action = (args as { action?: string })?.action;
+        return action === 'force_signout' ? Promise.reject(new Error('network down')) : Promise.resolve({ ok: true });
+      });
       const fetchLawyers = vi.fn();
       const { result } = setup(fetchLawyers);
       await act(async () => { await result.current.toggleUserActive(TARGET_USER); });
@@ -245,20 +229,22 @@ describe('useAdminUsers', () => {
     });
 
     it('تعطيل مستخدم من غير user_id (مفيش حساب auth مرتبط) → مفيش أي نداء لـ force_signout، رسالة النجاح العادية', async () => {
+      callAdminAction.mockResolvedValue({ ok: true });
       const userNoAuth = { ...TARGET_USER, user_id: null };
       const { result } = setup();
       await act(async () => { await result.current.toggleUserActive(userNoAuth); });
-      expect(callAdminAction).not.toHaveBeenCalled();
+      expect(callAdminAction).toHaveBeenCalledWith({ action: 'update_profile', profile_id: 'u1', user_id: null, is_active: false });
+      expect(callAdminAction).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'force_signout' }));
       expect(toast).toHaveBeenCalledWith('⚠️ تم تعطيل الحساب وإنهاء جلساته');
     });
 
-    it('فشل الـ update الأساسي → توست فشل، من غير أي محاولة force_signout أو logActivity أو fetchLawyers', async () => {
-      mockDb.setResult('profiles:update', { error: { message: 'db error' } });
+    it('فشل الـ update_profile الأساسي → توست فشل، من غير أي محاولة force_signout أو logActivity أو fetchLawyers', async () => {
+      callAdminAction.mockRejectedValue(new Error('db error'));
       const fetchLawyers = vi.fn();
       const { result } = setup(fetchLawyers);
       await act(async () => { await result.current.toggleUserActive(TARGET_USER); });
-      expect(toast).toHaveBeenCalledWith('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
-      expect(callAdminAction).not.toHaveBeenCalled();
+      expect(toast).toHaveBeenCalledWith('❌ تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', true);
+      expect(callAdminAction).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'force_signout' }));
       expect(logActivity).not.toHaveBeenCalled();
       expect(fetchLawyers).not.toHaveBeenCalled();
     });
@@ -329,34 +315,36 @@ describe('useAdminUsers', () => {
   });
 
   describe('handleToggleLock', () => {
-    it('قفل حساب مفتوح (is_locked:false) → update بـ is_locked:true وfailed_login_attempts بيفضل زي ما هو (3)، توست قفل، logActivity "قفل حساب"', async () => {
+    it('قفل حساب مفتوح (is_locked:false) → callAdminAction بـ action:toggle_lock وis_locked:true، توست قفل، logActivity "قفل حساب"', async () => {
+      callAdminAction.mockResolvedValue({ ok: true });
       const fetchLawyers = vi.fn();
       const { result } = setup(fetchLawyers);
       await act(async () => { await result.current.handleToggleLock(TARGET_USER); });
 
-      expect(mockDb.updateSpy).toHaveBeenCalledWith('profiles', { is_locked: true, failed_login_attempts: 3 });
+      expect(callAdminAction).toHaveBeenCalledWith({ action: 'toggle_lock', profile_id: 'u1', user_id: 'auth-u1', is_locked: true });
       expect(toast).toHaveBeenCalledWith('🔒 تم قفل الحساب');
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'قفل حساب', expect.objectContaining({ entity_id: 'u1' }));
       expect(fetchLawyers).toHaveBeenCalledTimes(1);
     });
 
-    it('فتح حساب مقفول (is_locked:true) → update بـ is_locked:false وfailed_login_attempts بيتصفّر لـ 0، توست فتح، logActivity "فتح حساب"', async () => {
+    it('فتح حساب مقفول (is_locked:true) → callAdminAction بـ action:toggle_lock وis_locked:false، توست فتح، logActivity "فتح حساب"', async () => {
+      callAdminAction.mockResolvedValue({ ok: true });
       const lockedUser = { ...TARGET_USER, is_locked: true, failed_login_attempts: 5 };
       const { result } = setup();
       await act(async () => { await result.current.handleToggleLock(lockedUser); });
 
-      expect(mockDb.updateSpy).toHaveBeenCalledWith('profiles', { is_locked: false, failed_login_attempts: 0 });
+      expect(callAdminAction).toHaveBeenCalledWith({ action: 'toggle_lock', profile_id: 'u1', user_id: 'auth-u1', is_locked: false });
       expect(toast).toHaveBeenCalledWith('🔓 تم فتح الحساب');
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'فتح حساب', expect.objectContaining({ entity_id: 'u1' }));
     });
 
-    it('فشل الـ update → توست فشل، من غير logActivity أو fetchLawyers أو setConfirmLock(null)', async () => {
-      mockDb.setResult('profiles:update', { error: { message: 'db error' } });
+    it('فشل الـ toggle_lock → توست فشل، من غير logActivity أو fetchLawyers أو setConfirmLock(null)', async () => {
+      callAdminAction.mockRejectedValue(new Error('db error'));
       const fetchLawyers = vi.fn();
       const { result } = setup(fetchLawyers);
       act(() => { result.current.setConfirmLock(TARGET_USER); });
       await act(async () => { await result.current.handleToggleLock(TARGET_USER); });
-      expect(toast).toHaveBeenCalledWith('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
+      expect(toast).toHaveBeenCalledWith('❌ تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', true);
       expect(logActivity).not.toHaveBeenCalled();
       expect(fetchLawyers).not.toHaveBeenCalled();
       expect(result.current.confirmLock).toEqual(TARGET_USER);
