@@ -36,7 +36,10 @@ function CommandDock({
                 ...[
                     { tab: 'clients' as TabName,   icon: I.Person, label: 'الموكلين',    color: 'text-emerald-400', inactiveBg: 'bg-emerald-500/15', inactiveColor: 'text-emerald-300', activeBg: 'bg-emerald-500/25' },
                     { tab: 'documents' as TabName, icon: I.Folder, label: 'المستندات',   color: 'text-purple-400',  inactiveBg: 'bg-purple-500/15',  inactiveColor: 'text-purple-300',  activeBg: 'bg-purple-500/25' },
-                    { tab: 'fees' as TabName,      icon: I.Money,  label: 'الأتعاب',     color: 'text-amber-300',   inactiveBg: 'bg-amber-500/15',   inactiveColor: 'text-amber-300',   activeBg: 'bg-amber-500/25' },
+                    // ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3): can_view_fees
+                    // مقفول بلا استثناء لغير admin (قرار 2.1) = نفس isAdmin دايمًا —
+                    // بالتالي زرار "الأتعاب" اتلحق بنفس شرط "لوحة الإدارة" تحت.
+                    ...(isAdmin ? [{ tab: 'fees' as TabName, icon: I.Money, label: 'الأتعاب', color: 'text-amber-300', inactiveBg: 'bg-amber-500/15', inactiveColor: 'text-amber-300', activeBg: 'bg-amber-500/25' }] : []),
                     ...(isAdmin ? [{ tab: 'admin' as TabName, icon: I.Shield, label: 'لوحة الإدارة', color: 'text-red-400', inactiveBg: 'bg-red-500/15', inactiveColor: 'text-red-300', activeBg: 'bg-red-500/25' }] : []),
                 ].map((item) => React.createElement('button', {
                     key: item.tab,
