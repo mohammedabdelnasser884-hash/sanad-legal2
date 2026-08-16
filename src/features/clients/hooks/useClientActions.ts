@@ -12,6 +12,10 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { ClientRow, ProfileRow } from '../../../types';
 import type { NavigationState } from '../../../useNavigation';
 import type { Json } from '../../../database.types';
+// ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3 — 16 أغسطس 2026): راجع
+// نفس التعليق فى useCaseActions.ts — طبقة UX هنا، RLS هو خط الدفاع
+// الحقيقي.
+import { usePermission } from '../../../shared/lib/permissions';
 
 // شكل contact_info (عمود jsonb) — بيتخزن فيه روابط صور الهوية/التوكيل
 export interface ClientContactInfo {
@@ -143,6 +147,16 @@ export function useClientActions(params: {
     // Promise<boolean> دلوقتي (كانت من غير return صريح) — عشان
     // NewClientModal.tsx يمسح مسودة الفورم بس لو نجح الحفظ فعلًا.
     const handleSaveClient = async (form: ClientFormData, idFile: File | null, poaFile: File | null): Promise<boolean> => {
+        // 🔒 NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3): can_add_clients —
+        // funnel واحد لكل مسارات إنشاء موكل (زرار "موكل جديد" فى تاب
+        // الموكلين، وكل مسارات NewClientModal المفتوحة من جوه قضية/جلسة/طرف
+        // عبر ClientLinkTarget) — فحص هنا بيغطيهم كلهم مرة واحدة، زي
+        // has_permission('can_add_clients') على القاعدة (RLS INSERT على
+        // clients).
+        if (!usePermission(profile, 'can_add_clients')) {
+            toast('❌ ليس لديك صلاحية إضافة موكلين جدد', true);
+            return false;
+        }
         if (!form.full_name || !form.full_name.trim()) {
             toast('❌ حقل "اسم الموكل" مطلوب', true);
             return false;
