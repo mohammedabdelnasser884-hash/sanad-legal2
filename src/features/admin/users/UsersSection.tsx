@@ -82,7 +82,9 @@ function UsersSection({
               ),
 
               // الصلاحيات المفعّلة
-              user.role !== 'admin' && Object.keys(userPermissions).some((k) => userPermissions[k]) &&
+              (() => {
+                const userPermissions = (user.permissions as Record<string, boolean>) || {};
+                return user.role !== 'admin' && Object.keys(userPermissions).some((k) => userPermissions[k]) &&
                 React.createElement('div',{className:"mt-3 flex flex-wrap gap-1"},
                   Object.entries(PERMISSION_LABELS)
                     .filter(([k]) => userPermissions[k])
@@ -90,7 +92,8 @@ function UsersSection({
                       key:k,
                       className:"text-[8px] bg-[#C9A84C]/10 text-[#C9A84C] border border-[#C9A84C]/20 px-1.5 py-0.5 rounded-full"
                     },icon+" "+label))
-                )
+                );
+              })()
             );
           })
     );
