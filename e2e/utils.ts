@@ -56,6 +56,31 @@ export async function login(page: Page): Promise<void> {
   await page.getByTestId('app-shell').waitFor({ state: 'visible', timeout: 15_000 });
 }
 
+// خطوة 4+ (خطة تفعيل الصلاحيات التفصيلية، مرحلة 5 — 16 أغسطس 2026):
+// login() فوق بيسجّل دخول بحساب admin ثابت من env vars بس. الاختبارات
+// اللي محتاجة تتأكد من سلوك lawyer/viewer فعليًا (اختفاء/تعطيل أزرار)
+// محتاجة تسجّل دخول بحساب تاني اتعمل runtime عبر createTestUser. الهيلبر
+// ده نفس خطوات login() بالظبط بس بإيميل/باسورد صريحين بدل env vars.
+export async function loginAs(page: Page, email: string, password: string): Promise<void> {
+  await page.goto('/');
+  await page.getByTestId('login-email').fill(email);
+  await page.getByTestId('login-password').fill(password);
+  await page.getByTestId('login-submit').click();
+  await page.getByTestId('app-shell').waitFor({ state: 'visible', timeout: 15_000 });
+}
+
+// تسجيل خروج — مفيش data-testid مخصص لزرار "تسجيل الخروج" حاليًا (جوه
+// HeaderMenu.tsx، بيتفتح من غير testid على الـtoggle نفسه)، فبدل ما نضيف
+// testids فى ملفات برّه نطاق خطة الصلاحيات، بنمسح الجلسة مباشرة (نفس
+// أثر تسجيل الخروج بالنسبة لـsupabase-js اللي بيخزّن التوكن فى
+// localStorage) ونعمل reload — أبسط وأضمن من محاكاة نقرة فى قائمة مطوية.
+export async function logout(page: Page): Promise<void> {
+  await page.evaluate(() => window.localStorage.clear());
+  await page.context().clearCookies();
+  await page.goto('/');
+  await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 10_000 });
+}
+
 // خطوة 4 محتاجة قضية موجودة (عشان تظهر في قايمة "القضية" وقت إضافة
 // الأتعاب) من غير ما يكون لازم تتفتح فعليًا — فصلنا جزء الإنشاء لوحده
 // عن جزء الفتح، وخلّينا createAndOpenCase يستخدم النسخة دي بدل ما
