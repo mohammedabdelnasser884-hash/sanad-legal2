@@ -131,7 +131,7 @@ function EditUserModal({ user, onSave, onClose, saving, isSelf = false }: EditUs
       // الصلاحيات التفصيلية — ✅ مرحلة 4 (خطة تفعيل الصلاحيات التفصيلية):
       // فُعِّلت فعليًا. كل checkbox بيعكس/يعدّل form.permissions[key]، اللي
       // بيتبعت مباشرة لـadmin-actions (update_profile) وبيتقروا من
-      // has_permission() على القاعدة (RLS) + usePermission() فى الفرونت
+      // has_permission() على القاعدة (RLS) + checkPermission() فى الفرونت
       // إند. can_view_fees/can_edit_fees مش هنا خالص — مقفولين بلا
       // استثناء (قرار 2.1)، مفيش checkbox ليهم أصلًا.
       // 🔒 FIX (مراجعة أمان صلاحيات أعضاء المكتب، متابعة 16 أغسطس 2026):
