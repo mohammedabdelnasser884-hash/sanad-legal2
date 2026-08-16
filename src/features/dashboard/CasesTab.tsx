@@ -4,7 +4,7 @@ import type { MappedCase } from '../../hooks/useAppData';
 // ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3 — 16 أغسطس 2026): زرار
 // "تقييد قضية" محكوم بـcan_add_cases. الدفاع الحقيقي (useCaseActions.ts
 // + RLS) موجود بالفعل من غير ده — هنا بس تجربة مستخدم.
-import { usePermission, type PermissionBearing } from '../../shared/lib/permissions';
+import { checkPermission, type PermissionBearing } from '../../shared/lib/permissions';
 // 🆕 (بند 1.2 — بادج CasesTab.tsx، خطة توحيد قفل الطرف مرحلة 3، 6 أغسطس
 // 2026): نفس نظام الشارات الموحّد (getPartyStateBadge) المستخدم بالفعل
 // في StandaloneSessionDetailModal.tsx/EditCaseModal.tsx — هنا بنعرضها
@@ -160,7 +160,7 @@ interface CasesTabProps {
 
 function CasesTab({ cases, casesFilter, setCasesFilter, casesPage, setCasesPage, casesTotal, casesLoading, fetchCases, searchCases, casesSearch, setCasesSearch, setShowCaseModal, setSelectedCase, loadingCases, dbError, clients = [], profile }: CasesTabProps) {
     const activeSection = caseSections.find((s: CaseSection) => s.key === casesFilter) || caseSections[0];
-    const canAddCases = usePermission(profile, 'can_add_cases');
+    const canAddCases = checkPermission(profile, 'can_add_cases');
 
     // ── local search input state ──
     const [localSearch, setLocalSearch] = useState(casesSearch || '');
