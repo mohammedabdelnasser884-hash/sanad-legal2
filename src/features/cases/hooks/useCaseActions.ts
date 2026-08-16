@@ -12,6 +12,12 @@ import type { NavigationState } from '../../../useNavigation';
 import type { MappedCase } from '../../../hooks/useAppData';
 import type { PartyFieldValue } from '../../../shared/parties/partyTypes';
 import { validateParties } from '../../../shared/lib/casePartiesValidation';
+// ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3 — 16 أغسطس 2026):
+// طبقة الفرونت إند (UX بس، خط الدفاع الحقيقي هو RLS/has_permission()
+// على القاعدة اللي اتفعّلت فى مرحلة 1). فحص هنا (funnel واحد لكل
+// عملية) بيغطي كل نقاط الدخول البديلة (زرار مباشر، أي مسار تاني بينده
+// نفس الدالة) بضربة واحدة، بدل ما نعتمد بس على إخفاء الزرار فى الواجهة.
+import { usePermission } from '../../../shared/lib/permissions';
 
 // شكل البيانات اللي بتوصل فعليًا من NewCaseModal/EditCaseModal لـ onSave —
 // اتحقق من كل استخدام حقيقي في handleSaveCase/handleUpdateCase تحت، وبيغطي
@@ -183,6 +189,13 @@ export function useCaseActions(params: {
         // 🔒 فحص متزامن أولًا — قبل أي setState أو await — عشان يمنع دخول
         // ثاني نداء لو دبل-كليك سريع حصل فعليًا قبل ما disabled يتفعّل.
         if (creatingCaseGuard) return false;
+        // 🔒 NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3): can_add_cases —
+        // نفس فحص has_permission('can_add_cases') على القاعدة (RLS INSERT
+        // على cases)، هنا بس كتجربة مستخدم أسرع من الاستنى فشل السيرفر.
+        if (!usePermission(profile, 'can_add_cases')) {
+            toast('❌ ليس لديك صلاحية إضافة قضايا جديدة', true);
+            return false;
+        }
         if (!form.title || !form.title.trim()) {
             toast('❌ حقل "موضوع ومسمى الدعوى" مطلوب', true);
             return false;
@@ -539,6 +552,16 @@ export function useCaseActions(params: {
         // 🔒 FIX (8 أغسطس 2026): fallback فوري من `cases` المحلية (بدون تأخير
         // فتح مودال التأكيد)، ومكمّل بعدها بـ getCaseRecord لو القضية مش
         // كانت محمّلة أصلًا (بدل ما يفضل اسمها "القضية" الافتراضي غلط).
+        // 🔒 NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3): can_delete_cases —
+        // بيغطي مسار الأرشفة (UPDATE deleted_at) والحذف النهائي مع بعض،
+        // زي زرار "حذف القضية" الوحيد اللي بيفتح المودال ده أصلًا. الحذف
+        // النهائي الفعلي محكوم كمان على مستوى RLS بنفس المفتاح (DELETE
+        // على cases)، والأرشفة (UPDATE) محكومة هناك بـcan_edit_cases —
+        // القفل هنا أوسع شوية بقصد (بساطة نقطة دخول واحدة بدل تقسيمها).
+        if (!usePermission(profile, 'can_delete_cases')) {
+            toast('❌ ليس لديك صلاحية حذف القضايا', true);
+            return;
+        }
         const localCase = cases.find((x) => x.id === caseId);
         const c = localCase || (await getCaseRecord(caseId));
         setDeleteConfirm({
@@ -599,6 +622,13 @@ export function useCaseActions(params: {
     const handleUpdateCase = async (caseId: string, form: CaseFormSubmitData): Promise<boolean> => {
         // 🔒 نفس فحص handleSaveCase المتزامن — قبل أي setState أو await.
         if (updatingCaseGuard) return false;
+        // 🔒 NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3): can_edit_cases —
+        // نفس فحص has_permission('can_edit_cases') على القاعدة (RLS UPDATE
+        // على cases).
+        if (!usePermission(profile, 'can_edit_cases')) {
+            toast('❌ ليس لديك صلاحية تعديل القضايا', true);
+            return false;
+        }
         if (!form.title || !form.title.trim()) {
             toast('❌ حقل "موضوع ومسمى الدعوى" مطلوب', true);
             return false;
