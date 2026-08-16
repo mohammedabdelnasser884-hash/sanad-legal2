@@ -15,7 +15,7 @@ import type { Json } from '../../../database.types';
 // ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3 — 16 أغسطس 2026): راجع
 // نفس التعليق فى useCaseActions.ts — طبقة UX هنا، RLS هو خط الدفاع
 // الحقيقي.
-import { usePermission } from '../../../shared/lib/permissions';
+import { checkPermission } from '../../../shared/lib/permissions';
 
 // شكل contact_info (عمود jsonb) — بيتخزن فيه روابط صور الهوية/التوكيل
 export interface ClientContactInfo {
@@ -153,7 +153,7 @@ export function useClientActions(params: {
         // عبر ClientLinkTarget) — فحص هنا بيغطيهم كلهم مرة واحدة، زي
         // has_permission('can_add_clients') على القاعدة (RLS INSERT على
         // clients).
-        if (!usePermission(profile, 'can_add_clients')) {
+        if (!checkPermission(profile, 'can_add_clients')) {
             toast('❌ ليس لديك صلاحية إضافة موكلين جدد', true);
             return false;
         }
