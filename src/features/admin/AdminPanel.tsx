@@ -697,7 +697,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
     // مودالز مستقلة (مستخدم/بوابة موكل/كلمة مرور/مكتبة قانونية/حذف قانون/حذف مستخدم)
     // اتنقلت لملف منفصل AdminPanelModals.tsx — نفس المنطق تمامًا، صفر تغيير سلوك
     React.createElement(AdminPanelModals, {
-      editUser, setEditUser, handleEditUser, saving,
+      editUser, setEditUser, handleEditUser, saving, profile,
       showAddUser, setShowAddUser, handleAddUser,
       showAddPortalUser, setShowAddPortalUser, clients, portalAccess, handleSavePortal, savingPortal,
       portalClient, setPortalClient,
