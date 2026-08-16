@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { I, COUNTRY_CONFIGS, loadOfficeSetting } from './constants';
 import { useNavigation } from './useNavigation';
 import type { TabName } from './useNavigation';
+import { isAdminRole, usePermission } from './shared/lib/permissions';
 import type { DeleteConfirmState } from '@/features/cases/hooks/useCaseActions';
 import type { MappedCase, MappedClient } from './hooks/useAppData';
 import LoginScreen from './pages/Login/LoginScreen';
@@ -372,7 +373,16 @@ function App() {
     }, [setCases, setLawyers, setClients, setProfile, setAuthUser]);
     useAutoLogout(profile, handleAutoLogout);
 
-    const isAdmin = profile?.role === 'admin';
+    // 🆕 (بند 6) — بدل التكرار الحرفي؛ نفس المنطق في useAppData.ts الآن
+    // مستورد من مصدر واحد (shared/lib/permissions.ts).
+    const isAdmin = isAdminRole(profile);
+    // ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3 — 16 أغسطس 2026):
+    // can_view_fees مقفول بلا استثناء لغير admin (قرار 2.1 من الخطة —
+    // مفيش أي استثناء صريح ممكن يفتحه)، فعمليًا هو نفس isAdmin دايمًا،
+    // لكن بنستخدم usePermission() صراحةً هنا (مش isAdmin مباشرة) عشان
+    // يفضل متوافق تلقائيًا لو القرار ده اتغيّر يومًا ما (has_permission()
+    // على القاعدة هو المرجع الحقيقي دايمًا).
+    const canViewFees = usePermission(profile, 'can_view_fees');
 
     // ── Initial data fetch + إعادة تحميل بعد المزامنة الأوفلاين ──
     useInitialDataSync({
@@ -423,12 +433,14 @@ function App() {
         // ⚡ FIX (8 أغسطس 2026): clientsWithExtras بدل clients الخام —
         // كان بيوهم إن الموكل محذوف لمجرد إنه مش من ضمن أول 15 محمّلين.
         clients: clientsWithExtras,
+        profile, // ⚡ NEW (مرحلة 3 خطة الصلاحيات): لزرار "تقييد قضية" — can_add_cases
     });
     const TeamTabContent    = React.createElement(TeamTab,    { lawyers, setShowLawyerModal });
     const ClientsTabContent = React.createElement(ClientsTab, {
         cases, clients, clientSearch, setClientSearch,
         clientsPage, setClientsPage, clientsTotal, clientsLoading,
         fetchClients, setSelectedClient, setShowClientModal,
+        profile, // ⚡ NEW (مرحلة 3 خطة الصلاحيات): لزرار "موكل جديد" — can_add_clients
     });
     const DocsTab = React.createElement(ArchiveTab, { cases, clients: clientsWithExtras, nav });
 
@@ -572,7 +584,16 @@ function App() {
             // بيدوّروا بـ cases.find(id) على القايمة المقيّدة بالصفحة، فممكن
             // يسجّلوا case_name/case_type فاضيين في اللوج/الفاتورة لقضية موجودة
             // فعليًا بس مش من ضمن أول صفحة محمّلة (نفس فئة باگ "اليتيم الوهمي").
-            tab === 'fees' && React.createElement(FeesTab, { cases: casesWithExtras, clients: clientsWithExtras, showSummaryModal: showFeesSummary, setShowSummaryModal: setShowFeesSummary, country, profile, nav, ensureClientsLoaded }),
+            // ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3): تاب الأتعاب
+            // بالكامل محكوم بـcan_view_fees — دفاع فعلي هنا (مش بس إخفاء
+            // زرار التنقل) لأن التاب ممكن يتوصله برضو عن طريق رابط مباشر
+            // (PATH_TABS فى useNavigation.ts بيدعم deep linking بالـURL)،
+            // مش بس عن طريق الضغط على زرار "الأتعاب". نفس نمط تاب 'team'
+            // فوق بالظبط.
+            tab === 'fees' && (canViewFees
+                ? React.createElement(FeesTab, { cases: casesWithExtras, clients: clientsWithExtras, showSummaryModal: showFeesSummary, setShowSummaryModal: setShowFeesSummary, country, profile, nav, ensureClientsLoaded })
+                : React.createElement('div', { className: 'text-center text-slate-500 text-xs pt-20' }, 'غير مصرح لك بهذا القسم')
+            ),
             tab === 'reminders' && React.createElement('div', { className: 'space-y-4 fade-in' },
                 React.createElement(RemindersTab, { initialFilter: remindersInitialFilter, profile, nav })
             ),
