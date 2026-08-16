@@ -13,7 +13,7 @@
 //
 //  ⚠️ تحديث (خطة تفعيل الصلاحيات التفصيلية، مرحلة 2 — 16 أغسطس 2026):
 //  التفعيل الفعلي بدأ. الطبقة التانية (RLS + has_permission() على
-//  القاعدة) اتفعّلت فى مرحلة 1. usePermission()/ROLE_DEFAULT_PERMISSIONS
+//  القاعدة) اتفعّلت فى مرحلة 1. checkPermission()/ROLE_DEFAULT_PERMISSIONS
 //  تحت دول طبقة الفرونت إند (تجربة مستخدم بس — إخفاء/تعطيل، مش خط
 //  الدفاع الحقيقي). لسه محتاجين توصيل فعلي فى نقاط الواجهة (مرحلة 3)
 //  قبل ما يبقى ليهم أثر ملموس على أي مستخدم.
@@ -68,7 +68,7 @@ export type PermissionsMap = Partial<Record<PermissionKey, boolean>>;
 
 // ─────────────────────────────────────────────────────────────
 //  مرحلة 2 (خطة تفعيل الصلاحيات التفصيلية، 16 أغسطس 2026):
-//  usePermission() + ROLE_DEFAULT_PERMISSIONS — مطابقين حرفيًا
+//  checkPermission() + ROLE_DEFAULT_PERMISSIONS — مطابقين حرفيًا
 //  لـhas_permission() على القاعدة (database/migrations/
 //  sql-migrations-phase6/01-has-permission-function.sql). أي تعديل
 //  هنا لازم يترافق بنفس التعديل هناك، وإلا الفرونت إند والـRLS
@@ -78,7 +78,7 @@ export type PermissionsMap = Partial<Record<PermissionKey, boolean>>;
 /** مصفوفة الصلاحيات الافتراضية لكل دور (قسم 2.1 من الخطة) — نفس
  *  الترتيب اللي بترجعه has_permission() لما مفيش قيمة صريحة محفوظة
  *  في profiles.permissions. can_view_fees/can_edit_fees متسجلين هنا
- *  كـfalse لكل الأدوار غير admin كمرجع توثيقي بس — usePermission()
+ *  كـfalse لكل الأدوار غير admin كمرجع توثيقي بس — checkPermission()
  *  بترفضهم قبل ما توصل للمصفوفة دي أصلاً (قرار 2.1: قفل أساسي بلا
  *  استثناء، مش افتراضي قابل للتعديل). */
 export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, Required<PermissionsMap>> = {
@@ -132,11 +132,15 @@ export interface PermissionBearing extends RoleBearing {
  *       (قرار 2.2) — undefined/null يتعاملوا زي المفتاح الغائب.
  *    4) من غير قيمة صريحة → افتراضي الدور (ROLE_DEFAULT_PERMISSIONS).
  *
- *  ⚠️ ده مش React hook فعليًا (مفيش useState/useEffect جواه) — اسمه
- *  usePermission مطابقةً للتصميم الأصلي فى الخطة (قسم 3.4)، وعشان
- *  يفضل قابل للاستخدام جوه React hooks تانية (usePermissions مثلاً)
- *  من غير لخبطة فى التسمية. آمن يتنده بره component لو احتجت. */
-export function usePermission(
+ *  ⚠️ ده مش React hook فعليًا (مفيش useState/useEffect جواه) — كان
+ *  اسمه usePermission قبل كده، وده كان بيخلّي eslint-plugin-react-hooks
+ *  يعامله كـhook حقيقي بمجرد بادئة "use" ويرفض أي استدعاء ليه جوه
+ *  event handler (handleSaveCase/handleDeleteCase/...) أو جوه loop —
+ *  "React Hook may be executed more than once" (16 أغسطس 2026، build
+ *  step: lint). اتغيّر الاسم لـcheckPermission (rename بحت، صفر تغيير
+ *  في المنطق) عشان الاسم يبقى دقيق ويشتغل بأمان من أي مكان — جوه
+ *  event handler أو loop أو بره component، من غير قيود Rules of Hooks. */
+export function checkPermission(
   profile: PermissionBearing | null | undefined,
   key: PermissionKey,
 ): boolean {
