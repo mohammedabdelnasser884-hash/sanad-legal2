@@ -3,6 +3,7 @@ import { toast } from '../../../../shared/lib/notifications';
 import { logActivity } from '../../../../shared/lib/dataAccess';
 import { callAdminAction, db } from '../../../../supabaseClient';
 import { showErrorToast } from '../../../../shared/lib/errorReporting';
+import type { PermissionsMap } from '../../../../shared/lib/permissions';
 import type { ProfileRow } from '../../../../types';
 
 // فورم تعديل مستخدم — نفس الحقول اللي بيبعتها EditUserModal.tsx
@@ -10,7 +11,7 @@ export interface EditUserForm {
   full_name: string;
   role: string;
   is_active: boolean;
-  permissions: Record<string, boolean>;
+  permissions: PermissionsMap;
 }
 
 // فورم إضافة مستخدم جديد — نفس الحقول اللي بيبعتها UserFormModal.tsx
@@ -19,7 +20,7 @@ export interface AddUserForm {
   email: string;
   password: string;
   role: string;
-  permissions: Record<string, boolean>;
+  permissions: PermissionsMap;
 }
 
 // Payload تغيير كلمة السر — نفس الشكل اللي بيبعته ChangePasswordModal.tsx
@@ -40,20 +41,32 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
   const [confirmLock, setConfirmLock] = useState<ProfileRow | null>(null);
   const [securityMsg, setSecurityMsg] = useState<string | null>(null);
 
+  // ⚠️ FIX (بند 4 من تقرير مراجعة الصلاحيات، 16 أغسطس 2026): كان بيعمل
+  // db.from('profiles').update() مباشرة من المتصفح، معتمد بالكامل على RLS
+  // + trigger منع التصعيد الذاتي كخط دفاع وحيد وبدون تسجيل موحّد. دلوقتي
+  // بيمر عبر admin-actions (action: update_profile) بنفس نمط create_lawyer/
+  // delete_user — تحقق صريح من هوية المستدعي وعزل tenant، ومنع صريح لتعديل
+  // الدور/الحالة/الصلاحيات على حساب المستدعي نفسه (راجع migration 03).
   const handleEditUser = async (form: EditUserForm) => {
     setSaving(true);
-    const { error } = await db.from('profiles').update({
-      full_name: form.full_name,
-      role: form.role,
-      is_active: form.is_active,
-      permissions: form.permissions,
-    }).eq('id', editUser!.id);
+    try {
+      await callAdminAction({
+        action: 'update_profile',
+        profile_id: editUser!.id,
+        user_id: editUser!.user_id || null,
+        full_name: form.full_name,
+        role: form.role,
+        is_active: form.is_active,
+        permissions: form.permissions,
+      });
+      toast('✅ تم تحديث بيانات المستخدم');
+      logActivity(db, 'تعديل مستخدم', { userName: _userName, entity_type: 'user', entity_id: editUser!.id, details: form.full_name || null });
+      setEditUser(null);
+      fetchLawyers();
+    } catch (e) {
+      showErrorToast('admin_update_profile', e, 'تعذّر حفظ التعديلات. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'تعديل مستخدم');
+    }
     setSaving(false);
-    if (error) { toast('❌ فشل الحفظ، يرجى المحاولة مرة أخرى', true); return; }
-    toast('✅ تم تحديث بيانات المستخدم');
-    logActivity(db, 'تعديل مستخدم', { userName: _userName, entity_type: 'user', entity_id: editUser!.id, details: form.full_name || null });
-    setEditUser(null);
-    fetchLawyers();
   };
 
   // ── إضافة مستخدم جديد ──
@@ -106,10 +119,21 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
   };
 
   // ── تفعيل/تعطيل مستخدم سريع ──
+  // ⚠️ FIX (بند 4): بيمر دلوقتي عبر admin-actions (action: update_profile)
+  // بدل db.from('profiles').update() المباشر — نفس سبب handleEditUser فوق.
   const toggleUserActive = async (user: ProfileRow) => {
     const newState = user.is_active === false ? true : false;
-    const { error } = await db.from('profiles').update({ is_active: newState }).eq('id', user.id);
-    if (error) { toast('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true); return; }
+    try {
+      await callAdminAction({
+        action: 'update_profile',
+        profile_id: user.id,
+        user_id: user.user_id || null,
+        is_active: newState,
+      });
+    } catch (e) {
+      showErrorToast('admin_update_profile', e, 'تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'تفعيل/تعطيل مستخدم');
+      return;
+    }
 
     let signoutFailed = false;
     if (!newState && user.user_id) {
@@ -170,19 +194,26 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
   };
 
   // ── قفل/فتح الحساب بعد محاولات فاشلة ──
+  // ⚠️ FIX (بند 4): بيمر دلوقتي عبر admin-actions (action: toggle_lock)
+  // بدل db.from('profiles').update() المباشر — نفس سبب handleEditUser فوق.
   const handleToggleLock = async (user: ProfileRow) => {
     setSaving(true);
     const isLocked = user.is_locked === true;
-    const { error } = await db.from('profiles').update({
-      is_locked: !isLocked,
-      failed_login_attempts: !isLocked ? user.failed_login_attempts : 0,
-    }).eq('id', user.id);
+    try {
+      await callAdminAction({
+        action: 'toggle_lock',
+        profile_id: user.id,
+        user_id: user.user_id || null,
+        is_locked: !isLocked,
+      });
+      toast(isLocked ? '🔓 تم فتح الحساب' : '🔒 تم قفل الحساب');
+      logActivity(db, isLocked ? 'فتح حساب' : 'قفل حساب', { userName: _userName, entity_type: 'user', entity_id: user.id, details: user.full_name || null });
+      setConfirmLock(null);
+      fetchLawyers();
+    } catch (e) {
+      showErrorToast('admin_toggle_lock', e, 'تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'قفل/فتح حساب');
+    }
     setSaving(false);
-    if (error) { toast('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true); return; }
-    toast(isLocked ? '🔓 تم فتح الحساب' : '🔒 تم قفل الحساب');
-    logActivity(db, isLocked ? 'فتح حساب' : 'قفل حساب', { userName: _userName, entity_type: 'user', entity_id: user.id, details: user.full_name || null });
-    setConfirmLock(null);
-    fetchLawyers();
   };
 
   return {
