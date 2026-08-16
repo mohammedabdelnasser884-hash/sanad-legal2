@@ -7,6 +7,11 @@ import { recordError } from '../../systemHealth';
 // على الديسكتوب، بنفس نمط جدول القضايا (D1/D2). راجع تعليقات
 // ClientTableRow.tsx لتفاصيل اختيار الأعمدة.
 import ClientTableRow, { type ClientTableRowData } from './ClientTableRow';
+// ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3 — 16 أغسطس 2026): زرار
+// "موكل جديد" محكوم بـcan_add_clients. الدفاع الحقيقي (handleSaveClient
+// فى useClientActions.ts + RLS) موجود بالفعل — ده بس تجربة مستخدم
+// (إخفاء الزرار) عشان لا يظهر أصلًا لمن ليس له صلاحية.
+import { usePermission, type PermissionBearing } from '../../shared/lib/permissions';
 
 const PAGE_SIZE = 15; // ⚠️ لازم يطابق PAGE_SIZE الفعلي في useAppData.ts (fetchClients)
                        // — كان هنا 20 غلط، وده كان بيسبب اختفاء آخر موكلين لو
@@ -35,12 +40,14 @@ interface ClientsTabProps {
   fetchClients: (page?: number, search?: string) => void;
   setSelectedClient: (c: MappedClient) => void;
   setShowClientModal: (v: boolean) => void;
+  profile?: PermissionBearing | null;
 }
 
-function ClientsTab({ cases, clients, clientSearch, setClientSearch, clientsPage, setClientsPage, clientsTotal, clientsLoading, fetchClients, setSelectedClient, setShowClientModal }: ClientsTabProps) {
+function ClientsTab({ cases, clients, clientSearch, setClientSearch, clientsPage, setClientsPage, clientsTotal, clientsLoading, fetchClients, setSelectedClient, setShowClientModal, profile }: ClientsTabProps) {
   const [searchOpen, setSearchOpen]   = useState(false);
   const [activeTab,  setActiveTab]    = useState<'individual'|'entity'>('individual');
   const searchRef = useRef<HTMLInputElement>(null);
+  const canAddClients = usePermission(profile, 'can_add_clients');
 
   // ── لما يتضاف موكل جديد، روح للتاب الصح تلقائي ──
   const prevLengthRef = useRef(clients.length);
@@ -178,7 +185,10 @@ function ClientsTab({ cases, clients, clientSearch, setClientSearch, clientsPage
               : 'bg-white/5 text-slate-400 border border-white/10 hover:text-white'
           }`
         }, React.createElement(SearchIcon)),
-        React.createElement('button', {
+        // ⚡ NEW (مرحلة 3 خطة الصلاحيات): can_add_clients — الزرار بيختفي
+        // كليًا (مش بس disabled) لمن ليس له صلاحية، زي نمط "لوحة الإدارة"
+        // فى CommandDock.
+        canAddClients && React.createElement('button', {
           onClick: () => setShowClientModal(true),
           'data-testid': 'new-client-button',
           className:"flex items-center bg-gradient-to-tr from-emerald-500 to-emerald-400 text-white px-3 py-2 rounded-xl text-xs font-black shadow-lg gap-1 active:scale-95 transition-transform"
