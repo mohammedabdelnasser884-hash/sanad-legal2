@@ -134,7 +134,7 @@ function makeForm(overrides: Partial<ClientFormData> = {}): ClientFormData {
 const clients: ClientRow[] = [{ id: 'client-1', full_name: 'أحمد محمد', updated_at: '2026-07-01T00:00:00.000Z', contact_info: null } as unknown as ClientRow];
 // role: 'admin' (مضافة 16 أغسطس 2026) — نفس السبب في useCaseActions.test.ts:
 // التستات دي بتغطي منطق حفظ/ربط الموكلين نفسه مش فحص can_add_clients،
-// وadmin بيعدّي usePermission() فورًا بايباس كامل.
+// وadmin بيعدّي checkPermission() فورًا بايباس كامل.
 const profile = { id: 'lawyer-1', full_name: 'المحامي سالم', email: 'salem@example.com', role: 'admin' } as ProfileRow;
 
 function makeParams(overrides: Partial<Parameters<typeof useClientActions>[0]> = {}) {
