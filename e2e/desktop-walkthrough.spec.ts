@@ -81,6 +81,17 @@ test('جولة فيديو كاملة على الديسكتوب', async ({ page }
   await openAdminSection(page, 'backup');
   await pause(1800);
 
+  // 🔒 FIX (فحص لوجز CI — 16 أغسطس 2026): قسم "النسخ الاحتياطي" فوق
+  // بيفضل مفتوح كـoverlay ملء-الشاشة (z-[60]) بعد ما نخلص منه — من غير
+  // قفله، أي نقرة تانية (زي desktop-nav-dashboard تحت) بتتحجب وراه
+  // وتستنى لحد timeout كامل (60 ثانية). نفس منطق closeAdminSectionIfOpen
+  // الداخلي في utils.ts (مش exported، فمكرره هنا سطرين بس).
+  const adminBack = page.getByTestId('admin-section-back');
+  if (await adminBack.isVisible().catch(() => false)) {
+    await adminBack.click();
+    await pause(500);
+  }
+
   // رجوع للرئيسية في الآخر
   await page.getByTestId('desktop-nav-dashboard').click();
   await pause(1500);
