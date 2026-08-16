@@ -38,6 +38,11 @@ import { summarizePartySide, effectiveLegalTitleForDisplay } from '../../shared/
 // بتتجاهل الأطراف الـorphan بصمت، بلا أي مؤشر) لحد ما مرحلة الـBadges
 // تجهز مصدر الشارة الموحّد.
 import { isPartyOrphaned, type PartyDomainContext } from '../../shared/parties/partyDomainService';
+// ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3 — 16 أغسطس 2026): زراري
+// "تعديل"/"حذف" فى هيدر القضية محكومين بـcan_edit_cases/can_delete_cases.
+// الدفاع الحقيقي (useCaseActions.ts + RLS) موجود بالفعل من غير ده — هنا
+// بس تجربة مستخدم (إخفاء الزرار) عشان لا يظهر أصلًا لمن ليس له صلاحية.
+import { usePermission } from '../../shared/lib/permissions';
 
 // شكل عنصر حالة القضية (نفس الحقول المستخدمة فعليًا في مصفوفة statuses تحت)
 interface CaseStatusOption {
@@ -160,6 +165,10 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
     // useCaseDetailActions نفسه ليقبل MappedCase مباشرة، فبقى الاستدعاء هنا
     // بدون أي كاست.
     const actions = useCaseDetailActions(caseData, onUpdate, onDelete, onNotify, undefined, client, profile);
+    // ⚡ NEW (مرحلة 3 خطة الصلاحيات): can_edit_cases/can_delete_cases —
+    // لزراري "تعديل"/"حذف" فى الهيدر تحت.
+    const canEditCase = usePermission(profile, 'can_edit_cases');
+    const canDeleteCase = usePermission(profile, 'can_delete_cases');
     const {
       sessions, notes, docs, loadingSessions,
       // ⚡ NEW (مرحلة 8): أطراف القضية الكاملة (case_parties) — بتتمرر
@@ -514,13 +523,17 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
                         className: "w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 hover:bg-emerald-500/20 active:scale-90 transition-all"
                     }, React.createElement('span', {className: "text-sm"}, "💬")),
                     // زر تعديل
-                    React.createElement('button', {
+                    // ⚡ NEW (مرحلة 3 خطة الصلاحيات): بيختفي كليًا لمن ليس له
+                    // can_edit_cases.
+                    canEditCase && React.createElement('button', {
                         onClick: () => setShowEditCase(true),
                         'data-testid': 'edit-case-trigger',
                         className: "w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-premium-gold hover:border-premium-gold/30 active:scale-90 transition-all"
                     }, React.createElement(I.Edit)),
                     // زر حذف
-                    React.createElement('button', {
+                    // ⚡ NEW (مرحلة 3 خطة الصلاحيات): بيختفي كليًا لمن ليس له
+                    // can_delete_cases.
+                    canDeleteCase && React.createElement('button', {
                         onClick: () => setConfirmDeleteCase(true),
                         className: "w-8 h-8 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 hover:bg-rose-500/20 active:scale-90 transition-all",
                         'data-testid': 'case-delete-trigger'
