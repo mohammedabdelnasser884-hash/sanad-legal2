@@ -129,7 +129,7 @@ function dbWriteMock(): ReturnType<typeof vi.fn> {
 const clients: ClientRow[] = [{ id: 'client-1', full_name: 'أحمد محمد' } as ClientRow];
 // role: 'admin' (مضافة 16 أغسطس 2026) — التستات دي مكتوبة لتغطية منطق
 // إضافة/تعديل/حذف القضايا نفسه، مش فحوصات الصلاحيات (اللي ليها ملف تستات
-// منفصل: shared/lib/permissions.test.ts). usePermission() بترجع true فورًا
+// منفصل: shared/lib/permissions.test.ts). checkPermission() بترجع true فورًا
 // لأي admin (بايباس كامل)، فده بيحافظ على سلوك التستات القديمة زي ما هو
 // من غير ما نحتاج نمرر can_add_cases/can_edit_cases/can_delete_cases يدويًا
 // في كل تست على حدة.
