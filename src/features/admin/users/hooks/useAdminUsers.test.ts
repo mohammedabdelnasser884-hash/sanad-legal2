@@ -60,10 +60,10 @@ describe('useAdminUsers', () => {
       act(() => { result.current.setEditUser(TARGET_USER); });
 
       await act(async () => {
-        await result.current.handleEditUser({ full_name: 'محمد المعدّل', role: 'lawyer', is_active: true, permissions: { cases: true } });
+        await result.current.handleEditUser({ full_name: 'محمد المعدّل', role: 'lawyer', is_active: true, permissions: { can_add_cases: true } });
       });
 
-      expect(callAdminAction).toHaveBeenCalledWith({ action: 'update_profile', profile_id: 'u1', user_id: 'auth-u1', full_name: 'محمد المعدّل', role: 'lawyer', is_active: true, permissions: { cases: true } });
+      expect(callAdminAction).toHaveBeenCalledWith({ action: 'update_profile', profile_id: 'u1', user_id: 'auth-u1', full_name: 'محمد المعدّل', role: 'lawyer', is_active: true, permissions: { can_add_cases: true } });
       expect(toast).toHaveBeenCalledWith('✅ تم تحديث بيانات المستخدم');
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تعديل مستخدم', { userName: 'أحمد المدير', entity_type: 'user', entity_id: 'u1', details: 'محمد المعدّل' });
       expect(result.current.editUser).toBeNull();
@@ -106,10 +106,10 @@ describe('useAdminUsers', () => {
       act(() => { result.current.setShowAddUser(true); });
 
       await act(async () => {
-        await result.current.handleAddUser({ full_name: 'سارة', email: 's@sanad.test', password: 'pass123', role: 'lawyer', permissions: { fees: true } });
+        await result.current.handleAddUser({ full_name: 'سارة', email: 's@sanad.test', password: 'pass123', role: 'lawyer', permissions: { can_view_fees: true } });
       });
 
-      expect(callAdminAction).toHaveBeenCalledWith({ action: 'create_lawyer', email: 's@sanad.test', password: 'pass123', full_name: 'سارة', role: 'lawyer', permissions: { fees: true } });
+      expect(callAdminAction).toHaveBeenCalledWith({ action: 'create_lawyer', email: 's@sanad.test', password: 'pass123', full_name: 'سارة', role: 'lawyer', permissions: { can_view_fees: true } });
       expect(toast).toHaveBeenCalledWith('✅ تم إنشاء حساب سارة');
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'إضافة مستخدم', expect.objectContaining({ entity_type: 'user', details: 'سارة (lawyer)' }));
       expect(result.current.showAddUser).toBe(false);
