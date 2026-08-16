@@ -11,7 +11,7 @@ import ClientTableRow, { type ClientTableRowData } from './ClientTableRow';
 // "موكل جديد" محكوم بـcan_add_clients. الدفاع الحقيقي (handleSaveClient
 // فى useClientActions.ts + RLS) موجود بالفعل — ده بس تجربة مستخدم
 // (إخفاء الزرار) عشان لا يظهر أصلًا لمن ليس له صلاحية.
-import { usePermission, type PermissionBearing } from '../../shared/lib/permissions';
+import { checkPermission, type PermissionBearing } from '../../shared/lib/permissions';
 
 const PAGE_SIZE = 15; // ⚠️ لازم يطابق PAGE_SIZE الفعلي في useAppData.ts (fetchClients)
                        // — كان هنا 20 غلط، وده كان بيسبب اختفاء آخر موكلين لو
@@ -47,7 +47,7 @@ function ClientsTab({ cases, clients, clientSearch, setClientSearch, clientsPage
   const [searchOpen, setSearchOpen]   = useState(false);
   const [activeTab,  setActiveTab]    = useState<'individual'|'entity'>('individual');
   const searchRef = useRef<HTMLInputElement>(null);
-  const canAddClients = usePermission(profile, 'can_add_clients');
+  const canAddClients = checkPermission(profile, 'can_add_clients');
 
   // ── لما يتضاف موكل جديد، روح للتاب الصح تلقائي ──
   const prevLengthRef = useRef(clients.length);
