@@ -113,15 +113,33 @@ for (const bp of BREAKPOINTS) {
 
       await page.getByTestId(navCases).click();
       await expect(page.getByTestId(navCases)).toBeVisible();
+      // 🆕 (تتبّع "بيظهر لثواني وبعدين يختفي" — 16 أغسطس 2026): جيمي
+      // شاف بعينه في فيديو التشغيل اللي قبل كده إن القضايا/الجلسات
+      // بتظهر مليانة فعلاً لثواني وقت التنقل وبعدين تفضى — يعني مش
+      // مشكلة رندر أصلًا، حاجة بترجع تصفّر المحتوى بعد كده. بدل لقطة
+      // واحدة بعد 400ms، هنا 3 لقطات بتوقيتات مختلفة (فورًا / 400ms /
+      // 2000ms) + قياس طول <main> مع كل واحدة، عشان نمسك بالظبط
+      // اللحظة اللي المحتوى بيروح فيها فاضي جوه نفس تشغيل الـCI —
+      // بدون ما جيمي يحتاج يفتح أي فيديو تاني بنفسه.
+      console.log(`📏 [main-html-len] [${bp.name}] cases@0ms = ${(await page.locator('main').innerHTML()).length}`);
+      await page.screenshot({ path: path.join(outDir, '02-cases-t0.png'), fullPage: true });
       await page.waitForTimeout(400);
-      console.log(`📏 [main-html-len] [${bp.name}] cases = ${(await page.locator('main').innerHTML()).length}`);
+      console.log(`📏 [main-html-len] [${bp.name}] cases@400ms = ${(await page.locator('main').innerHTML()).length}`);
       await page.screenshot({ path: path.join(outDir, '02-cases.png'), fullPage: true });
+      await page.waitForTimeout(1600);
+      console.log(`📏 [main-html-len] [${bp.name}] cases@2000ms = ${(await page.locator('main').innerHTML()).length}`);
+      await page.screenshot({ path: path.join(outDir, '02-cases-t2.png'), fullPage: true });
 
       await page.getByTestId(navCalendar).click();
       await expect(page.getByTestId(navCalendar)).toBeVisible();
+      console.log(`📏 [main-html-len] [${bp.name}] calendar@0ms = ${(await page.locator('main').innerHTML()).length}`);
+      await page.screenshot({ path: path.join(outDir, '03-calendar-t0.png'), fullPage: true });
       await page.waitForTimeout(400);
-      console.log(`📏 [main-html-len] [${bp.name}] calendar = ${(await page.locator('main').innerHTML()).length}`);
+      console.log(`📏 [main-html-len] [${bp.name}] calendar@400ms = ${(await page.locator('main').innerHTML()).length}`);
       await page.screenshot({ path: path.join(outDir, '03-calendar.png'), fullPage: true });
+      await page.waitForTimeout(1600);
+      console.log(`📏 [main-html-len] [${bp.name}] calendar@2000ms = ${(await page.locator('main').innerHTML()).length}`);
+      await page.screenshot({ path: path.join(outDir, '03-calendar-t2.png'), fullPage: true });
 
       await page.getByTestId(navReminders).click();
       await expect(page.getByTestId(navReminders)).toBeVisible();
