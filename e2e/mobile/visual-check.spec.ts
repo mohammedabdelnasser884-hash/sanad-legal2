@@ -46,20 +46,22 @@ const BREAKPOINTS = [
   { name: 'desktop', viewport: { width: 1440, height: 900 } },
 ] as const;
 
+// 🆕 (تشخيص محتوى فاضي بلا error — 16 أغسطس 2026): جربنا مستمعين
+// pageerror/console.error في المحاولة اللي قبل كده وطلعوا نضاف — يعني
+// المشكلة (لو موجودة لسه في cases/calendar) مش crash JS، وده بيستبعد
+// أسهل تفسير. الخطوة الجاية المتاحة من غير متصفح حقيقي: تسجيل فيديو
+// فعلي لكل تست (`video: 'on'`، مش `retain-on-failure` الافتراضي في
+// playwright.config.ts اللي بس بيسجل لو التست فشل — والتست ده بينجح
+// دايمًا لأن الـassertion بيفحص التنقل بس مش المحتوى). لازم يتحط هنا
+// (أعلى الملف، خارج أي describe) — Playwright بيرفضه جوه describe لأنه
+// بيغيّر متطلبات الـworker (جرّبناها جوه الـdescice وفشل الـCI بالكامل،
+// الرسالة صريحة: "Make it top-level in the test file"). الفيديو هيتحفظ
+// في test-results/ (موجودة أصلًا في مسارات رفع ci.yml).
+test.use({ video: 'on' });
+
 for (const bp of BREAKPOINTS) {
   test.describe(`تحقق بصري — ${bp.name} (${bp.viewport.width}×${bp.viewport.height})`, () => {
     test.use({ viewport: bp.viewport });
-    // 🆕 (تشخيص محتوى فاضي بلا error — 16 أغسطس 2026): جربنا مستمعين
-    // pageerror/console.error في المحاولة اللي قبل كده وطلعوا نضاف —
-    // يعني المشكلة (لو موجودة لسه في cases/calendar) مش crash JS، وده
-    // بيستبعد أسهل تفسير. الخطوة الجاية المتاحة من غير متصفح حقيقي:
-    // تسجيل فيديو فعلي لكل تست هنا (`video: 'on'`، مش الإعداد الافتراضي
-    // `retain-on-failure` في playwright.config.ts — ده بس بيسجل لو
-    // التست فشل، والتست ده بينجح دايمًا لأن الـassertion بيفحص التنقل
-    // بس مش المحتوى). الفيديو هيتحفظ في test-results/ (موجودة أصلًا في
-    // مسارات رفع ci.yml)، وهيوري حرفيًا لحظة الضغط على تاب القضايا/
-    // الجلسات ولو فيه أي حركة (حتى لو خفيفة) قبل ما يفضل فاضي.
-    test.use({ video: 'on' });
 
     test(`لقطات الشاشات الأساسية — ${bp.name}`, async ({ page }) => {
       const outDir = path.join(SNAPSHOT_ROOT, bp.name);
