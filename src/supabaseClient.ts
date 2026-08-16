@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { recordError } from './systemHealth';
 import { getEdgeFunctionErrorMessage, looksArabicUserMessage, type EdgeFunctionError } from './shared/lib/edgeFunctionErrors';
+import type { PermissionsMap } from './shared/lib/permissions';
 import type { Database } from './database.types';
 
 export const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -22,8 +23,10 @@ export const db = createClient<Database>(SUPA_URL, SUPA_KEY);
 export type AdminActionPayload =
   | { action: 'force_signout'; user_id: string }
   | { action: 'change_password'; user_id: string; new_password: string; force_change: boolean }
-  | { action: 'create_lawyer'; email: string; password: string; full_name: string; role?: string; permissions?: Record<string, boolean> }
-  | { action: 'delete_user'; profile_id: string; user_id: string | null };
+  | { action: 'create_lawyer'; email: string; password: string; full_name: string; role?: string; permissions?: PermissionsMap }
+  | { action: 'delete_user'; profile_id: string; user_id: string | null }
+  | { action: 'update_profile'; profile_id: string; user_id: string | null; full_name?: string; role?: string; is_active?: boolean; permissions?: PermissionsMap }
+  | { action: 'toggle_lock'; profile_id: string; user_id: string | null; is_locked: boolean };
 
 // استدعاء Edge Function للعمليات الإدارية (تسجيل خروج قسري، تغيير باسورد، إنشاء محامي...)
 // الدالة تُرمي Error عند الفشل، عشان الكولرز تستخدم try/catch
