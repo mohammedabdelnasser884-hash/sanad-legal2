@@ -35,6 +35,15 @@ import { login } from '../utils';
 //  الموجودين، مفيش أداة أو dependency جديدة اتضافت). مجلد الإخراج
 //  (`e2e/visual-snapshots/`) مش مقصود يتزوّد في git — نفس معاملة
 //  `playwright-report/`/`test-results/` (مخرجات تشغيل محلية).
+//
+//  🔒 FIX (تشخيص "محتوى فاضي" في لقطات الديسكتوب — 16 أغسطس 2026): كان
+//  فيه دِپّة عابرة (البيانات بتتصفّر لحظيًا وترجع خلال أقل من ثانيتين)
+//  في cases/calendar، اتأكدت بأدوات تشخيص مؤقتة (لقطات @0/400/2000ms +
+//  قياس طول <main> + فيديو) اتشالت بعد ما وصلنا للمعلومة المطلوبة —
+//  الملف رجع لشكله البسيط. المهلة 400ms تحت كافية للحالة العادية (تأكد
+//  منها في تشغيلات لاحقة)؛ الدِپّة نفسها race condition حقيقي في تحميل
+//  البيانات لسه قائم كبند مؤجل (مش باگ كاسر، جيمي قرر يأجله)، مش زيادة
+//  المهلة هنا هتصلحها لو رجعت تظهر تاني.
 // ─────────────────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,19 +54,6 @@ const BREAKPOINTS = [
   { name: 'tablet', viewport: { width: 820, height: 1180 } },
   { name: 'desktop', viewport: { width: 1440, height: 900 } },
 ] as const;
-
-// 🆕 (تشخيص محتوى فاضي بلا error — 16 أغسطس 2026): جربنا مستمعين
-// pageerror/console.error في المحاولة اللي قبل كده وطلعوا نضاف — يعني
-// المشكلة (لو موجودة لسه في cases/calendar) مش crash JS، وده بيستبعد
-// أسهل تفسير. الخطوة الجاية المتاحة من غير متصفح حقيقي: تسجيل فيديو
-// فعلي لكل تست (`video: 'on'`، مش `retain-on-failure` الافتراضي في
-// playwright.config.ts اللي بس بيسجل لو التست فشل — والتست ده بينجح
-// دايمًا لأن الـassertion بيفحص التنقل بس مش المحتوى). لازم يتحط هنا
-// (أعلى الملف، خارج أي describe) — Playwright بيرفضه جوه describe لأنه
-// بيغيّر متطلبات الـworker (جرّبناها جوه الـdescice وفشل الـCI بالكامل،
-// الرسالة صريحة: "Make it top-level in the test file"). الفيديو هيتحفظ
-// في test-results/ (موجودة أصلًا في مسارات رفع ci.yml).
-test.use({ video: 'on' });
 
 for (const bp of BREAKPOINTS) {
   test.describe(`تحقق بصري — ${bp.name} (${bp.viewport.width}×${bp.viewport.height})`, () => {
@@ -82,69 +78,24 @@ for (const bp of BREAKPOINTS) {
       const navClients = isDesktopBp ? 'desktop-nav-clients' : 'nav-more-clients';
       const navDashboard = isDesktopBp ? 'desktop-nav-dashboard' : 'nav-dashboard';
 
-      // 🆕 (تشخيص "محتوى فاضي" في لقطات الديسكتوب — 16 أغسطس 2026):
-      // جيمي مالوش أي وسيلة يفتح ديسكتوب حقيقي (شهر كامل موبايل بس)،
-      // فمحتاجين الـCI نفسه يبلّغنا لو حصل JS error وقت الرندر بدل ما
-      // نعتمد على DevTools Console يدوي. أي error هنا هيتطبع في نفس
-      // ملف لوج e2e اللي جيمي بينزّله من GitHub Actions أصلًا — مفيش
-      // خطوة إضافية مطلوبة منه.
-      page.on('pageerror', (err) => {
-        console.log(`🔴 [pageerror] [${bp.name}] ${err.message}\n${err.stack ?? ''}`);
-      });
-      page.on('console', (msg) => {
-        if (msg.type() === 'error') {
-          console.log(`🔴 [console.error] [${bp.name}] ${msg.text()}`);
-        }
-      });
-
       await login(page);
       await expect(page.getByTestId('app-shell')).toBeVisible();
-      // 🆕 مهلة قصيرة بعد كل تنقل قبل اللقطة — بند احتياطي لاحتمال
-      // إن المحتوى (القضايا/الجلسات/التذكيرات) لسه بيتحمّل من Supabase
-      // وقت التقاط اللقطة القديمة الفورية. صفر تأثير على منطق الاختبار
-      // نفسه (نفس الـassertions القديمة زي ما هي، مجرد انتظار إضافي).
       await page.waitForTimeout(400);
-      // 🆕 قياس مباشر لحجم محتوى <main> بدل ما نحكم بالعين على اللقطة
-      // بس — رقم واحد بسيط في نفس لوج e2e، بيفرّق فورًا بين "تاب فاضي
-      // فعليًا" (رقم قريب من صفر) و"تاب فيه محتوى بس مش باين واضح في
-      // اللقطة" (رقم كبير). نفس المنطق هيتكرر بعد كل تنقل تحت.
-      console.log(`📏 [main-html-len] [${bp.name}] dashboard = ${(await page.locator('main').innerHTML()).length}`);
       await page.screenshot({ path: path.join(outDir, '01-dashboard.png'), fullPage: true });
 
       await page.getByTestId(navCases).click();
       await expect(page.getByTestId(navCases)).toBeVisible();
-      // 🆕 (تتبّع "بيظهر لثواني وبعدين يختفي" — 16 أغسطس 2026): جيمي
-      // شاف بعينه في فيديو التشغيل اللي قبل كده إن القضايا/الجلسات
-      // بتظهر مليانة فعلاً لثواني وقت التنقل وبعدين تفضى — يعني مش
-      // مشكلة رندر أصلًا، حاجة بترجع تصفّر المحتوى بعد كده. بدل لقطة
-      // واحدة بعد 400ms، هنا 3 لقطات بتوقيتات مختلفة (فورًا / 400ms /
-      // 2000ms) + قياس طول <main> مع كل واحدة، عشان نمسك بالظبط
-      // اللحظة اللي المحتوى بيروح فيها فاضي جوه نفس تشغيل الـCI —
-      // بدون ما جيمي يحتاج يفتح أي فيديو تاني بنفسه.
-      console.log(`📏 [main-html-len] [${bp.name}] cases@0ms = ${(await page.locator('main').innerHTML()).length}`);
-      await page.screenshot({ path: path.join(outDir, '02-cases-t0.png'), fullPage: true });
       await page.waitForTimeout(400);
-      console.log(`📏 [main-html-len] [${bp.name}] cases@400ms = ${(await page.locator('main').innerHTML()).length}`);
       await page.screenshot({ path: path.join(outDir, '02-cases.png'), fullPage: true });
-      await page.waitForTimeout(1600);
-      console.log(`📏 [main-html-len] [${bp.name}] cases@2000ms = ${(await page.locator('main').innerHTML()).length}`);
-      await page.screenshot({ path: path.join(outDir, '02-cases-t2.png'), fullPage: true });
 
       await page.getByTestId(navCalendar).click();
       await expect(page.getByTestId(navCalendar)).toBeVisible();
-      console.log(`📏 [main-html-len] [${bp.name}] calendar@0ms = ${(await page.locator('main').innerHTML()).length}`);
-      await page.screenshot({ path: path.join(outDir, '03-calendar-t0.png'), fullPage: true });
       await page.waitForTimeout(400);
-      console.log(`📏 [main-html-len] [${bp.name}] calendar@400ms = ${(await page.locator('main').innerHTML()).length}`);
       await page.screenshot({ path: path.join(outDir, '03-calendar.png'), fullPage: true });
-      await page.waitForTimeout(1600);
-      console.log(`📏 [main-html-len] [${bp.name}] calendar@2000ms = ${(await page.locator('main').innerHTML()).length}`);
-      await page.screenshot({ path: path.join(outDir, '03-calendar-t2.png'), fullPage: true });
 
       await page.getByTestId(navReminders).click();
       await expect(page.getByTestId(navReminders)).toBeVisible();
       await page.waitForTimeout(400);
-      console.log(`📏 [main-html-len] [${bp.name}] reminders = ${(await page.locator('main').innerHTML()).length}`);
       await page.screenshot({ path: path.join(outDir, '04-reminders.png'), fullPage: true });
 
       // الموكلين (شاشة D3: كروت + جدول hidden lg:block). على الموبايل/
