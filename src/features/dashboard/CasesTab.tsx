@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { I } from '../../constants';
 import type { MappedCase } from '../../hooks/useAppData';
+// ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3 — 16 أغسطس 2026): زرار
+// "تقييد قضية" محكوم بـcan_add_cases. الدفاع الحقيقي (useCaseActions.ts
+// + RLS) موجود بالفعل من غير ده — هنا بس تجربة مستخدم.
+import { usePermission, type PermissionBearing } from '../../shared/lib/permissions';
 // 🆕 (بند 1.2 — بادج CasesTab.tsx، خطة توحيد قفل الطرف مرحلة 3، 6 أغسطس
 // 2026): نفس نظام الشارات الموحّد (getPartyStateBadge) المستخدم بالفعل
 // في StandaloneSessionDetailModal.tsx/EditCaseModal.tsx — هنا بنعرضها
@@ -151,10 +155,12 @@ interface CasesTabProps {
     // (orphan ولا لأ) بلا استعلام إضافي — نفس القائمة الحية المستخدمة
     // في باقي الشاشات.
     clients?: ClientRow[];
+    profile?: PermissionBearing | null;
 }
 
-function CasesTab({ cases, casesFilter, setCasesFilter, casesPage, setCasesPage, casesTotal, casesLoading, fetchCases, searchCases, casesSearch, setCasesSearch, setShowCaseModal, setSelectedCase, loadingCases, dbError, clients = [] }: CasesTabProps) {
+function CasesTab({ cases, casesFilter, setCasesFilter, casesPage, setCasesPage, casesTotal, casesLoading, fetchCases, searchCases, casesSearch, setCasesSearch, setShowCaseModal, setSelectedCase, loadingCases, dbError, clients = [], profile }: CasesTabProps) {
     const activeSection = caseSections.find((s: CaseSection) => s.key === casesFilter) || caseSections[0];
+    const canAddCases = usePermission(profile, 'can_add_cases');
 
     // ── local search input state ──
     const [localSearch, setLocalSearch] = useState(casesSearch || '');
@@ -318,7 +324,9 @@ function CasesTab({ cases, casesFilter, setCasesFilter, casesPage, setCasesPage,
                     ),
 
                 // ── زرار تقييد قضية ──
-                React.createElement('button', {
+                // ⚡ NEW (مرحلة 3 خطة الصلاحيات): بيختفي كليًا لمن ليس له
+                // can_add_cases.
+                canAddCases && React.createElement('button', {
                     onClick: () => setShowCaseModal(true),
                     'data-testid': 'new-case-button',
                     className: "flex items-center bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg px-3 py-2 rounded-xl text-xs font-black shadow-lg gap-1 active:scale-95 transition-transform shrink-0"
