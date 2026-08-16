@@ -19,6 +19,15 @@
 //   change_password  { user_id, new_password, force_change? }
 //   create_lawyer    { email, password, full_name, role, permissions? }
 //   delete_user      { profile_id, user_id }  — بيحذف حساب Auth كمان
+//   update_profile   { profile_id, user_id, full_name?, role?, is_active?, permissions? }
+//                     — 🆕 (بند 4 من تقرير مراجعة الصلاحيات) بديل useAdminUsers.ts
+//                     القديم اللي كان بيعمل db.from('profiles').update() مباشرة
+//                     من المتصفح. بيمنع صراحةً تعديل role/is_active/permissions
+//                     على حساب المستدعي نفسه (دفاع مضاعف مع migration 03، لأن
+//                     التريجر بيتجاوَز لنداءات service_role — التحقق البديل هنا).
+//   toggle_lock      { profile_id, user_id, is_locked }
+//                     — 🆕 (بند 4) بديل db.from('profiles').update() المباشر
+//                     لقفل/فتح حساب بعد محاولات دخول فاشلة.
 //
 //  الخرج: دايمًا status 200 — { ok:true, ... } أو { error: "..." }
 //  (عشان callAdminAction في supabaseClient.ts تقدر تقرا data.error
@@ -279,6 +288,108 @@ Deno.serve(async (req: Request) => {
         const rawMessage = e instanceof Error ? e.message : String(e);
         console.error('[admin-actions:delete_user profile delete]', rawMessage);
         return json({ ok: true, warning: 'تم حذف حساب الدخول لكن تعذر حذف بيانات البروفايل بالكامل. تواصل مع الدعم.' });
+      }
+
+      return json({ ok: true });
+    }
+
+    // ── تعديل بيانات مستخدم (الاسم/الدور/الحالة/الصلاحيات التفصيلية) ──
+    // ⚠️ FIX (بند 4): كان useAdminUsers.ts بيعمل db.from('profiles').update()
+    // مباشرة من المتصفح، معتمد كليًا على RLS + trigger منع التصعيد الذاتي
+    // كخط دفاع وحيد. دلوقتي العملية بتمر من هنا زي باقي عمليات الأدمن
+    // الحساسة: تحقق صريح من هوية المستدعي وعزل tenant (authorizeOnTarget)،
+    // + منع صريح لتعديل الأعمدة الحساسة على حساب المستدعي نفسه (لأن
+    // migration 03 بيخلي service_role يعدّي من التريجر — التحقق البديل هنا
+    // هو خط الدفاع الفعلي دلوقتي، مش التريجر).
+    if (action === 'update_profile') {
+      const profileId = String(body.profile_id || '');
+      const targetUserId = body.user_id ? String(body.user_id) : null;
+      if (!profileId) return json({ error: 'profile_id مطلوب' });
+
+      const hasFullName = body.full_name !== undefined;
+      const hasRole = body.role !== undefined;
+      const hasIsActive = typeof body.is_active === 'boolean';
+      const hasPermissions = body.permissions !== undefined;
+      const changingSensitive = hasRole || hasIsActive || hasPermissions;
+
+      // منع تصعيد/تعطيل ذاتي — نفس الحماية اللي كانت متكلة على التريجر بس،
+      // دلوقتي متحققة هنا صراحةً لأن service_role بيتخطى التريجر (migration 03).
+      if (changingSensitive && targetUserId && targetUserId === callerUser.id) {
+        return json({ error: 'لا يمكنك تعديل دورك أو حالة حسابك أو صلاحياتك بنفسك — لازم أدمن تاني يعمل ده' });
+      }
+
+      if (targetUserId) {
+        const allowed = await authorizeOnTarget(caller, targetUserId);
+        if (!allowed) return json({ error: 'غير مسموح لك بتنفيذ هذا الإجراء' });
+      } else if (caller.is_super_admin !== true) {
+        // بروفايل بلا user_id مرتبط (حالة استثنائية) — نتحقق من نطاق
+        // المكتب مباشرة عن طريق صف البروفايل نفسه، زي delete_user بالظبط.
+        const targetRows = await rest(`profiles?id=eq.${profileId}&select=tenant_id&limit=1`);
+        const target = Array.isArray(targetRows) ? targetRows[0] : null;
+        if (!target || caller.role !== 'admin' || target.tenant_id !== caller.tenant_id) {
+          return json({ error: 'غير مسموح لك بتنفيذ هذا الإجراء' });
+        }
+      }
+
+      if (hasRole && !['admin', 'lawyer', 'viewer'].includes(String(body.role))) {
+        return json({ error: 'دور غير صالح' });
+      }
+
+      const patch: Record<string, unknown> = {};
+      if (hasFullName) patch.full_name = String(body.full_name).trim();
+      if (hasRole) patch.role = String(body.role);
+      if (hasIsActive) patch.is_active = body.is_active;
+      // قرار 2.5 (خطة تفعيل الصلاحيات التفصيلية): أي تغيير role بيصفّر
+      // permissions تلقائيًا كجزء من نفس عملية التحديث — عشان استثناء
+      // صريح قديم (زي can_export_data: true كان متفتوح لمحامي) ما
+      // يفضلش شغال بعد ما دوره يتغيّر. ده بياخد أولوية على أي
+      // permissions مبعوتة فى نفس الطلب مع الـrole (تصفير، مش تجاهل).
+      if (hasRole) {
+        patch.permissions = {};
+      } else if (hasPermissions) {
+        patch.permissions = body.permissions;
+      }
+
+      if (Object.keys(patch).length === 0) return json({ error: 'لا يوجد تغييرات لحفظها' });
+
+      try {
+        await rest(`profiles?id=eq.${profileId}`, 'PATCH', patch);
+      } catch (e) {
+        const rawMessage = e instanceof Error ? e.message : String(e);
+        console.error('[admin-actions:update_profile]', rawMessage);
+        return json({ error: 'تعذّر حفظ التعديلات. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.' });
+      }
+
+      return json({ ok: true });
+    }
+
+    // ── قفل/فتح حساب بعد محاولات دخول فاشلة ──
+    if (action === 'toggle_lock') {
+      const profileId = String(body.profile_id || '');
+      const targetUserId = body.user_id ? String(body.user_id) : null;
+      const isLocked = body.is_locked === true;
+      if (!profileId) return json({ error: 'profile_id مطلوب' });
+
+      if (targetUserId) {
+        const allowed = await authorizeOnTarget(caller, targetUserId);
+        if (!allowed) return json({ error: 'غير مسموح لك بتنفيذ هذا الإجراء' });
+      } else if (caller.is_super_admin !== true) {
+        const targetRows = await rest(`profiles?id=eq.${profileId}&select=tenant_id&limit=1`);
+        const target = Array.isArray(targetRows) ? targetRows[0] : null;
+        if (!target || caller.role !== 'admin' || target.tenant_id !== caller.tenant_id) {
+          return json({ error: 'غير مسموح لك بتنفيذ هذا الإجراء' });
+        }
+      }
+
+      try {
+        await rest(`profiles?id=eq.${profileId}`, 'PATCH', {
+          is_locked: isLocked,
+          failed_login_attempts: isLocked ? undefined : 0,
+        });
+      } catch (e) {
+        const rawMessage = e instanceof Error ? e.message : String(e);
+        console.error('[admin-actions:toggle_lock]', rawMessage);
+        return json({ error: 'تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.' });
       }
 
       return json({ ok: true });
