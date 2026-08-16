@@ -1,4 +1,5 @@
 import React from 'react';
+import type { PermissionKey } from '../../shared/lib/permissions';
 
 const IconAdmin = () => React.createElement('svg',{className:"w-5 h-5",fill:"none",viewBox:"0 0 24 24",strokeWidth:"1.5",stroke:"currentColor"},
   React.createElement('path',{strokeLinecap:"round",strokeLinejoin:"round",d:"M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"}));
@@ -55,13 +56,22 @@ const IconStats = ({className="w-5 h-5"}:{className?:string}) => React.createEle
 // ─────────────────────────────────────────
 type RoleConfigEntry = { label: string; color: string; bg: string; border: string };
 
+// ⚠️ Record<string, ...> عمدًا (مش Record<UserRole, ...>) — مستخدمة في أماكن
+// بتفهرس بـ user.role/form.role العام (string | null من قاعدة البيانات)،
+// زي ROLE_CONFIG[user.role || ''] || ROLE_CONFIG.viewer. توحيدها بـ UserRole
+// كان هيكسر الفهرسة دي (يحتاج تعديل كل الكولرز مع casting)، فسايبينها
+// كما هي — الاستفادة من UserRole هنا محدودة أصلًا.
 const ROLE_CONFIG: Record<string, RoleConfigEntry> = {
   admin:  { label:'مدير', color:'text-[#C9A84C]',   bg:'bg-[#C9A84C]/15',   border:'border-[#C9A84C]/30' },
   lawyer: { label:'محامي', color:'text-[#C9A84C]',  bg:'bg-[#C9A84C]/15',  border:'border-[#C9A84C]/30' },
   viewer: { label:'مشاهد', color:'text-[#C9A84C]', bg:'bg-[#C9A84C]/15', border:'border-[#C9A84C]/30' },
 };
 
-const PERMISSION_LABELS = {
+// 🆕 (بند 6 من تقرير مراجعة الصلاحيات) — النوع Record<PermissionKey, ...>
+// بدل Record عام، عشان أي مفتاح يتضاف/يتشال من PERMISSION_KEYS
+// (shared/lib/permissions.ts) TypeScript يجبر تحديث الكائن ده معاه —
+// قبل كده كان ممكن يحصل عدم تطابق صامت بين الملفين.
+const PERMISSION_LABELS: Record<PermissionKey, { label: string; icon: string }> = {
   can_add_cases:    { label:'إضافة قضايا',     icon:'⚖️' },
   can_edit_cases:   { label:'تعديل قضايا',     icon:'✏️' },
   can_delete_cases: { label:'حذف قضايا',       icon:'🗑️' },
