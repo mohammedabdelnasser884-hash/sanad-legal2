@@ -376,35 +376,6 @@ function App() {
     // 🆕 (بند 6) — بدل التكرار الحرفي؛ نفس المنطق في useAppData.ts الآن
     // مستورد من مصدر واحد (shared/lib/permissions.ts).
     const isAdmin = isAdminRole(profile);
-    // 🩺 TEMP DEBUG (تشخيص فشل permissions-matrix.spec.ts — 17 أغسطس 2026،
-    // بعد ما فيكس الـrace condition في useAuthProfile.ts ماحلّش المشكلة):
-    // الفيكس السابق بيفترض إن `profile` state بيتحدّث بقيم غلط بسبب رد
-    // متأخر من نداء قديم — لكن `logout()` في e2e/utils.ts بتعمل
-    // `page.goto('/')` (reload كامل)، فأي Promise معلّق من الصفحة القديمة
-    // بيتلغي مع الـJS context كله، فالنظرية دي مستبعدة فعليًا. محتاجين
-    // نشوف القيم الحقيقية جوه المتصفح وقت الفشل بدل التخمين: هل
-    // `profile.role` فعلاً "admin" (يبقى فيه باج حقيقي في ربط
-    // user_id/RLS)، ولا "lawyer" ومع ذلك isAdmin بيطلع true (يبقى فيه
-    // باج في isAdminRole/checkPermission نفسهم أو في تمرير الـprop
-    // للسايدبار)؟ الهوك في e2e/utils.ts (login()) بيلقط أي
-    // console.error/warning ويطبعه فى نص لوج CI (page.on('console', ...))
-    // — فبنستخدم console.warn هنا عشان يبان فى اللوج من غير الحاجة لأي
-    // مرفقات (trace.zip/screenshot) مش متاحة لنا حاليًا. يتشال بعد ما
-    // نلاقي السبب الجذري.
-    if (typeof window !== 'undefined') {
-        console.warn(
-            '[DEBUG isAdmin]',
-            JSON.stringify({
-                authUserId: authUser?.id ?? null,
-                authUserEmail: authUser?.email ?? null,
-                profileUserId: (profile as unknown as { user_id?: string } | null)?.user_id ?? null,
-                profileEmail: (profile as unknown as { email?: string } | null)?.email ?? null,
-                profileRole: profile?.role ?? null,
-                profileIsSuperAdmin: (profile as unknown as { is_super_admin?: boolean } | null)?.is_super_admin ?? null,
-                isAdmin,
-            })
-        );
-    }
     // ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3 — 16 أغسطس 2026):
     // can_view_fees مقفول بلا استثناء لغير admin (قرار 2.1 من الخطة —
     // مفيش أي استثناء صريح ممكن يفتحه)، فعمليًا هو نفس isAdmin دايمًا،
