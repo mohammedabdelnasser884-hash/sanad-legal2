@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import {
   login, loginAs, logout,
   createTestUser, deleteTestUser, createAndOpenCase, expectToast,
-  debugPrintProfileByEmail,
 } from './utils';
 
 // المرحلة 5 (خطة تفعيل الصلاحيات التفصيلية، 16 أغسطس 2026) — بند
@@ -40,7 +39,6 @@ test('lawyer: يقدر يضيف قضية لكن مايشوفش زرار حذف �
   await login(page);
   const { email, password } = await createTestUser(page, fullName, { role: 'lawyer' });
   await expectToast(page, '✅ تم إنشاء حساب ' + fullName);
-  await debugPrintProfileByEmail(email); // 🩺 TEMP DEBUG — راجع تعليق utils.ts
   await createAndOpenCase(page, caseTitle);
   await page.getByTestId('case-detail-close').click();
 
@@ -73,7 +71,6 @@ test('viewer: مايشوفش زرار إضافة قضية ولا إضافة مو
   await login(page);
   const { email, password } = await createTestUser(page, fullName, { role: 'viewer' });
   await expectToast(page, '✅ تم إنشاء حساب ' + fullName);
-  await debugPrintProfileByEmail(email); // 🩺 TEMP DEBUG — راجع تعليق utils.ts
 
   await logout(page);
   await loginAs(page, email, password);
