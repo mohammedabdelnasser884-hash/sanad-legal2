@@ -27,7 +27,7 @@ let cleanupName: string | null = null;
 // غير أي assertion غلط. testInfo.setTimeout هنا بيرفعها لـ120 ثانية
 // لكل تست في الملف ده بس (بما فيها afterEach)، بدل ما نلمس المهلة
 // العامة لكل التستات التانية.
-test.beforeEach(async ({}, testInfo) => {
+test.beforeEach(async (_fixtures, testInfo) => {
   testInfo.setTimeout(120_000);
 });
 
