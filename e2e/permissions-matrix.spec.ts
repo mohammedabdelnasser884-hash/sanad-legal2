@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import {
   login, loginAs, logout,
   createTestUser, deleteTestUser, createAndOpenCase, expectToast,
+  debugSessionEmail,
 } from './utils';
 
 // المرحلة 5 (خطة تفعيل الصلاحيات التفصيلية، 16 أغسطس 2026) — بند
@@ -46,6 +47,9 @@ test('lawyer: يقدر يضيف قضية لكن مايشوفش زرار حذف �
   await logout(page);
   await loginAs(page, email, password);
 
+  // 🩺 TEMP DEBUG — راجع تعليق debugSessionEmail في utils.ts
+  console.log('[DEBUG session email]', 'expected:', email, 'actual:', await debugSessionEmail(page));
+
   // can_view_fees مقفول بلا استثناء (قرار 2.1) → تاب الأتعاب مش
   // موجود خالص فى قائمة التنقل، حتى لو الرابط اتعرف مباشرة
   await expect(page.getByTestId('desktop-nav-fees')).toHaveCount(0);
@@ -74,6 +78,9 @@ test('viewer: مايشوفش زرار إضافة قضية ولا إضافة مو
 
   await logout(page);
   await loginAs(page, email, password);
+
+  // 🩺 TEMP DEBUG — راجع تعليق debugSessionEmail في utils.ts
+  console.log('[DEBUG session email]', 'expected:', email, 'actual:', await debugSessionEmail(page));
 
   // can_view_fees/can_add_cases/can_add_clients كلهم false لـviewer
   await expect(page.getByTestId('desktop-nav-fees')).toHaveCount(0);
