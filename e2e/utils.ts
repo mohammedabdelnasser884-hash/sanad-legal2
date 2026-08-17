@@ -235,7 +235,7 @@ export async function debugPrintProfileByEmail(email: string): Promise<void> {
   }
   try {
     const res = await fetch(
-      `${url}/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=email,role,is_active,is_super_admin,tenant_id,permissions`,
+      `${url}/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=user_id,email,role,is_active,is_super_admin,tenant_id,permissions`,
       { headers: { apikey: key, Authorization: `Bearer ${key}` } }
     );
     const rows = await res.json();
