@@ -46,20 +46,6 @@ export default defineConfig({
     baseURL: 'http://localhost:5173',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    // 🔒 FIX (تشخيص فشل permissions-matrix.spec.ts — 17 أغسطس 2026): لوج
-    // `[DEBUG browser:console]` (اتضاف مؤقتًا في نفس الملف) أثبت إن الصفحة
-    // بتعمل full page reload حقيقي كذا مرة متلاحقة (كل مرة معاها "[App]
-    // Service Worker registered ✓" و"[vite] connecting/connected" تاني)
-    // بالظبط وقت loginAs() — مش React rerender، navigation حقيقي. السبب:
-    // sw.js (serviceWorkerBootstrap.ts) بيسجّل Service Worker حقيقي على
-    // كل نفس الـhost، بما فيه ريكوستات Vite dev server نفسها (fetch
-    // handler بتاعه بيتعامل مع أي `url.hostname === self.location.hostname`)
-    // — تعارض معروف فعليًا وموثّق في المشروع ده قبل كده: sanad-e2e-fix-1-of-2.patch
-    // (26 يوليو 2026) كان بالظبط بيضيف السطر ده لنفس السبب (فشل
-    // ai-assistant.spec.ts وقتها)، لكنه طلع مش موجود في النسخة الحالية —
-    // يعني الفيكس اتعمل قبل كده وضاع/ماتطبقش. رجّعناه هنا عشان Chromium
-    // منعمل تسجيل Service Worker خالص وقت E2E.
-    serviceWorkers: 'block',
   },
 
   projects: [
