@@ -19,6 +19,18 @@ import {
 
 let cleanupName: string | null = null;
 
+// 🔧 FIX (17 أغسطس 2026، بعد فيكس الـrace condition بتاع expect.poll):
+// login()/loginAs() بقى ممكن ياخدوا لحد 40 ثانية (30 app-shell + 10
+// تأكيد الجلسة)، والملف ده بيعمل 2-3 تسجيل دخول لكل تست (أدمن + lawyer/
+// viewer + afterEach) — فالمهلة الافتراضية (60 ثانية للتست كله، من
+// playwright.config.ts) بقت مش كافية وبتفشل بـ"Test timeout" بسيط من
+// غير أي assertion غلط. testInfo.setTimeout هنا بيرفعها لـ120 ثانية
+// لكل تست في الملف ده بس (بما فيها afterEach)، بدل ما نلمس المهلة
+// العامة لكل التستات التانية.
+test.beforeEach(async ({}, testInfo) => {
+  testInfo.setTimeout(120_000);
+});
+
 test.afterEach(async ({ page }) => {
   if (cleanupName) {
     // afterEach ممكن يشتغل والصفحة لسه مسجّلة دخول بحساب lawyer/viewer
