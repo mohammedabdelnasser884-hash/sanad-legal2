@@ -1,16 +1,18 @@
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 
-// 🩺 DEBUG مؤقت ونظيف (تشخيص فشل permissions-matrix.spec.ts — 17 أغسطس
-// 2026، محاولة تالتة): بعد رفع التايم آوت، التستين بقوا بيفشلوا بفشل
-// assertion حقيقي (desktop-nav-fees ظاهر لحساب lawyer/viewer) مش
-// TimeoutError تاني — يعني إما (أ) فعلاً السيشن بعد loginAs لسه سيشن
-// admin (باج صلاحيات خطير)، أو (ب) السيشن صح lawyer لكن رندر isAdmin
-// بياخد وقت يتحدّث. الهيلبر ده *مش* بيلمس كود الإنتاج خالص — بيقرا
-// توكن الجلسة المخزّن في localStorage من جوه المتصفح (نفس مكان تخزين
-// supabase-js) ويفك تشفير الـJWT (بس فك base64 عادي، بلا تحقق توقيع —
-// مش محتاجينه هنا) عشان نعرف بريد الحساب الفعلي المسجّل بيه دلوقتي.
-// يتشال بعد ما نلاقي السبب الجذري.
+// 🔒 هيلبر دائم (مش TEMP DEBUG — اتأكد السبب الجذري وبقى جزء من الفيكس
+// نفسه، 17 أغسطس 2026): لوج [DEBUG session email] أثبت إن فشل تستين
+// permissions-matrix.spec.ts كان race condition حقيقي — أول محاولة من
+// الاتنين كانت بتلقط app-shell ظاهر لحظة إن الجلسة لسه شايلة توكن
+// الحساب القديم (admin)، وبتتصحح لوحدها بعد ثواني (الـretry نجح لوحده
+// من غير أي تعديل). يعني انتظار ظهور app-shell مش كافي كعلامة "الجلسة
+// اتبدلت فعلًا" — login()/loginAs() تحت بيستخدموا الهيلبر ده عشان
+// يستنوا الجلسة الفعلية تتأكد قبل ما يرجعوا، مش بس وجود العنصر في الـDOM.
+// *مش* بيلمس كود الإنتاج خالص — بيقرا توكن الجلسة المخزّن في
+// localStorage من جوه المتصفح (نفس مكان تخزين supabase-js) ويفك تشفير
+// الـJWT (base64 عادي، بلا تحقق توقيع — مش محتاجينه هنا) عشان نعرف
+// بريد الحساب الفعلي المسجّل بيه دلوقتي.
 export async function debugSessionEmail(page: Page): Promise<string | null> {
   return page.evaluate(() => {
     try {
@@ -70,11 +72,19 @@ export async function login(page: Page): Promise<void> {
   await page.getByTestId('login-email').fill(email);
   await page.getByTestId('login-password').fill(password);
   await page.getByTestId('login-submit').click();
-  // 🔧 FIX (17 أغسطس 2026): رفع من 15 لـ30 ثانية — لوجز CI أكّدت إن
-  // office-login/isAdmin بيرجّعوا الحساب الصحيح دايمًا، والفشل كان
-  // TimeoutError بسيط على ظهور app-shell تحت حمل/تراكم وقت (workers:1،
-  // آخر تستين بعد أكتر من 13 دقيقة تشغيل متواصل)، مش باج منطقي.
   await page.getByTestId('app-shell').waitFor({ state: 'visible', timeout: 30_000 });
+  // 🔧 FIX نهائي (17 أغسطس 2026، بعد لوج [DEBUG session email]): اتأكد
+  // فعليًا إن ظهور app-shell كان race — أول محاولة من التستين الفاشلين
+  // كانت بتلقط الجلسة القديمة (admin) لحظة الظهور، وبتتصحح لوحدها بعد
+  // ثواني (الـretry نجح). يعني انتظار ظهور app-shell مش كافي؛ لازم
+  // نستنى كمان إن الجلسة الموجودة فعليًا بقت لنفس الحساب اللي سجّلنا
+  // بيه، مش بس إن أي app-shell ظهر (ممكن يكون لسه شايل بروفايل الحساب
+  // القديم للحظة). بيستخدم debugSessionEmail (تشخيصي، بيقرا localStorage
+  // بس، صفر لمس لكود الإنتاج).
+  await expect.poll(() => debugSessionEmail(page), {
+    message: `الجلسة لسه مش اتحدثت للحساب المتوقع (${email})`,
+    timeout: 10_000,
+  }).toBe(email);
 }
 
 // خطوة 4+ (خطة تفعيل الصلاحيات التفصيلية، مرحلة 5 — 16 أغسطس 2026):
@@ -87,8 +97,12 @@ export async function loginAs(page: Page, email: string, password: string): Prom
   await page.getByTestId('login-email').fill(email);
   await page.getByTestId('login-password').fill(password);
   await page.getByTestId('login-submit').click();
-  // 🔧 FIX (17 أغسطس 2026): نفس رفع التايم آوت بتاع login() فوق (15→30 ثانية).
   await page.getByTestId('app-shell').waitFor({ state: 'visible', timeout: 30_000 });
+  // 🔧 FIX نهائي (17 أغسطس 2026) — نفس فيكس login() فوق بالظبط.
+  await expect.poll(() => debugSessionEmail(page), {
+    message: `الجلسة لسه مش اتحدثت للحساب المتوقع (${email})`,
+    timeout: 10_000,
+  }).toBe(email);
 }
 
 // تسجيل خروج — مفيش data-testid مخصص لزرار "تسجيل الخروج" حاليًا (جوه
