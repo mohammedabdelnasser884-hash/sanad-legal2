@@ -37,23 +37,15 @@ export async function login(page: Page): Promise<void> {
     );
   }
 
-  // 🩺 TEMP DEBUG (30 يوليو 2026) — بدون الهوك ده، أي console.error/warn
-  // جوه كود المتصفح (React app) مش بيوصل لنص لوج CI خالص، وبيفضل حبيس
-  // جوه trace.zip/الفيديو (ملفات تقيلة بنتجنب تنزيلها). الهوك ده بيودّي
-  // نص الرسالة لـstdout بتاع Node مباشرة — يعني بيظهر في نفس ملف اللوج
-  // النصي الصغير اللي بنجمعه أصلاً من CI، من غير أي مرفقات إضافية.
-  // ينشال بعد ما نوصل للسبب الجذري في الفشلات المعلّقة.
-  page.on('console', (msg) => {
-    if (msg.type() === 'error' || msg.type() === 'warning') {
-      console.log(`[BROWSER ${msg.type()}] ${msg.text()}`);
-    }
-  });
-
   await page.goto('/');
   await page.getByTestId('login-email').fill(email);
   await page.getByTestId('login-password').fill(password);
   await page.getByTestId('login-submit').click();
-  await page.getByTestId('app-shell').waitFor({ state: 'visible', timeout: 15_000 });
+  // 🔧 FIX (17 أغسطس 2026): رفع من 15 لـ30 ثانية — لوجز CI أكّدت إن
+  // office-login/isAdmin بيرجّعوا الحساب الصحيح دايمًا، والفشل كان
+  // TimeoutError بسيط على ظهور app-shell تحت حمل/تراكم وقت (workers:1،
+  // آخر تستين بعد أكتر من 13 دقيقة تشغيل متواصل)، مش باج منطقي.
+  await page.getByTestId('app-shell').waitFor({ state: 'visible', timeout: 30_000 });
 }
 
 // خطوة 4+ (خطة تفعيل الصلاحيات التفصيلية، مرحلة 5 — 16 أغسطس 2026):
@@ -66,7 +58,8 @@ export async function loginAs(page: Page, email: string, password: string): Prom
   await page.getByTestId('login-email').fill(email);
   await page.getByTestId('login-password').fill(password);
   await page.getByTestId('login-submit').click();
-  await page.getByTestId('app-shell').waitFor({ state: 'visible', timeout: 15_000 });
+  // 🔧 FIX (17 أغسطس 2026): نفس رفع التايم آوت بتاع login() فوق (15→30 ثانية).
+  await page.getByTestId('app-shell').waitFor({ state: 'visible', timeout: 30_000 });
 }
 
 // تسجيل خروج — مفيش data-testid مخصص لزرار "تسجيل الخروج" حاليًا (جوه
@@ -217,34 +210,6 @@ export async function openAdminSection(
 // (disposable) عبر UserFormModal الحقيقي (useAdminUsers.handleAddUser →
 // callAdminAction({action:'create_lawyer'})). بيفترض إن القسم مش مفتوح
 // أصلًا فبيفتحه بنفسه (openAdminSection) عشان يبقى قابل للاستدعاء من
-// 🩺 TEMP DEBUG (تشخيص فشل permissions-matrix.spec.ts — 16 أغسطس 2026):
-// تستين lawyer/viewer بيلاقوا desktop-nav-fees ظاهر رغم إن navConfig.ts/
-// DesktopSidebar.tsx بيفلتروه صح بناءً على isAdmin (=profile.role==='admin').
-// مراجعة الكود من غير وصول لقاعدة البيانات الحية مالقتش أي باج منطقي —
-// فده نداء تشخيصي مباشر لقاعدة البيانات (service_role، نفس المفتاح
-// المتاح فعليًا في e2e job كـSUPABASE_SERVICE_ROLE_KEY) بيطبع role/
-// is_super_admin/tenant_id الفعليين للمستخدم اللي اتعمله create فورًا،
-// عشان اللوج القادم يوريّنا القيمة الحقيقية بدل التخمين. مؤقت، يتشال
-// بعد ما نلاقي السبب الجذري.
-export async function debugPrintProfileByEmail(email: string): Promise<void> {
-  const url = process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    console.log('[DEBUG profile] SUPABASE_SERVICE_ROLE_KEY/VITE_SUPABASE_URL مش متوفرين، مقدرش أجيب البروفايل');
-    return;
-  }
-  try {
-    const res = await fetch(
-      `${url}/rest/v1/profiles?email=eq.${encodeURIComponent(email)}&select=user_id,email,role,is_active,is_super_admin,tenant_id,permissions`,
-      { headers: { apikey: key, Authorization: `Bearer ${key}` } }
-    );
-    const rows = await res.json();
-    console.log('[DEBUG profile]', email, '→', JSON.stringify(rows));
-  } catch (err) {
-    console.log('[DEBUG profile] فشل النداء:', err instanceof Error ? err.message : String(err));
-  }
-}
-
 // أول التست مباشرة. بيرجّع البريد/كلمة السر المستخدمة عشان تستات
 // "تغيير كلمة المرور" تقدر تتأكد من القيمة الجديدة لو احتاجت.
 export async function createTestUser(
