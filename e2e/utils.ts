@@ -1,6 +1,35 @@
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 
+// 🩺 DEBUG مؤقت ونظيف (تشخيص فشل permissions-matrix.spec.ts — 17 أغسطس
+// 2026، محاولة تالتة): بعد رفع التايم آوت، التستين بقوا بيفشلوا بفشل
+// assertion حقيقي (desktop-nav-fees ظاهر لحساب lawyer/viewer) مش
+// TimeoutError تاني — يعني إما (أ) فعلاً السيشن بعد loginAs لسه سيشن
+// admin (باج صلاحيات خطير)، أو (ب) السيشن صح lawyer لكن رندر isAdmin
+// بياخد وقت يتحدّث. الهيلبر ده *مش* بيلمس كود الإنتاج خالص — بيقرا
+// توكن الجلسة المخزّن في localStorage من جوه المتصفح (نفس مكان تخزين
+// supabase-js) ويفك تشفير الـJWT (بس فك base64 عادي، بلا تحقق توقيع —
+// مش محتاجينه هنا) عشان نعرف بريد الحساب الفعلي المسجّل بيه دلوقتي.
+// يتشال بعد ما نلاقي السبب الجذري.
+export async function debugSessionEmail(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    try {
+      const key = Object.keys(window.localStorage).find((k) => k.includes('auth-token'));
+      if (!key) return null;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const accessToken: string | undefined = parsed?.access_token ?? parsed?.currentSession?.access_token;
+      if (!accessToken) return null;
+      const payload = accessToken.split('.')[1];
+      const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+      return decoded?.email ?? null;
+    } catch {
+      return null;
+    }
+  });
+}
+
 // 🔒 FIX (تحليل لوجز E2E — 12 أغسطس 2026، تشغيلة تانية): بعد ما بيانات
 // التوكيل بقت إجبارية، كل مكان بيملأ الحقل ده في E2E كان بيستخدم نفس
 // القيمة الثابتة بالظبط (رقم '1234' / حرف 'أ' / سنة '2026'). طلع إن فيه
