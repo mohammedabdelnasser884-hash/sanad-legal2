@@ -27,9 +27,23 @@ let cleanupName: string | null = null;
 // غير أي assertion غلط. testInfo.setTimeout هنا بيرفعها لـ120 ثانية
 // لكل تست في الملف ده بس (بما فيها afterEach)، بدل ما نلمس المهلة
 // العامة لكل التستات التانية.
+// 🩺 TEMP DEBUG (17 أغسطس 2026) — رن CI فشل بشكل غير مفهوم من اللوج
+// النصي بس: زرار login-submit فضل "مش ثابت" ثم "detached from the DOM"
+// بالتبادل لمدة 120 ثانية كاملة جوه loginAs() (بعد ما فيكس الـrace
+// condition بتاع debugSessionEmail اتطبّق بالفعل) — نمط بيوحي بإن الصفحة
+// بتعمل rerender/reload متكرر وقت الفشل، لكن مفيش console log ولا
+// trace.zip اتراجع لتأكيد السبب. الملف ده مفيهوش أي console forwarding
+// خالص حاليًا. السطرين دول بس بيودّوا console.log/pageerror المتصفح
+// لستدوت الـCI (بيبان في نفس لوج 'list' reporter) — صفر لمس لكود
+// التطبيق أو منطق التست نفسه. تُشال بعد ما نوصل للسبب الجذري.
 test.beforeEach(async ({ page }, testInfo) => {
-  void page;
   testInfo.setTimeout(120_000);
+  page.on('console', (msg) => {
+    console.log(`[DEBUG browser:console:${msg.type()}] ${msg.text()}`);
+  });
+  page.on('pageerror', (err) => {
+    console.log(`[DEBUG browser:pageerror] ${err.message}`);
+  });
 });
 
 test.afterEach(async ({ page }) => {
