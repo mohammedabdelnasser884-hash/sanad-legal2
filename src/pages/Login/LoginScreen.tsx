@@ -68,19 +68,6 @@ function LoginScreen({onLogin}: LoginScreenProps){
         // ثبّت الجلسة اللي رجعت من الفانكشن على عميل Supabase المحلي —
         // من هنا وطالع، auth.uid() هيشتغل عادي في كل مكان بالتطبيق.
         const {error:sessionErr}=await db.auth.setSession({access_token:data.access_token,refresh_token:data.refresh_token});
-        // 🩺 TEMP DEBUG (تشخيص فشل permissions-matrix.spec.ts — 17 أغسطس
-        // 2026، متابعة): بيطبع الـuser اللي رجعته office-login فعليًا
-        // (قبل أي تعامل تاني من useAuthProfile) — عشان نقارنه بالـ
-        // authUserId اللي بيظهر بعدين في [DEBUG isAdmin] جوه App.tsx.
-        // لو الاتنين مختلفين، يبقى المشكلة بعد النقطة دي (setSession/
-        // onAuthStateChange). لو نفس الـid بتاع الأدمن من هنا، يبقى
-        // office-login/GoTrue نفسها بترجع حساب غلط. يتشال بعد ما نلاقي
-        // السبب الجذري.
-        console.warn('[DEBUG office-login response]', JSON.stringify({
-            requestedEmail: email,
-            returnedUserId: data.user?.id ?? null,
-            returnedUserEmail: data.user?.email ?? null,
-        }));
         setLoading(false);
         if(sessionErr){
             recordError('office_login', sessionErr.message);
