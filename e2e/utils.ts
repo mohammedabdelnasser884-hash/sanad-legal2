@@ -129,6 +129,23 @@ export async function logout(page: Page): Promise<void> {
 // (star/name/capacity/national-id)، ولازم تفعيل ⭐ الأول عشان الرقم
 // القومي يبقى مطلوب/يتفحص، ومطابق لفاليديشن casePartiesValidation.ts.
 export async function createCase(page: Page, title: string): Promise<void> {
+  // 🔒 FIX (تحليل لوج [DEBUG page:framenavigated] — 17 أغسطس 2026، تشغيلة
+  // رابعة): السبب الجذري الحقيقي لفشل permissions-matrix.spec.ts اتلقى —
+  // مش login/loginAs خالص. التريس أثبت فجوة 117 ثانية كاملة (كل ميزانية
+  // التست تقريبًا) بين فتح /admin (جوه createTestUser) ورجوع الصفحة لـ'/'
+  // (جوه logout())، من غير أي framenavigated لـ/cases في النص — يعني
+  // الكود اتوقف قبل ما يوصل لخطوة فتح القضية أصلًا. السبب: createTestUser
+  // بيسيب قسم "المستخدمين" في لوحة الإدارة مفتوح (overlay بملء الشاشة
+  // بـz-[60] — نفس المشكلة الموثّقة فوق في closeAdminSectionIfOpen لكن
+  // من زاوية تانية)، وcreateCase (المُستدعاة من createAndOpenCase بعد
+  // createTestUser مباشرة في الملف ده) كانت بتحاول تدوس desktop-nav-cases
+  // من غير ما تقفل القسم المفتوح الأول — الزرار محجوب فعليًا فبيفضل
+  // Playwright يعيد المحاولة من غير مهلة صريحة (defaults لباقي وقت
+  // التست كله) لحد ما التايم آوت العام يضرب. الحل: نفس حراسة
+  // closeAdminSectionIfOpen المستخدمة بالفعل في openAdminSection/
+  // openAdminArchiveTab، مضافة هنا كمان (بلا أي تأثير لو مفيش قسم مفتوح
+  // أصلًا — بترجع فورًا).
+  await closeAdminSectionIfOpen(page);
   // ⚡ H1 (16 أغسطس 2026): `nav-cases` (CommandDock، الشريط السفلي) بقى
   // `lg:hidden` فعليًا (H2) — كل الـ31 spec دي بتشتغل على مشروع
   // `chromium` (Desktop Chrome، ≥1024px) فبقت تستخدم `desktop-nav-cases`
