@@ -27,36 +27,16 @@ let cleanupName: string | null = null;
 // غير أي assertion غلط. testInfo.setTimeout هنا بيرفعها لـ120 ثانية
 // لكل تست في الملف ده بس (بما فيها afterEach)، بدل ما نلمس المهلة
 // العامة لكل التستات التانية.
-// 🩺 TEMP DEBUG (17 أغسطس 2026، تشغيلة تالتة) — الفيكس السابق
-// (serviceWorkers:'block' في playwright.config.ts) اتأكد إنه غلط: نفس
-// الفشل بالظبط في نفس السطر (login-submit "detached from the DOM" لمدة
-// 120 ثانية) لسه بيحصل حتى بعد منع الـService Worker خالص — يعني نظرية
-// الـSW مش السبب، وكان استنتاج متسرّع من ترابط توقيت بس من غير سبب
-// وسببي فعلي. اتراجع الفيكس ده بالكامل (رجع playwright.config.ts زي ما
-// كان بالحرف) عشان منكسرش تستات الأوفلاين (اللي فعلاً انكسرت في نفس
-// الرن ده — case-parties-and-sessions.spec.ts وstandalone-sessions.spec.ts
-// اختبار 4 بقوا بيحفظوا "أونلاين" غلط تحت context.setOffline(true)).
-// دلوقتي بنضيف تريس أدق من الأول: بدل الاعتماد على console.log بتاع
-// التطبيق نفسه (غير مباشر)، بنستخدم أحداث Playwright نفسها
-// (page.on('load')/('framenavigated')) عشان نثبت بالظبط عدد مرات الـ
-// reload الحقيقي ووقتها بالمللي ثانية، ومع console/pageerror برضو لو
-// فيه حاجة تانية بانت. تُشال بعد ما نوصل للسبب الجذري الحقيقي.
+// 🔒 السبب الجذري الحقيقي اتلقى ديه (17 أغسطس 2026، تشغيلة رابعة) عبر
+// تريس page.on('load')/('framenavigated') المؤقت اللي كان هنا — فجوة
+// 117 ثانية بين فتح لوحة الإدارة وأي محاولة فتح قضية، من غير أي
+// framenavigated لـ/cases في النص. السبب فعليًا في createCase()
+// (utils.ts) اللي كانت بتحاول تدوس desktop-nav-cases والقسم الإداري لسه
+// مفتوح من createTestUser (overlay محجوب) — الفيكس اتضاف في utils.ts
+// (closeAdminSectionIfOpen). التريس هنا اتشال بعد ما خلّص غرضه.
 test.beforeEach(async ({ page }, testInfo) => {
+  void page;
   testInfo.setTimeout(120_000);
-  page.on('console', (msg) => {
-    console.log(`[DEBUG browser:console:${msg.type()}] ${msg.text()}`);
-  });
-  page.on('pageerror', (err) => {
-    console.log(`[DEBUG browser:pageerror] ${err.message}`);
-  });
-  page.on('load', () => {
-    console.log(`[DEBUG page:load] t=${Date.now()} url=${page.url()}`);
-  });
-  page.on('framenavigated', (frame) => {
-    if (frame === page.mainFrame()) {
-      console.log(`[DEBUG page:framenavigated] t=${Date.now()} url=${frame.url()}`);
-    }
-  });
 });
 
 test.afterEach(async ({ page }) => {
