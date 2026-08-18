@@ -57,11 +57,23 @@ test.afterEach(async ({ page }) => {
     // كل محاولة التنظيف عبر Promise.race — أي تعليق داخلي (فيل/كليك/
     // انتظار عنصر) هيترفض كـException عادي بعد 20 ثانية بالظبط، فيوصل
     // فعليًا لل catch تحت ويطبع التحذير بدل ما ياكل كل ميزانية الـhook.
+    // 🔒 FIX نهائي مبني على دليل فعلي (19 أغسطس 2026، بعد لوج [DEBUG
+    // afterEach-hang] الأول): التست بينجح فعليًا (36.5s) — التعليق في
+    // الـafterEach بس. اللوج أثبت إن الصفحة وقت التعليق كانت لسه فاتحة
+    // على dashboard حساب lawyer/viewer (app-shell موجود=1، login-email
+    // موجود=0) وبانر "أنت الآن offline" ظاهر. يعني login() هنا كان بيعمل
+    // goto('/') بس، ولأن فيه سيشن lawyer/viewer لسه صالح فى localStorage
+    // (من loginAs() جوه جسم التست) والتطبيق PWA أوفلاين-فيرست، بيعرض
+    // الـdashboard المخزّن كاش على طول من غير ما يرجع لشاشة الدخول خالص
+    // — فـlogin-email ما بيظهرش أبدًا. الحل الحقيقي: لازم نمسح السيشن
+    // فعليًا بـlogout() (بتمسح localStorage+cookies) قبل login()، مش
+    // نعتمد على goto('/') إنها كافية.
     await Promise.race([
       (async () => {
         // afterEach ممكن يشتغل والصفحة لسه مسجّلة دخول بحساب lawyer/
         // viewer (لو التست فشل قبل ما يرجع admin) — لازم نرجع admin
         // الأول عشان deleteTestUser يقدر يفتح لوحة الإدارة أصلًا.
+        await logout(page);
         await login(page);
         await deleteTestUser(page, name);
       })(),
