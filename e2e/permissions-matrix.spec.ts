@@ -74,6 +74,26 @@ test.afterEach(async ({ page }) => {
     ]);
   } catch (e) {
     console.warn(`⚠️ تنظيف المستخدم التجريبي "${name}" فشل (هيتنضف عبر global-teardown آخر الرن):`, e);
+    // 🆕 ديباج تشخيصي (19 أغسطس 2026): كل الفيكسات اللي فاتت كانت تخمين
+    // مبني على قراءة اللوج بعد ما التعليق يحصل، من غير دليل فعلي من جوه
+    // الصفحة وقت التعليق نفسه. لو التعليق اتكرر رغم فيكس الـ20 ثانية
+    // فوق، الكتلة دي هتلقط "صورة" حقيقية من حالة الصفحة في نفس اللحظة —
+    // مش تخمين تاني. ملحوظة: .fill()/.click() المعلّقة جوه Promise.race
+    // فوق اتسابت لوحدها معلّقة (مفيش طريقة تلغيها فعليًا في Playwright)،
+    // لكن page لسه حي وممكن نستخدمه لقراءات سريعة زي دي من غير ما نستنى
+    // أي action تاني عليه.
+    try {
+      const url = page.url();
+      const loginEmailCount = await page.getByTestId('login-email').count();
+      const appShellCount = await page.getByTestId('app-shell').count();
+      const bodyText = await page.locator('body').innerText({ timeout: 3_000 }).catch(() => '(تعذّرت قراءة body)');
+      console.warn(
+        `[DEBUG afterEach-hang] url=${url} | login-email موجود=${loginEmailCount} | app-shell موجود=${appShellCount} | أول 300 حرف من الصفحة: ${bodyText.slice(0, 300)}`
+      );
+      await page.screenshot({ path: `test-results/afterEach-hang-${name}.png` }).catch(() => {});
+    } catch (debugErr) {
+      console.warn('[DEBUG afterEach-hang] فشل حتى جمع الديباج نفسه:', debugErr);
+    }
   }
 });
 
