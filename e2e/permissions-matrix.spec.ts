@@ -43,11 +43,35 @@ test.afterEach(async ({ page }) => {
   const name = cleanupName;
   cleanupName = null;
   try {
-    // afterEach ممكن يشتغل والصفحة لسه مسجّلة دخول بحساب lawyer/viewer
-    // (لو التست فشل قبل ما يرجع admin) — لازم نرجع admin الأول عشان
-    // deleteTestUser يقدر يفتح لوحة الإدارة أصلًا.
-    await login(page);
-    await deleteTestUser(page, name);
+    // 🔒 FIX (19 أغسطس 2026، بعد 8 تشغيلات فاشلة رغم الـtry/catch هنا):
+    // السبب الحقيقي إن login()/deleteTestUser() بيستخدموا .fill()/.click()
+    // من غير timeout صريح على كل خطوة — الـdefault بتاع Playwright لأي
+    // action من غير timeout صريح هو "من غير حد أقصى خالص" (مش 30 ثانية
+    // زي ما يبدو بديهي)، فلو العنصر المتوقع (login-email) ما ظهرش لأي
+    // سبب (مثلاً الصفحة لسه فيها overlay من التست اللي فشل قبله)، الـ
+    // .fill() بتفضل معلّقة *بلا نهاية* — الـtry/catch هنا مبنيّ على إن
+    // JS exception تترمي، لكن مفيش استثناء بيتترمي أصلًا، فبيوصل بدل كده
+    // لـ"Test timeout of 60000ms exceeded while running afterEach hook"
+    // (تايم آوت مفروض من Playwright نفسه على الـhook كله، مش استثناء
+    // قابل للمسك). الحل: نحط سقف زمني صريح (20 ثانية) بأنفسنا حوالين
+    // كل محاولة التنظيف عبر Promise.race — أي تعليق داخلي (فيل/كليك/
+    // انتظار عنصر) هيترفض كـException عادي بعد 20 ثانية بالظبط، فيوصل
+    // فعليًا لل catch تحت ويطبع التحذير بدل ما ياكل كل ميزانية الـhook.
+    await Promise.race([
+      (async () => {
+        // afterEach ممكن يشتغل والصفحة لسه مسجّلة دخول بحساب lawyer/
+        // viewer (لو التست فشل قبل ما يرجع admin) — لازم نرجع admin
+        // الأول عشان deleteTestUser يقدر يفتح لوحة الإدارة أصلًا.
+        await login(page);
+        await deleteTestUser(page, name);
+      })(),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error('تنظيف المستخدم التجريبي علّق أكتر من 20 ثانية')),
+          20_000
+        );
+      }),
+    ]);
   } catch (e) {
     console.warn(`⚠️ تنظيف المستخدم التجريبي "${name}" فشل (هيتنضف عبر global-teardown آخر الرن):`, e);
   }
