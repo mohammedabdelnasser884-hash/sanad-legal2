@@ -27,16 +27,18 @@ let cleanupName: string | null = null;
 // غير أي assertion غلط. testInfo.setTimeout هنا بيرفعها لـ120 ثانية
 // لكل تست في الملف ده بس (بما فيها afterEach)، بدل ما نلمس المهلة
 // العامة لكل التستات التانية.
-// 🔒 السبب الجذري الحقيقي اتلقى ديه (17 أغسطس 2026، تشغيلة رابعة) عبر
-// تريس page.on('load')/('framenavigated') المؤقت اللي كان هنا — فجوة
-// 117 ثانية بين فتح لوحة الإدارة وأي محاولة فتح قضية، من غير أي
-// framenavigated لـ/cases في النص. السبب فعليًا في createCase()
-// (utils.ts) اللي كانت بتحاول تدوس desktop-nav-cases والقسم الإداري لسه
-// مفتوح من createTestUser (overlay محجوب) — الفيكس اتضاف في utils.ts
-// (closeAdminSectionIfOpen). التريس هنا اتشال بعد ما خلّص غرضه.
+// 🔧 FIX (18 أغسطس 2026، تشغيلة خامسة — بعد فيكس closeAdminSectionIfOpen
+// الحقيقي): الفيكس اتأكد إنه نجح — جسم التست بقى بيعدي من غير أي خطأ
+// assertion خالص. المشكلة اللي فضلت: التست بقى ياخد وقت قريب جدًا من
+// الـ120 ثانية عشان يخلّص (لوجن admin + إنشاء مستخدم + إنشاء وفتح قضية +
+// logout + loginAs + assertions)، فمابقاش فاضل وقت كافي لـafterEach
+// (لوجن admin تاني + حذف المستخدم التجريبي) — بيقف فجأة وسط
+// login-email.fill() في اللحظة اللي المهلة العامة بتضرب فيها. مش باج،
+// مجرد إن 120 ثانية بقت ضيقة على التسلسل الحقيقي. رفعناها لـ180 ثانية
+// (3 دقايق) عشان تدّي هامش حقيقي لـafterEach كمان.
 test.beforeEach(async ({ page }, testInfo) => {
   void page;
-  testInfo.setTimeout(120_000);
+  testInfo.setTimeout(180_000);
 });
 
 test.afterEach(async ({ page }) => {
