@@ -30,12 +30,17 @@ let cleanupName: string | null = null;
 // 🔧 FIX (18 أغسطس 2026، تشغيلة خامسة — بعد فيكس closeAdminSectionIfOpen
 // الحقيقي): الفيكس اتأكد إنه نجح — جسم التست بقى بيعدي من غير أي خطأ
 // assertion خالص. المشكلة اللي فضلت: التست بقى ياخد وقت قريب جدًا من
-// الـ120 ثانية عشان يخلّص (لوجن admin + إنشاء مستخدم + إنشاء وفتح قضية +
-// logout + loginAs + assertions)، فمابقاش فاضل وقت كافي لـafterEach
-// (لوجن admin تاني + حذف المستخدم التجريبي) — بيقف فجأة وسط
-// login-email.fill() في اللحظة اللي المهلة العامة بتضرب فيها. مش باج،
-// مجرد إن 120 ثانية بقت ضيقة على التسلسل الحقيقي. رفعناها لـ180 ثانية
-// (3 دقايق) عشان تدّي هامش حقيقي لـafterEach كمان.
+// الـ120 ثانية عشان يخلّص، فمابقاش فاضل وقت كافي لـafterEach. رفعناها
+// لـ180 ثانية (3 دقايق).
+// 🔒 FIX (18 أغسطس 2026، تشغيلة سادسة): رفع المهلة لـ180 ثانية ماكانش
+// كافي — التست فضل بياخد وقت قريب جدًا من أي حد نرفعه له بالظبط (120s→
+// ~118s مستهلكة، 180s→~178s مستهلكة)، وده نمط "تعليق غير محدود بياكل
+// كل الميزانية المتاحة" مش "بطء حقيقي ثابت". السبب: كذا `.click()`/
+// `.waitFor()` في جسم التستين هنا من غير timeout صريح (على عكس كل
+// نظائرها في utils.ts)، فأي واحد فيهم لو اتعلّق بياخد الميزانية كلها لحد
+// ما التايم آوت العام يضرب. الحل: مهلة صريحة 15 ثانية على كل واحدة منهم
+// (تحت) — بتحول أي تعليق حقيقي لفشل سريع وواضح بيوضح بالظبط السطر
+// المسبب، بدل تخمين رقم مهلة تالت.
 test.beforeEach(async ({ page }, testInfo) => {
   void page;
   testInfo.setTimeout(180_000);
@@ -74,14 +79,19 @@ test('lawyer: يقدر يضيف قضية لكن مايشوفش زرار حذف �
 
   // can_add_cases = true افتراضيًا لـlawyer → الزرار موجود
   await expect(page.getByTestId('desktop-nav-cases')).toBeVisible();
-  await page.getByTestId('desktop-nav-cases').click();
+  // 🔒 FIX (18 أغسطس 2026، تشغيلة سادسة): الأسطر دي كانت من غير timeout
+  // صريح (على عكس كل نظائرها في utils.ts) — أي تعليق غير محدود هنا كان
+  // بياخد ميزانية التست كلها (فسّر ليه مدة الفشل كانت بتتمدد بالظبط مع
+  // أي رقم نرفع setTimeout له). مهلة صريحة 15 ثانية بتحوّل أي تعليق زي
+  // ده لفشل سريع وواضح بدل ما ياكل كل الوقت المتاح.
+  await page.getByTestId('desktop-nav-cases').click({ timeout: 15_000 });
   await expect(page.getByTestId('new-case-button')).toBeVisible();
 
   // can_delete_cases = false افتراضيًا لـlawyer → زرار الحذف مختفي،
   // لكن can_edit_cases = true → زرار التعديل موجود
   const row = page.getByTestId('cases-table-row').filter({ hasText: caseTitle });
-  await row.first().getByTestId('cases-table-row-open').click();
-  await page.getByTestId('case-detail-view').waitFor({ state: 'visible' });
+  await row.first().getByTestId('cases-table-row-open').click({ timeout: 15_000 });
+  await page.getByTestId('case-detail-view').waitFor({ state: 'visible', timeout: 15_000 });
   await expect(page.getByTestId('edit-case-trigger')).toBeVisible();
   await expect(page.getByTestId('case-delete-trigger')).toHaveCount(0);
 });
@@ -100,10 +110,11 @@ test('viewer: مايشوفش زرار إضافة قضية ولا إضافة مو
   // can_view_fees/can_add_cases/can_add_clients كلهم false لـviewer
   await expect(page.getByTestId('desktop-nav-fees')).toHaveCount(0);
 
-  await page.getByTestId('desktop-nav-cases').click();
+  // 🔒 FIX (18 أغسطس 2026، تشغيلة سادسة) — نفس ملحوظة تست lawyer فوق.
+  await page.getByTestId('desktop-nav-cases').click({ timeout: 15_000 });
   await expect(page.getByTestId('new-case-button')).toHaveCount(0);
 
-  await page.getByTestId('desktop-nav-clients').click();
+  await page.getByTestId('desktop-nav-clients').click({ timeout: 15_000 });
   await expect(page.getByTestId('new-client-button')).toHaveCount(0);
 
   // لوحة الإدارة مقفولة أصلًا لغير admin (قرار 2.4، سابق على الخطة دي)
