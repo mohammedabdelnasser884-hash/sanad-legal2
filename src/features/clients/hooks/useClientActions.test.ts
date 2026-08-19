@@ -91,10 +91,18 @@ vi.mock('../../../shared/lib/notifications', () => ({ toast: (...a: unknown[]) =
 
 const logActivity = vi.fn();
 const safeUpdate = vi.fn();
-vi.mock('../../../shared/lib/dataAccess', () => ({
-  logActivity: (...a: unknown[]) => logActivity(...a),
-  safeUpdate: (...a: unknown[]) => safeUpdate(...a),
-}));
+// ⚡ FIX (buildFieldDiff مفقودة من الـmock — 19 أغسطس 2026): handleUpdateClient
+// بقى بينادي buildFieldDiff (سجل النشاط، مرحلة 2) — كانت مفقودة من هنا فكانت
+// بترمي "No buildFieldDiff export is defined" جوه try/catch العام. بنجيب
+// buildFieldDiff الحقيقية (دالة نقية) عن طريق importOriginal.
+vi.mock('../../../shared/lib/dataAccess', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/lib/dataAccess')>();
+  return {
+    logActivity: (...a: unknown[]) => logActivity(...a),
+    safeUpdate: (...a: unknown[]) => safeUpdate(...a),
+    buildFieldDiff: actual.buildFieldDiff,
+  };
+});
 
 // ⚠️ نفس نمط useCaseDocuments.test.ts — validateUploadFile حقيقية،
 // resolveStorageUrl فقط بتتعمل mock (بتنادي db.storage.createSignedUrl
@@ -231,8 +239,11 @@ describe('useClientActions', () => {
         data: expect.objectContaining({ client_name: 'أحمد محمد علي', phone: '0100000000', client_type: 'individual' }),
       }));
       expect(toast).toHaveBeenCalledWith('✅ تم إضافة الموكل بنجاح!');
+      // ⚡ NEW (سجل النشاط — بيان مميز عند الإضافة، مرحلة 4، 19 أغسطس 2026):
+      // details بقت تشمل نوع الموكل ورقم الهاتف بدل الاسم بس — راجع
+      // useClientActions.ts:280.
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'إضافة موكل', expect.objectContaining({
-        userName: 'المحامي سالم', entity_type: 'client', details: 'أحمد محمد علي', client_name: 'أحمد محمد علي',
+        userName: 'المحامي سالم', entity_type: 'client', details: 'أحمد محمد علي — فرد — 0100000000', client_name: 'أحمد محمد علي',
       }));
       expect(params.sendTelegram).toHaveBeenCalled();
       expect(params.fetchClients).toHaveBeenCalledWith(0, '');
