@@ -35,6 +35,7 @@ function OfficeNotificationsTab({ profile }: OfficeNotificationsTabProps) {
   const [tgSaving, setTgSaving] = useState(false);
   const [showTgDailyToken, setShowTgDailyToken] = useState(false);
   const [showTgInstantToken, setShowTgInstantToken] = useState(false);
+  const [showSetupGuide, setShowSetupGuide] = useState(false);
 
   // تحميل حالة الإعدادات مرة واحدة عند فتح التاب (بديل شرط
   // section==='notifications' && !tgLoaded القديم — هنا التاب نفسه
@@ -102,12 +103,14 @@ function OfficeNotificationsTab({ profile }: OfficeNotificationsTabProps) {
   return React.createElement('div', { className: "space-y-4 fade-in" },
 
     // ═══ دليل الاستخدام ═══
-    // 📘 NEW (طلب مباشر من جيمي — 19 أغسطس 2026): التاب اتسمى "إشعارات
-    // تليجرام" صراحة (بدل "الإشعارات" العامة) عشان يبقى واضح من الاسم إنه
-    // خاص بتليجرام تحديدًا. الصندوق ده دليل مبسّط بلغة عادية يشرح للمستخدم
-    // إيه اللي محتاج يعمله عشان يشغّل الإشعارات، ويوجّهه للدعم لمعرفة
-    // طريقة الإعداد الفعلية (إنشاء البوت، جيب التوكن، جيب الـ Chat ID).
-    React.createElement('div', { className: "bg-[#25d366]/10 border border-[#25d366]/25 rounded-2xl p-4 space-y-2" },
+    // 📘 UPDATED (19 أغسطس 2026): كان الصندوق ده بيوجّه المستخدم للدعم الفني
+    // بس من غير ما يشرحله حقيقي. دلوقتي بقى فيه دليل تفصيلي كامل خطوة بخطوة
+    // (إنشاء بوت، عمل مجموعتين، جيب التوكن والـ Chat ID) جوه accordion قابل
+    // للطي عشان ميكسّرش شكل الصفحة. السيناريو المشروح هو الأبسط والمقصود:
+    // بوت واحد فقط (نفس التوكن يتكرر في حقلي "بوت التذكيرات" و"بوت
+    // التنبيهات")، ومجموعتين منفصلتين (كل مجموعة لها Chat ID مختلف تمامًا
+    // عن التانية — الـ Chat ID خاص بالمجموعة نفسها مش بالبوت).
+    React.createElement('div', { className: "bg-[#25d366]/10 border border-[#25d366]/25 rounded-2xl p-4 space-y-3" },
       React.createElement('div', { className: "flex items-center gap-2" },
         React.createElement('span', { className: "text-base" }, '📘'),
         React.createElement('p', { className: "text-[11px] font-black text-white" }, "إزاي تشغّل إشعارات تليجرام؟")
@@ -115,8 +118,91 @@ function OfficeNotificationsTab({ profile }: OfficeNotificationsTabProps) {
       React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
         "عشان تستقبل إشعارات تليجرام (التذكيرات اليومية بالجلسات والمهام، والتنبيهات الفورية) لازم تملأ الحقول الأربعة تحت (Bot Token و Chat ID لكل بوت من البوتين). من غير ما الحقول دي تتملأ، الإشعارات مش هتشتغل خالص."
       ),
-      React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
-        "لو مش عارف تجيب Bot Token أو Chat ID من فين، أو محتاج مساعدة في خطوات الإعداد، كلّم الدعم الفني وهيوريك خطوة بخطوة."
+
+      // زرار فتح/قفل الدليل التفصيلي
+      React.createElement('button', {
+        onClick: () => setShowSetupGuide((v: boolean) => !v),
+        className: "w-full flex items-center justify-between gap-2 py-2 px-1 -mx-1 rounded-lg active:bg-white/5"
+      },
+        React.createElement('span', { className: "text-[10px] font-black text-white flex items-center gap-1.5" }, '📖', "دليل الإعداد خطوة بخطوة"),
+        React.createElement('span', {
+          style: { transform: showSetupGuide ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' },
+          className: "text-slate-400"
+        }, React.createElement(I.ChevronRight))
+      ),
+
+      showSetupGuide && React.createElement('div', { className: "space-y-3 pt-1 border-t border-white/10" },
+
+        // خطوة 1: إنشاء البوت
+        React.createElement('div', { className: "space-y-1 pt-2" },
+          React.createElement('p', { className: "text-[10px] font-black text-white" }, "1️⃣ اعمل بوت على تليجرام"),
+          React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+            "افتح تطبيق تليجرام وابحث عن الحساب "),
+          React.createElement('p', { className: "text-[10px] text-emerald-300 leading-relaxed", style: { fontFamily: 'monospace', direction: 'ltr', textAlign: 'right' } }, "@BotFather"),
+          React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+            "ابعتله الأمر:"),
+          React.createElement('p', { className: "text-[10px] text-emerald-300", style: { fontFamily: 'monospace', direction: 'ltr', textAlign: 'right' } }, "/newbot"),
+          React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+            "هيطلب منك اسم للبوت (أي حاجة)، وبعدها يوزر لازم يخلّص بكلمة bot. في الآخر هيبعتلك رسالة فيها Bot Token — رقم وحروف طويلة زي:"),
+          React.createElement('p', { className: "text-[9px] text-slate-500", style: { fontFamily: 'monospace', direction: 'ltr', textAlign: 'right' } }, "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ"),
+          React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+            "احفظ التوكن ده هتحتاجه بعدين. هتستخدم نفس البوت (نفس التوكن) للمجموعتين — مفيش حاجة تانية مطلوبة من BotFather.")
+        ),
+
+        // خطوة 2: عمل مجموعتين
+        React.createElement('div', { className: "space-y-1 pt-2 border-t border-white/5" },
+          React.createElement('p', { className: "text-[10px] font-black text-white" }, "2️⃣ اعمل مجموعتين (Groups)"),
+          React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+            "من تليجرام اعمل مجموعة جديدة (New Group) باسم مثلاً \"تذكيرات المكتب\" للتذكيرات اليومية، ومجموعة تانية منفصلة باسم مثلاً \"تنبيهات المكتب\" للتنبيهات الفورية. تقدر تضيف نفسك بس فيهم، أو أي زملاء عايز يستقبلوا الإشعارات."
+          )
+        ),
+
+        // خطوة 3: إضافة البوت
+        React.createElement('div', { className: "space-y-1 pt-2 border-t border-white/5" },
+          React.createElement('p', { className: "text-[10px] font-black text-white" }, "3️⃣ ضيف البوت في المجموعتين"),
+          React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+            "في كل مجموعة من الاتنين: افتح إعدادات المجموعة → Add Member → دوّر بيوزر البوت اللي عملته وضيفه كعضو عادي (مفيش داعي تعمله admin)."
+          )
+        ),
+
+        // خطوة 4: جيب Chat ID
+        React.createElement('div', { className: "space-y-1 pt-2 border-t border-white/5" },
+          React.createElement('p', { className: "text-[10px] font-black text-white" }, "4️⃣ جيب Chat ID لكل مجموعة"),
+          React.createElement('p', { className: "text-[10px] text-amber-300 leading-relaxed" },
+            "⚠️ مهم: ابعت أي رسالة عادية في المجموعة الأول (زي \"تمام\") قبل ما تحاول تجيب الـ Chat ID — تليجرام مبيسجّلش المجموعة إلا بعد أول رسالة فيها."
+          ),
+          React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+            "أسهل طريقة: ضيف بوت اسمه"),
+          React.createElement('p', { className: "text-[10px] text-emerald-300", style: { fontFamily: 'monospace', direction: 'ltr', textAlign: 'right' } }, "@getidsbot"),
+          React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+            "مؤقتًا لنفس المجموعة، وهيبعت لك رسالة فيها Chat ID المجموعة على طول — بعد ما تاخده تقدر تشيله من المجموعة تاني."
+          ),
+          React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+            "أو بديل تاني: افتح الرابط ده في المتصفح (بعد ما تستبدل TOKEN بالـ Bot Token بتاعك):"
+          ),
+          React.createElement('p', { className: "text-[9px] text-slate-500 break-all", style: { fontFamily: 'monospace', direction: 'ltr', textAlign: 'right' } }, "https://api.telegram.org/bot<TOKEN>/getUpdates"),
+          React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+            "وهتلاقي الـ Chat ID جوه القيمة اللي مكتوب جنبها"),
+          React.createElement('span', { className: "text-[10px] text-emerald-300", style: { fontFamily: 'monospace', direction: 'ltr' } }, '"chat":{"id":'),
+          React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+            "كرّر الخطوة دي لكل مجموعة على حدة عشان تجيب رقمها الخاص."
+          ),
+          React.createElement('p', { className: "text-[10px] text-rose-300 leading-relaxed" },
+            "🔴 لاحظ إن Chat ID المجموعات بيبدأ بعلامة سالب (-)، وده طبيعي خليه زي ما هو."
+          )
+        ),
+
+        // خطوة 5: التسجيل في الحقول
+        React.createElement('div', { className: "space-y-1 pt-2 border-t border-white/5" },
+          React.createElement('p', { className: "text-[10px] font-black text-white" }, "5️⃣ سجّل البيانات تحت"),
+          React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+            "حطّ نفس الـ Bot Token في حقل \"بوت التذكيرات اليومية\" وحقل \"بوت التنبيهات الفورية\" الاتنين (لأنه نفس البوت). وحطّ Chat ID مجموعة \"التذكيرات\" في خانتها، و Chat ID مجموعة \"التنبيهات\" في خانتها — كل واحد في مكانه لأنهم مختلفين. بعد كده دوس \"حفظ إعدادات التليجرام\"."
+          )
+        )
+      ),
+
+      React.createElement('p', { className: "text-[10px] text-slate-400 leading-relaxed pt-1 border-t border-white/10" },
+        "لو حصلت أي لخبطة في أي خطوة أو مش لاقي حاجة زي ما هي متوصّفة، تواصل مع الدعم الفني وهيسعدهم يكملوا معاك الإعداد step by step لحد ما يشتغل تمام."
       )
     ),
 
