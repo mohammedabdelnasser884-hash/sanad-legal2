@@ -75,10 +75,16 @@ vi.mock('../../../shared/lib/notifications', () => ({ toast: (...a: unknown[]) =
 
 const safeUpdate = vi.fn();
 const logActivity = vi.fn();
-vi.mock('../../../shared/lib/dataAccess', () => ({
-  safeUpdate: (...a: unknown[]) => safeUpdate(...a),
-  logActivity: (...a: unknown[]) => logActivity(...a),
-}));
+// ⚡ FIX (buildFieldDiff مفقودة من الـmock — 19 أغسطس 2026): راجع نفس الفيكس في
+// useCaseActions.test.ts — buildFieldDiff الحقيقية عن طريق importOriginal.
+vi.mock('../../../shared/lib/dataAccess', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/lib/dataAccess')>();
+  return {
+    safeUpdate: (...a: unknown[]) => safeUpdate(...a),
+    logActivity: (...a: unknown[]) => logActivity(...a),
+    buildFieldDiff: actual.buildFieldDiff,
+  };
+});
 
 const recordError = vi.fn();
 const recordSuccess = vi.fn();
@@ -355,8 +361,10 @@ describe('useRemindersTab', () => {
         }),
       }));
       expect(toast).toHaveBeenCalledWith('✅ تم إضافة التذكير');
+      // ⚡ NEW (سجل النشاط — بيان مميز عند الإضافة، مرحلة 4، 19 أغسطس 2026):
+      // details بقت تشمل تاريخ الاستحقاق — راجع useRemindersTab.ts:312.
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'إضافة تذكير', expect.objectContaining({
-        entity_type: 'reminder', details: 'تذكير جديد',
+        entity_type: 'reminder', details: 'تذكير جديد — 2026-08-01',
       }));
       expect(result.current.showForm).toBe(false);
       expect(result.current.form).toEqual({ title: '', due_date: '', notes: '' });
