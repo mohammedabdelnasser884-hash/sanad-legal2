@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from '../../../../shared/lib/notifications';
-import { logActivity } from '../../../../shared/lib/dataAccess';
+import { logActivity, buildFieldDiff, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
 import { callAdminAction, db } from '../../../../supabaseClient';
 import { showErrorToast } from '../../../../shared/lib/errorReporting';
 import type { PermissionsMap } from '../../../../shared/lib/permissions';
@@ -60,7 +60,31 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
         permissions: form.permissions,
       });
       toast('✅ تم تحديث بيانات المستخدم');
-      logActivity(db, 'تعديل مستخدم', { userName: _userName, entity_type: 'user', entity_id: editUser!.id, details: form.full_name || null });
+      // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4، 19 أغسطس 2026):
+      // editUser هو ProfileRow خام محفوظ في الـstate من وقت فتح مودال
+      // التعديل (قبل أي تغيير) — مقارنته مباشرة مع form آمنة. الصلاحيات
+      // (permissions) JSON معقّد، فبنكتفي بعلم بسيط "اتغيرت" من غير تفصيل
+      // كل صلاحية فرعية (تعقيد إضافي، مؤجل لمرحلة لاحقة لو احتجنا).
+      const userFieldDiffMap: FieldDiffMap = {
+        full_name: { label: 'الاسم' },
+        role: { label: 'الدور' },
+      };
+      const userChanges = buildFieldDiff(
+        editUser as unknown as Record<string, unknown>,
+        { full_name: form.full_name, role: form.role } as Record<string, unknown>,
+        userFieldDiffMap
+      );
+      const oldActive = editUser?.is_active !== false; // نفس المنطق المستخدم في toggleUserActive تحت
+      if (oldActive !== form.is_active) {
+        userChanges.push({ field: 'is_active', label: 'الحالة', old: oldActive ? 'مفعّل' : 'معطّل', new: form.is_active ? 'مفعّل' : 'معطّل' });
+      }
+      if (JSON.stringify(editUser?.permissions || {}) !== JSON.stringify(form.permissions || {})) {
+        userChanges.push({ field: 'permissions', label: 'الصلاحيات', old: 'قديمة', new: 'محدّثة' });
+      }
+      logActivity(db, 'تعديل مستخدم', {
+        userName: _userName, entity_type: 'user', entity_id: editUser!.id,
+        details: form.full_name || null, changes: userChanges,
+      });
       setEditUser(null);
       fetchLawyers();
     } catch (e) {
