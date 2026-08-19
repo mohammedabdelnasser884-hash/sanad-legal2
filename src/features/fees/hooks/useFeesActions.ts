@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from '../../../shared/lib/notifications';
-import { safeUpdate, logActivity } from '../../../shared/lib/dataAccess';
+import { safeUpdate, logActivity, buildFieldDiff, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import { ilikeOrClause } from '../../../shared/lib/sanitize';
 import { COUNTRY_CONFIGS } from '../../../constants';
 import { db } from '../../../supabaseClient';
@@ -327,11 +327,26 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             // 🔒 FIX (تقرير الموثوقية — القسم 12، Concurrent Editing): توست بدل السكوت التام.
             if (conflict) { setSaving(false); toast('⚠️ سجل الأتعاب ده عدّله شخص آخر بعد ما فتحته — أعد المحاولة', true); return; }
             toast('✅ تم تحديث الأتعاب');
+            // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4، 19 أغسطس 2026):
+            // editFee هو CaseFeeRow خام من الـstate (اتلقط فوق قبل safeUpdate)
+            // — مقارنته مباشرة مع payloadWithStatus آمنة.
+            const feeFieldDiffMap: FieldDiffMap = {
+                receiver: { label: 'المستلم' },
+                total_fees: { label: 'إجمالي الأتعاب' },
+                notes: { label: 'ملاحظات' },
+                status: { label: 'الحالة' },
+            };
+            const feeChanges = buildFieldDiff(
+                editFee as unknown as Record<string, unknown>,
+                payloadWithStatus as unknown as Record<string, unknown>,
+                feeFieldDiffMap
+            );
             logActivity(db, 'تعديل أتعاب', {
                 entity_type: 'fee', entity_id: editId, details: clientName || form.case_id,
                 client_name: clientName || null,
                 case_name: cases.find((c) => c.id === form.case_id)?.title || null,
                 case_type: cases.find((c) => c.id === form.case_id)?.type || null,
+                changes: feeChanges,
             });
             // 🔒 FIX (26 يوليو 2026 — نفس مشكلة handleAddPayment): تعديل سجل
             // أتعاب مفتوح تفاصيله (nested داخل feeDetail) بتحديث محلي بدل
@@ -377,6 +392,9 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             });
             if(error){ toast('❌ فشل حفظ الأتعاب الجديدة — تحقق من الاتصال وأعد المحاولة', true); setSaving(false); return; }
             toast('✅ تم إضافة الأتعاب');
+            // ⚡ NEW (سجل النشاط — بيان مميز عند الإضافة، مرحلة 4): المبلغ
+            // بدل ما نكتفي باسم الموكل/القضية.
+            const feeAddDetails = `${clientName || form.case_id} — ${payload.total_fees} ج.م`;
             // ⚡ FIX: Functions في database.types.ts معرّفة بشكل عام (permissive
             // index signature — Returns: unknown) لأنه مفيش استعلام حقيقي على
             // pg_proc اتعمل لدالة create_fee_with_advance بعينها، فـ supabase-js
@@ -384,7 +402,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             // المعروف فعليًا (RPC بترجع صف واحد فيه id).
             const insertedRow = inserted as { id?: string } | null;
             logActivity(db, 'إضافة أتعاب', {
-                entity_type: 'fee', entity_id: insertedRow?.id, details: clientName || form.case_id,
+                entity_type: 'fee', entity_id: insertedRow?.id, details: feeAddDetails,
                 client_name: clientName || null,
                 case_name: cases.find((c) => c.id === form.case_id)?.title || null,
                 case_type: cases.find((c) => c.id === form.case_id)?.type || null,
