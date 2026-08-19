@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { toast } from '../../../../shared/lib/notifications';
 import { validateUploadFile, resolveStorageUrl } from '../../../../shared/lib/storage';
-import { logActivity } from '../../../../shared/lib/dataAccess';
+import { logActivity, buildFieldDiff, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
 import { db } from '../../../../supabaseClient';
 import { showErrorToast } from '../../../../shared/lib/errorReporting';
 import { invalidateOfficeCache } from '../../../../constants';
@@ -131,7 +131,7 @@ export function useAdminOffice(tenantId: string | null, profile?: ProfileRow | n
         // الرابط العام (كسر الكاش هنا مش لازم، التوقيع بيغيّر الرابط أصلاً).
         logoUrl = (await resolveStorageUrl('client-docs', path)) || '';
       }
-      const { data: existing } = await db.from('office_settings').select('id').eq('tenant_id', tenantId).limit(1).maybeSingle();
+      const { data: existing } = await db.from('office_settings').select('*').eq('tenant_id', tenantId).limit(1).maybeSingle();
       const payload = {
         name:           officeSettings.name           || '',
         slogan:         officeSettings.slogan         || '',
@@ -167,7 +167,38 @@ export function useAdminOffice(tenantId: string | null, profile?: ProfileRow | n
       setOfficeSettings((s: OfficeSettingsForm) => ({ ...s, logoUrl }));
       setLogoFile(null);
       toast('✅ تم حفظ إعدادات المكتب');
-      logActivity(db, 'تعديل إعدادات المكتب', { userName: _userName, entity_type: 'office', details: payload.name || null });
+      // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4، 19 أغسطس 2026):
+      // `existing` فوق بقى بيحمل الصف كامل قبل التحديث (كان بيجيب id بس) —
+      // مقارنته مباشرة مع payload آمنة. logo_url مستبعد عمدًا (رابط موقّع
+      // بيتغيّر كل مرة حتى لو نفس الشعار، هيطلع "تغيير" كاذب دايمًا).
+      const officeFieldDiffMap: FieldDiffMap = {
+        name: { label: 'اسم المكتب' },
+        slogan: { label: 'الشعار النصي' },
+        phone: { label: 'الهاتف' },
+        phone2: { label: 'هاتف إضافي' },
+        email: { label: 'البريد الإلكتروني' },
+        website: { label: 'الموقع الإلكتروني' },
+        whatsapp: { label: 'واتساب' },
+        address: { label: 'العنوان' },
+        city: { label: 'المدينة' },
+        tax_number: { label: 'الرقم الضريبي' },
+        license_number: { label: 'رقم الترخيص' },
+        bank_name: { label: 'اسم البنك' },
+        bank_iban: { label: 'رقم الآيبان' },
+        invoice_prefix: { label: 'بادئة الفاتورة' },
+        invoice_footer: { label: 'تذييل الفاتورة' },
+      };
+      const officeChanges = existing
+        ? buildFieldDiff(
+            existing as unknown as Record<string, unknown>,
+            payload as unknown as Record<string, unknown>,
+            officeFieldDiffMap
+          )
+        : [];
+      logActivity(db, 'تعديل إعدادات المكتب', {
+        userName: _userName, entity_type: 'office', details: payload.name || null,
+        changes: officeChanges,
+      });
     } catch(e) {
       showErrorToast('save_office_settings', e, 'تعذّر حفظ إعدادات المكتب. تحقق من الاتصال بالإنترنت وحاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'حفظ إعدادات المكتب');
     }
