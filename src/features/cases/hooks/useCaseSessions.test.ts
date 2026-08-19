@@ -56,8 +56,30 @@ const logActivity = vi.fn();
 // mock ليها هنا بنفس منطق النسخة الحقيقية، عشان تفضل شغالة على mockDb
 // الموجود فوق (بتقرأ case_sessions وتحدّث cases.next_hearing). صفر تغيير
 // هنا عن قبل خطوة 6.5 — الدالة دي مالهاش علاقة بـ __dbWrite أصلاً.
+// ⚡ FIX (buildFieldDiff مفقودة من الـmock — 19 أغسطس 2026): handleUpdateSession
+// بقى بينادي buildFieldDiff (سجل النشاط، مرحلة 2) — كانت مفقودة من هنا فكانت
+// بترمي "No buildFieldDiff export is defined". بنضيفها هنا كدالة حقيقية (نقية،
+// من غير أي side effect) بنفس منطق النسخة الأصلية في dataAccess.ts.
 vi.mock('../../../shared/lib/dataAccess', () => ({
   logActivity: (...a: unknown[]) => logActivity(...a),
+  buildFieldDiff: (
+    oldObj: Record<string, unknown> | null | undefined,
+    newObj: Record<string, unknown> | null | undefined,
+    fields: Record<string, { label: string; format?: (v: unknown) => string }>,
+  ) => {
+    const result: { field: string; label: string; old: string; new: string }[] = [];
+    if (!oldObj || !newObj) return result;
+    const norm = (v: unknown, format?: (v: unknown) => string) =>
+      v === null || v === undefined || v === '' ? '' : format ? format(v) : String(v);
+    for (const field of Object.keys(fields)) {
+      const { label, format } = fields[field];
+      const oldText = norm(oldObj[field], format);
+      const newText = norm(newObj[field], format);
+      if (oldText === newText) continue;
+      result.push({ field, label, old: oldText, new: newText });
+    }
+    return result;
+  },
   recalcNextHearing: async (
     db: {
       from: (table: string) => {
