@@ -7,7 +7,7 @@ import type { ProfileRow } from '../../../../types';
 // Mock db (supabaseClient) — بيغطي بالظبط سلاسل الاستدعاءات الفعلية في
 // useAdminOffice.ts (اتأكدت منها بقراءة الكود، مفيش تخمين):
 //   - db.from('office_settings').select('*').eq('tenant_id',x).limit(1).maybeSingle()   [fetchOfficeSettings]
-//   - db.from('office_settings').select('id').eq('tenant_id',x).limit(1).maybeSingle()  [handleSaveOfficeSettings — فحص وجود صف قديم]
+//   - db.from('office_settings').select('*').eq('tenant_id',x).limit(1).maybeSingle()   [handleSaveOfficeSettings — فحص وجود صف قديم (بقى '*' مش 'id' فقط، عشان buildFieldDiff، 19 أغسطس 2026)]
 //   - db.from('office_settings').update(payload).eq('id', existing.id)                  [handleSaveOfficeSettings — تعديل]
 //   - db.from('office_settings').insert({...payload, tenant_id})                        [handleSaveOfficeSettings — إنشاء]
 //   - db.storage.from('client-docs').upload(path, file, {upsert:true})                  [handleSaveOfficeSettings — رفع شعار جديد]
@@ -66,7 +66,16 @@ const toast = vi.fn();
 vi.mock('../../../../shared/lib/notifications', () => ({ toast: (...a: unknown[]) => toast(...a) }));
 
 const logActivity = vi.fn();
-vi.mock('../../../../shared/lib/dataAccess', () => ({ logActivity: (...a: unknown[]) => logActivity(...a) }));
+// ⚡ FIX (buildFieldDiff مفقودة من الـmock — 19 أغسطس 2026): handleSaveOfficeSettings
+// بقى بينادي buildFieldDiff (سجل النشاط، مرحلة 4). راجع نفس الفيكس في
+// useCaseActions.test.ts — buildFieldDiff الحقيقية عن طريق importOriginal.
+vi.mock('../../../../shared/lib/dataAccess', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../shared/lib/dataAccess')>();
+  return {
+    logActivity: (...a: unknown[]) => logActivity(...a),
+    buildFieldDiff: actual.buildFieldDiff,
+  };
+});
 
 const validateUploadFile = vi.fn((_file: { name: string; size: number }) => null as string | null);
 const resolveStorageUrl = vi.fn((_bucket: string, _pathOrUrl: string | null | undefined) => Promise.resolve('https://signed.example/logo.png' as string | null));
@@ -172,12 +181,19 @@ describe('useAdminOffice', () => {
       expect(mockDb.updateSpy).not.toHaveBeenCalled();
       expect(invalidateOfficeCache).toHaveBeenCalledTimes(1);
       expect(toast).toHaveBeenCalledWith('✅ تم حفظ إعدادات المكتب');
-      expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تعديل إعدادات المكتب', { userName: 'أحمد المدير', entity_type: 'office', details: 'مكتب الأمل' });
+      // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4، 19 أغسطس 2026): existing
+      // فاضي هنا (مفيش صف قديم) → changes بتفضل [] دايمًا، مش بتتشال من الكول.
+      expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تعديل إعدادات المكتب', { userName: 'أحمد المدير', entity_type: 'office', details: 'مكتب الأمل', changes: [] });
       expect(result.current.savingOffice).toBe(false);
     });
 
     it('نجاح ولقى صف قديم (existing.id) → update بدل insert', async () => {
-      mockDb.setResult('office_settings:select:id', { data: { id: 'row-1' }, error: null });
+      // ⚡ FIX (مفتاح mock قديم — 19 أغسطس 2026): الكود بقى بيعمل select('*')
+      // مش select('id') بس (عشان buildFieldDiff محتاج الصف كامل قبل التعديل —
+      // راجع تعليق "existing فوق بقى بيحمل الصف كامل" في useAdminOffice.ts)،
+      // فمفتاح الـmock لازم يتغيّر لـ':select:*' وإلا هيرجع النتيجة الافتراضية
+      // الفاضية وexisting?.id هيبقى undefined فيروح مسار insert غلط.
+      mockDb.setResult('office_settings:select:*', { data: { id: 'row-1' }, error: null });
       const { result } = setup();
 
       await act(async () => { await result.current.handleSaveOfficeSettings(); });
