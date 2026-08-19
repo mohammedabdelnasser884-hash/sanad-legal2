@@ -183,6 +183,25 @@ function ActivitySection({
                   className:"text-[10px] text-slate-300 leading-relaxed pr-8 border-r-2 border-white/10"
                 }, log.details),
 
+                // ── صف 2.5: التغييرات (من ← إلى) — لو موجودة ──
+                // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 3، 19 أغسطس 2026):
+                // عمود changes (JSONB) بيتخزّن قايمة { field, label, old, new }،
+                // كل عنصر بيتعرض كصف صغير تحت details.
+                Array.isArray(log.changes) && (log.changes as Array<{ field?: string; label?: string; old?: string; new?: string }>).length > 0 &&
+                React.createElement('div',{className:"pr-8 space-y-0.5"},
+                  ...(log.changes as Array<{ field?: string; label?: string; old?: string; new?: string }>).map((c, ci) =>
+                    React.createElement('p',{
+                      key: c.field || ci,
+                      className:"text-[9.5px] text-slate-400 leading-relaxed"
+                    },
+                      React.createElement('span',{className:"font-bold text-slate-300"}, (c.label || c.field || '') + ': '),
+                      React.createElement('span',{className:"text-red-400/80"}, c.old || '—'),
+                      ' ← ',
+                      React.createElement('span',{className:"text-[#C9A84C]"}, c.new || '—')
+                    )
+                  )
+                ),
+
                 // ── صف 3: وسوم السياق ──
                 (log.client_name || log.case_name || log.case_type) && React.createElement('div',{className:"flex flex-wrap gap-1 pr-8"},
                   log.client_name && React.createElement('span',{
