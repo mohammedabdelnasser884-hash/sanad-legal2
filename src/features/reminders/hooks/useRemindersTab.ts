@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from '../../../shared/lib/notifications';
-import { safeUpdate, logActivity } from '../../../shared/lib/dataAccess';
+import { safeUpdate, logActivity, buildFieldDiff, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import { recordError, recordSuccess } from '../../../systemHealth';
 import { db } from '../../../supabaseClient';
 import { normalizeArabicDigits } from '../../../shared/lib/sanitize';
@@ -307,7 +307,9 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             return;
         }
         toast('✅ تم إضافة التذكير');
-        logActivity(db, 'إضافة تذكير', { userName: _userName, entity_type: 'reminder', details: form.title.trim() });
+        // ⚡ NEW (سجل النشاط — بيان مميز عند الإضافة، مرحلة 4): التاريخ بدل
+        // العنوان بس.
+        logActivity(db, 'إضافة تذكير', { userName: _userName, entity_type: 'reminder', details: `${form.title.trim()} — ${form.due_date}` });
         setShowForm(false); setForm({title:'',due_date:'',notes:''});
         fetchReminders(); // refresh كل الأقسام
     };
@@ -365,11 +367,12 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
         setEditSaving(true);
         // editTarget مضمون موجود هنا وقت التشغيل — الدالة دي بتتنفذ بس من زر
         // الحفظ جوه EditReminderModal، اللي أصلاً مبيتعرضش غير لما editTarget موجود.
-        const { success, conflict } = await safeUpdate(db, 'reminders', editTarget!.id, {
+        const editPayload = {
             title: editForm.title.trim(),
             due_date: editForm.due_date,
             notes: editForm.notes||null,
-        }, editTarget!.updated_at || null);
+        };
+        const { success, conflict } = await safeUpdate(db, 'reminders', editTarget!.id, editPayload, editTarget!.updated_at || null);
         setEditSaving(false);
         // 🔒 FIX (تقرير الموثوقية — القسم 12، Concurrent Editing): توست بدل السكوت التام.
         if(conflict) { toast('⚠️ هذا التذكير عدّله شخص آخر بعد ما فتحته — أعد المحاولة', true); return; }
@@ -379,7 +382,22 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             return;
         }
         toast('✅ تم تعديل المهمة');
-        logActivity(db, 'تعديل تذكير', { userName: _userName, entity_type: 'reminder', entity_id: editTarget?.id, details: editForm.title.trim() });
+        // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4، 19 أغسطس 2026):
+        // editTarget هو ReminderRow خام (اتلقط قبل safeUpdate، لسه بالقيم القديمة).
+        const reminderFieldDiffMap: FieldDiffMap = {
+            title: { label: 'العنوان' },
+            due_date: { label: 'التاريخ' },
+            notes: { label: 'ملاحظات' },
+        };
+        const reminderChanges = buildFieldDiff(
+            editTarget as unknown as Record<string, unknown>,
+            editPayload as unknown as Record<string, unknown>,
+            reminderFieldDiffMap
+        );
+        logActivity(db, 'تعديل تذكير', {
+            userName: _userName, entity_type: 'reminder', entity_id: editTarget?.id,
+            details: editForm.title.trim(), changes: reminderChanges,
+        });
         setEditTarget(null);
         fetchReminders();
     };
