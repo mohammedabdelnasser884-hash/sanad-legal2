@@ -96,6 +96,60 @@ export async function safeUpdate<T extends SafeUpdateTable>(
 }
 
 // ══════════════════════════════════════════════════════════════
+//  buildFieldDiff — مقارنة كائن قديم/جديد وبناء قايمة التغييرات
+//  اللي فعلاً حصلت، جاهزة للتخزين في عمود changes (JSONB) وللعرض
+//  في سجل النشاط كـ "من ← إلى".
+//
+//  ⚠️ لازم تتنادى بالكائن القديم *قبل* أي كتابة في الداتابيز
+//  (مش بعد refetch)، وإلا القيمة "القديمة" هتبقى هي الجديدة نفسها.
+//
+//  @param oldObj - الكائن قبل التعديل (مثلاً existingCaseRecord)
+//  @param newObj - الكائن بعد التعديل (مثلاً form)
+//  @param fields - خريطة الحقول المطلوب مقارنتها فقط، مع label
+//                  عربي للعرض و format اختياري (مثلاً client_id → اسم الموكل)
+//  @returns فقط الحقول اللي فعلاً القيمة القديمة ≠ الجديدة
+// ══════════════════════════════════════════════════════════════
+export interface FieldDiffMap {
+    [field: string]: { label: string; format?: (v: unknown) => string };
+}
+
+export interface FieldDiffEntry {
+    field: string;
+    label: string;
+    old: string;
+    new: string;
+}
+
+// تطبيع القيمة لمقارنة نصية — عشان '' و null و undefined ميتحسبوش تغيير كاذب
+function normalizeForDiff(v: unknown, format?: (v: unknown) => string): string {
+    if (v === null || v === undefined || v === '') return '';
+    return format ? format(v) : String(v);
+}
+
+export function buildFieldDiff(
+    oldObj: Record<string, unknown> | null | undefined,
+    newObj: Record<string, unknown> | null | undefined,
+    fields: FieldDiffMap
+): FieldDiffEntry[] {
+    const result: FieldDiffEntry[] = [];
+    if (!oldObj || !newObj) return result;
+
+    for (const field of Object.keys(fields)) {
+        const { label, format } = fields[field];
+        const oldRaw = oldObj[field];
+        const newRaw = newObj[field];
+        const oldText = normalizeForDiff(oldRaw, format);
+        const newText = normalizeForDiff(newRaw, format);
+
+        if (oldText === newText) continue; // مفيش تغيير فعلي
+
+        result.push({ field, label, old: oldText, new: newText });
+    }
+
+    return result;
+}
+
+// ══════════════════════════════════════════════════════════════
 //  logActivity — تسجيل نشاط في activity_log (لوحة الإدارة)
 //  ⚠️ مصممة عشان متعطلش أي عملية أساسية:
 //  - لو المستخدم مش عامل لوجين (نادرًا) → بترجع بصمت
@@ -114,6 +168,8 @@ export async function safeUpdate<T extends SafeUpdateTable>(
 //  @param opts.client_name  - اسم الموكل المرتبط (لعرضه كشارة في لوحة الإدارة)
 //  @param opts.case_name    - عنوان/اسم القضية المرتبطة (لعرضها كشارة)
 //  @param opts.case_type    - نوع القضية المرتبطة (لعرضه كشارة)
+//  @param opts.changes      - قايمة الحقول اللي اتغيرت فعليًا (من buildFieldDiff)،
+//                             بتتخزن في عمود changes (JSONB) وتتعرض كـ "من ← إلى"
 // ══════════════════════════════════════════════════════════════
 export async function logActivity(
     db: SupabaseClient<Database>,
@@ -126,6 +182,7 @@ export async function logActivity(
         client_name?: string | null;
         case_name?: string | null;
         case_type?: string | null;
+        changes?: FieldDiffEntry[] | null;
     }
 ): Promise<void> {
     try {
@@ -160,6 +217,7 @@ export async function logActivity(
             client_name: opts?.client_name ?? null,
             case_name: opts?.case_name ?? null,
             case_type: opts?.case_type ?? null,
+            changes: opts?.changes && opts.changes.length > 0 ? opts.changes : null,
         }]);
     } catch (e) {
         console.error('[activityLog] فشل تسجيل النشاط (تم تجاهله، العملية الأساسية لم تتأثر):', e);
