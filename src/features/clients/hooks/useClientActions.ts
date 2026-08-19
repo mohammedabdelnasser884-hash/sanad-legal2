@@ -2,7 +2,7 @@ import { toast } from '../../../shared/lib/notifications';
 import { validateFullNameParts, validatePowerOfAttorney, checkClientDuplicate } from '../../../shared/lib/clientValidation';
 import { validateUploadFile, resolveStorageUrl } from '../../../shared/lib/storage';
 import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
-import { safeUpdate, logActivity } from '../../../shared/lib/dataAccess';
+import { safeUpdate, logActivity, buildFieldDiff, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import { callAdminAction, db } from '../../../supabaseClient';
 import { getCurrentTenantId } from '../../../constants';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
@@ -274,7 +274,14 @@ export function useClientActions(params: {
             return false;
         } else {
             toast('✅ تم إضافة الموكل بنجاح!');
-            logActivity(db, 'إضافة موكل', { userName: _userName, entity_type: 'client', details: form.full_name || null, client_name: form.full_name || null });
+            // ⚡ NEW (سجل النشاط — بيان مميز عند الإضافة، مرحلة 4): نوع الموكل
+            // ورقم الهاتف بدل الاسم بس.
+            const clientAddTypeLabel = form.type === 'company' ? 'شركة' : form.type === 'government' ? 'جهة حكومية' : 'فرد';
+            logActivity(db, 'إضافة موكل', {
+                userName: _userName, entity_type: 'client',
+                details: `${form.full_name} — ${clientAddTypeLabel}${form.phone ? ' — ' + form.phone : ''}`,
+                client_name: form.full_name || null,
+            });
             // إشعار تليجرام - موكل جديد
             const typeLabel = form.type === 'company' ? 'شركة' : form.type === 'government' ? 'جهة حكومية' : 'فرد';
             let clientMsg = `👤 <b>موكل جديد تمت إضافته</b>\n`;
@@ -512,7 +519,7 @@ export function useClientActions(params: {
             if (poaFile) poaUrl = await uploadFile(poaFile, 'poa') ?? poaUrl;
         }
 
-        const { success, conflict, error } = await safeUpdate(db, 'clients', clientId, {
+        const clientUpdatePayload = {
             client_name:  form.full_name,
             client_type:  form.type || 'individual',
             phone:        form.phone        || null,
@@ -529,7 +536,8 @@ export function useClientActions(params: {
             // ثابت) — الكاست عبر unknown هنا موثّق ومحصور في "شكل الحقول
             // المعروفة دي فعلاً متوافق مع Json" (كلاهما قيم string|null اختيارية).
             contact_info: { id_url: idUrl, poa_url: poaUrl } as ClientContactInfo as unknown as Json,
-        }, client?.updated_at || null);
+        };
+        const { success, conflict, error } = await safeUpdate(db, 'clients', clientId, clientUpdatePayload, client?.updated_at || null);
         setSavingClient(false);
         // 🔒 FIX (تقرير الموثوقية — القسم 12، Concurrent Editing): توست بدل السكوت التام.
         if (conflict) { toast('⚠️ هذا الموكل عدّله شخص آخر بعد ما فتحته — أعد المحاولة', true); return false; }
@@ -544,7 +552,40 @@ export function useClientActions(params: {
             return false;
         }
         toast('✅ تم تحديث بيانات الموكل');
-        logActivity(db, 'تعديل موكل', { userName: _userName, entity_type: 'client', entity_id: clientId, details: form.full_name || null, client_name: form.full_name || null });
+        // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4، 19 أغسطس 2026):
+        // `client` (فوق) هو ClientRow خام من الـstate — نفس أسماء أعمدة
+        // الداتابيز بالظبط، فمقارنته مباشرة مع clientUpdatePayload آمنة (بعكس
+        // MappedCase بتاعة القضايا اللي فيها sentinels). contact_info بتتقارن
+        // بشكل منفصل (id_url/poa_url) لأنها JSON متداخل.
+        const clientFieldDiffMap: FieldDiffMap = {
+            client_name: { label: 'الاسم' },
+            client_type: { label: 'النوع' },
+            phone: { label: 'الهاتف' },
+            phone2: { label: 'هاتف إضافي' },
+            email: { label: 'البريد الإلكتروني' },
+            address: { label: 'العنوان' },
+            notes: { label: 'ملاحظات' },
+            national_id: { label: 'الرقم القومي' },
+            cr_number: { label: 'رقم السجل التجاري' },
+            kin_name: { label: 'اسم قريب' },
+            kin_phone: { label: 'هاتف القريب' },
+        };
+        const clientChanges = buildFieldDiff(
+            client as unknown as Record<string, unknown>,
+            clientUpdatePayload as unknown as Record<string, unknown>,
+            clientFieldDiffMap
+        );
+        if ((existingContactInfo?.id_url || null) !== (idUrl || null)) {
+            clientChanges.push({ field: 'id_url', label: 'صورة البطاقة', old: existingContactInfo?.id_url ? 'مرفوعة' : '', new: idUrl ? 'مرفوعة' : '' });
+        }
+        if ((existingContactInfo?.poa_url || null) !== (poaUrl || null)) {
+            clientChanges.push({ field: 'poa_url', label: 'التوكيل', old: existingContactInfo?.poa_url ? 'مرفوع' : '', new: poaUrl ? 'مرفوع' : '' });
+        }
+        logActivity(db, 'تعديل موكل', {
+            userName: _userName, entity_type: 'client', entity_id: clientId,
+            details: form.full_name || null, client_name: form.full_name || null,
+            changes: clientChanges,
+        });
         fetchClients(0, clientSearch);
         nav.closeModal('clientDetail');
         setSelectedClient(null);
