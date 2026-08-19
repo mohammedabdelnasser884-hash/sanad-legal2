@@ -102,7 +102,16 @@ const toast = vi.fn();
 vi.mock('../../../../shared/lib/notifications', () => ({ toast: (...a: unknown[]) => toast(...a) }));
 
 const logActivity = vi.fn();
-vi.mock('../../../../shared/lib/dataAccess', () => ({ logActivity: (...a: unknown[]) => logActivity(...a) }));
+// ⚡ FIX (buildFieldDiff مفقودة من الـmock — 19 أغسطس 2026): handleSaveLaw (تعديل)
+// بقى بينادي buildFieldDiff (سجل النشاط، مرحلة 4). راجع نفس الفيكس في
+// useCaseActions.test.ts — buildFieldDiff الحقيقية عن طريق importOriginal.
+vi.mock('../../../../shared/lib/dataAccess', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../shared/lib/dataAccess')>();
+  return {
+    logActivity: (...a: unknown[]) => logActivity(...a),
+    buildFieldDiff: actual.buildFieldDiff,
+  };
+});
 
 const recordError = vi.fn();
 vi.mock('../../../../systemHealth', () => ({ recordError: (...a: unknown[]) => recordError(...a) }));
@@ -219,7 +228,18 @@ describe('useAdminLegalLibrary', () => {
       expect(mockDb.updateSpy).toHaveBeenCalledWith('laws', expect.objectContaining({ file_path: 'laws/old.pdf', file_name: 'old.pdf' }));
       expect(mockDb.updateSpy).toHaveBeenCalledWith('eq', 'id', 'l1');
       expect(toast).toHaveBeenCalledWith('✅ تم حفظ التعديلات');
-      expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تعديل قانون', { userName: 'أحمد المدير', entity_type: 'law', entity_id: 'l1', details: 'قانون العمل' });
+      // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4، 19 أغسطس 2026): changes
+      // بتقارن EXISTING (قديم) بـpayload (جديد) — category_id بيطلع '' في
+      // الاتنين هنا (legalCategories فاضية في التست) فمش بيتحسب كتغيير، وfile_name
+      // بيفضل زي ما هو (from.pdf غير مبعوت) فمش بيتحسب كتغيير.
+      expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تعديل قانون', {
+        userName: 'أحمد المدير', entity_type: 'law', entity_id: 'l1', details: 'قانون العمل',
+        changes: [
+          { field: 'title', label: 'العنوان', old: 'قديم', new: 'قانون العمل' },
+          { field: 'law_number', label: 'رقم القانون', old: '', new: '12' },
+          { field: 'law_year', label: 'سنة القانون', old: '', new: '2003' },
+        ],
+      });
       expect(result.current.editingLaw).toBeNull();
     });
 
