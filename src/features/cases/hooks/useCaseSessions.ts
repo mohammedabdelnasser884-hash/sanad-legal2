@@ -3,7 +3,7 @@ import { db } from '../../../supabaseClient';
 import { toast } from '../../../shared/lib/notifications';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
 import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
-import { logActivity, recalcNextHearing as recalcNextHearingShared } from '../../../shared/lib/dataAccess';
+import { logActivity, recalcNextHearing as recalcNextHearingShared, buildFieldDiff, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import type { ClientRow, ProfileRow, CaseSessionRow } from '../../../types';
 import type { MappedCase } from '../../../hooks/useAppData';
 import type { EditingSessionForm } from '../case-detail/TimelineSection';
@@ -87,8 +87,15 @@ export function useCaseSessions(
     // تحديث أقرب جلسة في جدول القضايا — بمقارنة حقيقية، مش استبدال أعمى
     await recalcNextHearing(caseData.id);
     toast('✅ تمت إضافة الجلسة');
+    // ⚡ NEW (سجل النشاط — بيان مميز عند الإضافة، مرحلة 2): نضيف المحكمة
+    // والطرفين (متاحين أصلاً في caseData) بدل ما نكتفي بالعنوان والتاريخ.
+    const sessionAddPartsLabel = [
+      caseData.court ? `المحكمة: ${caseData.court}` : null,
+      caseData.plaintiff ? `المدعي: ${caseData.plaintiff}` : null,
+      caseData.defendant ? `المدعى عليه: ${caseData.defendant}` : null,
+    ].filter(Boolean).join(' — ');
     logActivity(db, 'إضافة جلسة', {
-      entity_type: 'session', details: `${caseData.title} — ${sessionForm.date}`,
+      entity_type: 'session', details: `${caseData.title} — ${sessionForm.date}${sessionAddPartsLabel ? ' — ' + sessionAddPartsLabel : ''}`,
       case_name: caseData.title || null, case_type: caseData.type || null,
       client_name: client?.full_name || null,
       userName: profile?.full_name || null,
@@ -173,11 +180,37 @@ export function useCaseSessions(
     // FIX (2.3): تاريخ الجلسة ممكن يكون اتغيّر، فلازم next_hearing يتحدّث معاه
     await recalcNextHearing(caseData.id);
     toast('✅ تم تعديل الجلسة');
+    // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 2، 19 أغسطس 2026):
+    // مقارنة `session` (الكائن القديم، اتلقط فوق قبل __dbWrite) مع الحقول
+    // الجديدة اللي فعلاً اتكتبت.
+    const sessionFieldDiffMap: FieldDiffMap = {
+      session_date: { label: 'تاريخ الجلسة' },
+      session_time: { label: 'الفترة' },
+      session_floor: { label: 'الطابق' },
+      session_hall: { label: 'القاعة' },
+      description: { label: 'الوصف' },
+      result: { label: 'النتيجة' },
+      next_action: { label: 'الإجراء التالي' },
+    };
+    const sessionChanges = buildFieldDiff(
+      session as unknown as Record<string, unknown>,
+      {
+        session_date: form.date,
+        session_time: form.time_period || null,
+        session_floor: form.location_floor || null,
+        session_hall: form.location_hall || null,
+        description: form.description || null,
+        result: form.result || null,
+        next_action: form.next_action || null,
+      },
+      sessionFieldDiffMap
+    );
     logActivity(db, 'تعديل جلسة', {
       entity_type: 'session', entity_id: sessionId, details: `${caseData.title} — ${form.date}`,
       case_name: caseData.title || null, case_type: caseData.type || null,
       client_name: client?.full_name || null,
       userName: profile?.full_name || null,
+      changes: sessionChanges,
     });
     if (onNotify) {
       let msg = `✏️ <b>تم تعديل جلسة</b>\n`;
