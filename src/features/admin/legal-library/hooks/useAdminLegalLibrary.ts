@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { toast } from '../../../../shared/lib/notifications';
-import { logActivity } from '../../../../shared/lib/dataAccess';
+import { logActivity, buildFieldDiff, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
 import { showErrorToast } from '../../../../shared/lib/errorReporting';
 import { db } from '../../../../supabaseClient';
 import type { ProfileRow, LawRow, LegalCategoryRow } from '../../../../types';
@@ -93,7 +93,28 @@ export function useAdminLegalLibrary(profile?: ProfileRow | null) {
         const { error } = await db.from('laws').update(payload).eq('id', editingLaw.id);
         if (error) throw error;
         toast('✅ تم حفظ التعديلات');
-        logActivity(db, 'تعديل قانون', { userName: _userName, entity_type: 'law', entity_id: editingLaw.id, details: payload.title });
+        // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4، 19 أغسطس 2026):
+        // editingLaw هو LawRow خام محفوظ في الـstate من وقت فتح مودال
+        // التعديل (قبل أي تغيير).
+        const lawFieldDiffMap: FieldDiffMap = {
+          title: { label: 'العنوان' },
+          law_number: { label: 'رقم القانون' },
+          law_year: { label: 'سنة القانون' },
+          category_id: {
+            label: 'التصنيف',
+            format: (v) => legalCategories.find((c) => c.id === v)?.name_ar || '',
+          },
+          file_name: { label: 'الملف' },
+        };
+        const lawChanges = buildFieldDiff(
+          editingLaw as unknown as Record<string, unknown>,
+          payload as unknown as Record<string, unknown>,
+          lawFieldDiffMap
+        );
+        logActivity(db, 'تعديل قانون', {
+          userName: _userName, entity_type: 'law', entity_id: editingLaw.id,
+          details: payload.title, changes: lawChanges,
+        });
       } else {
         const { error } = await db.from('laws').insert({ ...payload, status: 'pending' });
         if (error) throw error;
