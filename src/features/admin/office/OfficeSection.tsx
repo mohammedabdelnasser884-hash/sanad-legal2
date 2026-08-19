@@ -4,13 +4,18 @@ import { IconOffice } from '../icons';
 import type { OfficeSettingsForm } from './hooks/useAdminOffice';
 import type { ProfileRow } from '../../../types';
 import OfficeCountryTab from './tabs/OfficeCountryTab';
-import OfficeLegalRefTab from './tabs/OfficeLegalRefTab';
 import OfficeNotificationsTab from './tabs/OfficeNotificationsTab';
 
 // ── التابات الفرعية داخل قسم "إعدادات المكتب" ──
 // المرحلة 1: هيكل وتنقل فقط. المحتوى الفعلي لكل تاب بينتقل تباعًا
 // في المراحل 2-4 حسب خطة نقل الإعدادات.
-type OfficeSubTabId = 'office' | 'country' | 'legal' | 'notifications';
+//
+// 🗑️ REMOVED (طلب مباشر من جيمي — 19 أغسطس 2026): تاب "المرجع القانوني"
+// (كان بيعرض OfficeLegalRefTab) اتشال نهائيًا من هنا — مش مضبوط ومالوش
+// لازمة حسب تقييم جيمي. الملف src/features/admin/office/tabs/OfficeLegalRefTab.tsx
+// نفسه سيبناه في مكانه من غير حذف (مفيش أي مكان تاني بيستورده دلوقتي)
+// تحسبًا لو احتاج المحتوى يترجع تاني لاحقًا بشكل مختلف.
+type OfficeSubTabId = 'office' | 'country' | 'notifications';
 
 interface OfficeSubTab {
   id: OfficeSubTabId;
@@ -21,8 +26,7 @@ interface OfficeSubTab {
 const OFFICE_SUB_TABS: OfficeSubTab[] = [
   { id: 'office',        label: 'بيانات المكتب',   icon: '🏛️' },
   { id: 'country',       label: 'الدولة',          icon: '🌍' },
-  { id: 'legal',         label: 'المرجع القانوني', icon: '⚖️' },
-  { id: 'notifications', label: 'الإشعارات',       icon: '🔔' },
+  { id: 'notifications', label: 'إشعارات تليجرام', icon: '🔔' },
 ];
 
 // شكل عناصر مصفوفات الحقول المحلية (name/slogan/phone/social/...) —
@@ -287,10 +291,7 @@ function OfficeSection({
       // ── محتوى تاب "الدولة" (منقول من CountrySettings.tsx — المرحلة 2) ──
       subTab==='country' && React.createElement(OfficeCountryTab, { currentCountry: country, onCountryChange }),
 
-      // ── محتوى تاب "المرجع القانوني" (منقول من SettingsPage.tsx — المرحلة 3) ──
-      subTab==='legal' && React.createElement(OfficeLegalRefTab, { country }),
-
-      // ── محتوى تاب "الإشعارات (تليجرام)" (منقول من SettingsPage.tsx — المرحلة 4) ──
+      // ── محتوى تاب "إشعارات تليجرام" (منقول من SettingsPage.tsx — المرحلة 4) ──
       subTab==='notifications' && React.createElement(OfficeNotificationsTab, { profile })
     );
 }
