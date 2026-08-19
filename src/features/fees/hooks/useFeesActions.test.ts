@@ -114,10 +114,16 @@ vi.mock('../../../shared/lib/notifications', () => ({ toast: (...a: unknown[]) =
 
 const safeUpdate = vi.fn();
 const logActivity = vi.fn();
-vi.mock('../../../shared/lib/dataAccess', () => ({
-  safeUpdate: (...a: unknown[]) => safeUpdate(...a),
-  logActivity: (...a: unknown[]) => logActivity(...a),
-}));
+// ⚡ FIX (buildFieldDiff مفقودة من الـmock — 19 أغسطس 2026): راجع نفس الفيكس في
+// useCaseActions.test.ts — buildFieldDiff الحقيقية عن طريق importOriginal.
+vi.mock('../../../shared/lib/dataAccess', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/lib/dataAccess')>();
+  return {
+    safeUpdate: (...a: unknown[]) => safeUpdate(...a),
+    logActivity: (...a: unknown[]) => logActivity(...a),
+    buildFieldDiff: actual.buildFieldDiff,
+  };
+});
 
 import { useFeesActions } from './useFeesActions';
 
