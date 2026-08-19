@@ -113,9 +113,19 @@ const toast = vi.fn();
 vi.mock('../../../shared/lib/notifications', () => ({ toast: (...a: unknown[]) => toast(...a) }));
 
 const logActivity = vi.fn();
-vi.mock('../../../shared/lib/dataAccess', () => ({
-  logActivity: (...a: unknown[]) => logActivity(...a),
-}));
+// ⚡ FIX (buildFieldDiff مفقودة من الـmock — 19 أغسطس 2026): handleUpdateCase
+// بقى بينادي buildFieldDiff (سجل النشاط، مرحلة 2) — كانت مفقودة من هنا فكانت
+// بترمي "No buildFieldDiff export is defined" جوه try/catch العام، فبيظهر
+// توست خطأ اتصال عام بدل السلوك الحقيقي المتوقع في كل تستات handleUpdateCase.
+// بنجيب buildFieldDiff الحقيقية (دالة نقية من غير أي side effect) عن طريق
+// importOriginal، وبنسيب logActivity كـspy زي ما هو.
+vi.mock('../../../shared/lib/dataAccess', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/lib/dataAccess')>();
+  return {
+    logActivity: (...a: unknown[]) => logActivity(...a),
+    buildFieldDiff: actual.buildFieldDiff,
+  };
+});
 
 import { useCaseActions } from './useCaseActions';
 
