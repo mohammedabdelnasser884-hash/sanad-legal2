@@ -1,6 +1,6 @@
 import { toast } from '../../../shared/lib/notifications';
 import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
-import { logActivity } from '../../../shared/lib/dataAccess';
+import { logActivity, buildFieldDiff, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import { checkCaseNumberDuplicate } from '../../../shared/lib/caseValidation';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
 import { runDuplicateCheckOfflineAware } from '../../../shared/lib/offlineGuard';
@@ -457,10 +457,16 @@ export function useCaseActions(params: {
             const caseNumLabel = form.caseNum && form.caseYear
                 ? `${form.caseNum} لسنة ${form.caseYear}`
                 : (form.number || '—');
+            // ⚡ NEW (سجل النشاط — بيان مميز عند الإضافة، مرحلة 2): نضيف
+            // الطرفين لو موجودين، بدل ما نكتفي بالعنوان ورقم القيد بس.
+            const caseAddPartiesLabel = [
+                form.plaintiff ? `المدعي: ${form.plaintiff}` : null,
+                form.defendant ? `المدعى عليه: ${form.defendant}` : null,
+            ].filter(Boolean).join(' — ');
             logActivity(db, 'إضافة قضية', {
                 userName: _userName,
                 entity_type: 'case', entity_id: newCaseId,
-                details: `${form.title} — رقم القيد: ${caseNumLabel}`,
+                details: `${form.title} — رقم القيد: ${caseNumLabel}${caseAddPartiesLabel ? ' — ' + caseAddPartiesLabel : ''}`,
                 case_name: form.title || null,
                 case_type: form.type || null,
                 client_name: clients.find((cl) => cl.id === form.client_id)?.full_name || null,
@@ -749,6 +755,17 @@ export function useCaseActions(params: {
             // بصمت). getCaseRecord بتضمن جلب الصف الحقيقي من الداتابيز
             // لو مش موجود محليًا.
             const existingCaseRecord = await getCaseRecord(caseId);
+            // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 2، 19 أغسطس 2026):
+            // existingCaseRecord فوق بيحمل بس 4 حقول (updated_at/client_id/
+            // title/type) — مش كافي لمقارنة باقي الحقول (court_name، status،
+            // next_hearing...). بنجيب snapshot خام من الداتابيز بنفس أسماء
+            // أعمدتها الحقيقية (مطابقة لـpayload تحت بالظبط) هنا — *قبل*
+            // __dbWrite تحت مباشرة — عشان نضمن إن القيمة "القديمة" فعلاً قديمة.
+            const { data: oldRowForDiff } = await db
+                .from('cases')
+                .select('case_number_official,title,court_name,case_type,status,client_id,court_level,circuit_number,next_hearing,session_hall,secretary_hall,secretary_name,secretary_mobile,plaintiff_legal_title,defendant_legal_title')
+                .eq('id', caseId)
+                .maybeSingle();
             const payload = {
                 case_number_official: form.number || null,
                 title: form.title,
@@ -872,12 +889,48 @@ export function useCaseActions(params: {
                     );
                 }
                 toast('✅ تم تحديث القضية');
+                // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 2، 19 أغسطس 2026):
+                // مقارنة oldRowForDiff (اتلقط قبل __dbWrite فوق — راجع التعليق
+                // هناك) مع payload (اللي فعلاً اتكتب). client_id بيتحوّل لاسم
+                // الموكل قبل التخزين.
+                const caseFieldDiffMap: FieldDiffMap = {
+                    case_number_official: { label: 'رقم القيد' },
+                    title: { label: 'الموضوع' },
+                    court_name: { label: 'المحكمة' },
+                    case_type: { label: 'نوع القضية' },
+                    status: { label: 'الحالة' },
+                    client_id: {
+                        label: 'الموكل',
+                        format: (v) => clients.find((cl) => cl.id === v)?.full_name || '',
+                    },
+                    court_level: { label: 'درجة التقاضي' },
+                    circuit_number: { label: 'رقم الدائرة' },
+                    next_hearing: { label: 'تاريخ الجلسة القادمة' },
+                    session_hall: { label: 'قاعة الجلسة' },
+                    secretary_hall: { label: 'قاعة أمين السر' },
+                    secretary_name: { label: 'اسم أمين السر' },
+                    secretary_mobile: { label: 'موبايل أمين السر' },
+                    plaintiff_legal_title: { label: 'الصفة القانونية للمدعي' },
+                    defendant_legal_title: { label: 'الصفة القانونية للمدعى عليه' },
+                };
+                // ⚠️ payload.status ممكن تكون `undefined` حرفيًا (form.status ||
+                // undefined) — ده معناه "متبعتش في التحديث خالص" مش "اتمسحت"،
+                // فمنستبعدهاش من المقارنة إلا لو فعلاً اتبعتت قيمة جديدة.
+                let caseChanges = buildFieldDiff(
+                    oldRowForDiff as unknown as Record<string, unknown>,
+                    payload as unknown as Record<string, unknown>,
+                    caseFieldDiffMap
+                );
+                if (payload.status === undefined) {
+                    caseChanges = caseChanges.filter((c) => c.field !== 'status');
+                }
                 logActivity(db, 'تعديل قضية', {
                     userName: _userName,
                     entity_type: 'case', entity_id: caseId, details: form.title || null,
                     case_name: form.title || null,
                     case_type: form.type || existingCaseRecord?.type || null,
                     client_name: clients.find((cl) => cl.id === payload.client_id)?.full_name || null,
+                    changes: caseChanges,
                 });
                 // تحديث فوري للحالة المحلية — عشان الشاشة المفتوحة (CaseDetailView) تعرض القيم الجديدة فورًا
                 // ⚠️ بنحدّث updated_at كمان من قيمة السيرفر الفعلية بعد الكتابة (writtenRow) —
