@@ -490,9 +490,17 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
             } catch { /* تيليجرام اختياري */ }
 
             try {
+                // ⚡ NEW (سجل النشاط — بيان مميز عند الإضافة، مرحلة 2، 19 أغسطس
+                // 2026): التاريخ بس مش كافي — نضيف المحكمة والطرفين المدخلين في
+                // نفس الفورم (primaryPlaintiff/primaryDefendant محسوبين فوق أصلاً).
+                const standaloneSessionPartsLabel = [
+                    form.court ? `المحكمة: ${form.court}` : null,
+                    primaryPlaintiff?.name ? `المدعي: ${primaryPlaintiff.name}` : null,
+                    primaryDefendant?.name ? `المدعى عليه: ${primaryDefendant.name}` : null,
+                ].filter(Boolean).join(' — ');
                 logActivity(db, 'إضافة جلسة مستقلة', {
                     entity_type: 'session',
-                    details: form.session_date || null,
+                    details: `${form.session_date || ''}${standaloneSessionPartsLabel ? ' — ' + standaloneSessionPartsLabel : ''}`.trim() || null,
                 });
             } catch { /* activity log اختياري */ }
 
