@@ -101,6 +101,25 @@ function OfficeNotificationsTab({ profile }: OfficeNotificationsTabProps) {
 
   return React.createElement('div', { className: "space-y-4 fade-in" },
 
+    // ═══ دليل الاستخدام ═══
+    // 📘 NEW (طلب مباشر من جيمي — 19 أغسطس 2026): التاب اتسمى "إشعارات
+    // تليجرام" صراحة (بدل "الإشعارات" العامة) عشان يبقى واضح من الاسم إنه
+    // خاص بتليجرام تحديدًا. الصندوق ده دليل مبسّط بلغة عادية يشرح للمستخدم
+    // إيه اللي محتاج يعمله عشان يشغّل الإشعارات، ويوجّهه للدعم لمعرفة
+    // طريقة الإعداد الفعلية (إنشاء البوت، جيب التوكن، جيب الـ Chat ID).
+    React.createElement('div', { className: "bg-[#25d366]/10 border border-[#25d366]/25 rounded-2xl p-4 space-y-2" },
+      React.createElement('div', { className: "flex items-center gap-2" },
+        React.createElement('span', { className: "text-base" }, '📘'),
+        React.createElement('p', { className: "text-[11px] font-black text-white" }, "إزاي تشغّل إشعارات تليجرام؟")
+      ),
+      React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+        "عشان تستقبل إشعارات تليجرام (التذكيرات اليومية بالجلسات والمهام، والتنبيهات الفورية) لازم تملأ الحقول الأربعة تحت (Bot Token و Chat ID لكل بوت من البوتين). من غير ما الحقول دي تتملأ، الإشعارات مش هتشتغل خالص."
+      ),
+      React.createElement('p', { className: "text-[10px] text-slate-300 leading-relaxed" },
+        "لو مش عارف تجيب Bot Token أو Chat ID من فين، أو محتاج مساعدة في خطوات الإعداد، كلّم الدعم الفني وهيوريك خطوة بخطوة."
+      )
+    ),
+
     // ═══ بوت التذكيرات اليومية ═══
     React.createElement('div', { className: "bg-premium-card border border-white/5 rounded-2xl p-4 space-y-4" },
       React.createElement('div', { className: "flex items-center gap-2 mb-1" },
