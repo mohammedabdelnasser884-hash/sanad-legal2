@@ -12,6 +12,7 @@ import type { NavigationState } from '../../../useNavigation';
 //   - db.from('cases').update({deleted_at}).eq('id', caseId)                     [handleDeleteCase/handleRestoreCase]
 //   - db.from('case_sessions').select('id').eq('case_id',x).eq('session_date',y).maybeSingle()  [handleUpdateCase]
 //   - db.from('case_sessions').insert([...])                                     [handleUpdateCase — تاريخ جلسة جديد]
+//   - db.from('cases').select(...).eq('id',x).maybeSingle()                      [handleUpdateCase — oldRowForDiff، سجل النشاط مرحلة 2، 19 أغسطس 2026]
 // عمليات INSERT/UPDATE لجدول cases نفسه (إنشاء/تعديل القضية) بتعدي حصريًا
 // عن طريق window.__dbWrite (global function من src/lib/offlineQueue.ts)، مش
 // db.from('cases') مباشرة — فبنعمله mock منفصل كـ vi.fn() على window.
@@ -56,6 +57,19 @@ function makeMockDb() {
           deleteSpy(table);
           return { eq: vi.fn(() => Promise.resolve(get(`${table}:delete`))) };
         }),
+        // ⚡ FIX (mock ناقص — 19 أغسطس 2026): handleUpdateCase بقى بيجيب
+        // snapshot خام من cases (oldRowForDiff) *قبل* __dbWrite مباشرة —
+        // db.from('cases').select(...).eq('id',x).maybeSingle() — عشان
+        // يقارنه مع payload الجديد جوه buildFieldDiff (سجل النشاط، مرحلة 2).
+        // مكنش موجود هنا خالص، فكان .select بيرجع undefined ويرمي جوه
+        // try/catch العام → توست خطأ اتصال عام بدل السلوك الحقيقي المتوقع.
+        // الافتراضي DEFAULT_RESULT (data:null) آمن — buildFieldDiff بترجع []
+        // لو oldObj فاضي، من غير أي تأثير على باقي التستات.
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            maybeSingle: vi.fn(() => Promise.resolve(get(`${table}:maybeSingle`))),
+          })),
+        })),
       };
     }
     // مرحلة 2: جلب storage_path لمستندات القضية قبل حذفها نهائيًا
