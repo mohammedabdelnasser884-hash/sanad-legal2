@@ -25,7 +25,16 @@ const toast = vi.fn();
 vi.mock('../../../../shared/lib/notifications', () => ({ toast: (...a: unknown[]) => toast(...a) }));
 
 const logActivity = vi.fn();
-vi.mock('../../../../shared/lib/dataAccess', () => ({ logActivity: (...a: unknown[]) => logActivity(...a) }));
+// ⚡ FIX (buildFieldDiff مفقودة من الـmock — 19 أغسطس 2026): handleEditUser بقى
+// بينادي buildFieldDiff (سجل النشاط، مرحلة 4). راجع نفس الفيكس في
+// useCaseActions.test.ts — buildFieldDiff الحقيقية عن طريق importOriginal.
+vi.mock('../../../../shared/lib/dataAccess', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../shared/lib/dataAccess')>();
+  return {
+    logActivity: (...a: unknown[]) => logActivity(...a),
+    buildFieldDiff: actual.buildFieldDiff,
+  };
+});
 
 const recordError = vi.fn();
 vi.mock('../../../../systemHealth', () => ({ recordError: (...a: unknown[]) => recordError(...a) }));
@@ -65,7 +74,18 @@ describe('useAdminUsers', () => {
 
       expect(callAdminAction).toHaveBeenCalledWith({ action: 'update_profile', profile_id: 'u1', user_id: 'auth-u1', full_name: 'محمد المعدّل', role: 'lawyer', is_active: true, permissions: { can_add_cases: true } });
       expect(toast).toHaveBeenCalledWith('✅ تم تحديث بيانات المستخدم');
-      expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تعديل مستخدم', { userName: 'أحمد المدير', entity_type: 'user', entity_id: 'u1', details: 'محمد المعدّل' });
+      // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4، 19 أغسطس 2026): changes
+      // بتقارن TARGET_USER (قديم) بـform (جديد) — full_name وrole اتغيروا،
+      // is_active زي ما هو (true←true) فمش بيتحسب، permissions اتغيرت (علم
+      // بسيط "قديمة ← محدّثة" من غير تفصيل كل صلاحية فرعية).
+      expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تعديل مستخدم', {
+        userName: 'أحمد المدير', entity_type: 'user', entity_id: 'u1', details: 'محمد المعدّل',
+        changes: [
+          { field: 'full_name', label: 'الاسم', old: 'محمد المحامي', new: 'محمد المعدّل' },
+          { field: 'role', label: 'الدور', old: '', new: 'lawyer' },
+          { field: 'permissions', label: 'الصلاحيات', old: 'قديمة', new: 'محدّثة' },
+        ],
+      });
       expect(result.current.editUser).toBeNull();
       expect(fetchLawyers).toHaveBeenCalledTimes(1);
     });
