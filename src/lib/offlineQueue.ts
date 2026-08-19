@@ -469,6 +469,39 @@ export async function resolveOfflineSelfId(
 // ══════════════════════════════════════════════════════════
 //  Offline Sync Queue — DB Write Wrapper
 // ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+//  🆕 (سجل النشاط — تتبع التغييرات، مرحلة 4.1 "فجوة الأوفلاين"، 19
+//  أغسطس 2026): قبل كده UPDATE/DELETE أوفلاين ما كانوش بيسجلوا أي نشاط
+//  خالص وقت المزامنة (غير INSERT لـcases، شوف الفيكس الأقدم تحت). أي
+//  تعديل أو حذف حصل وإنت أوفلاين كان يختفي تمامًا من "سجل النشاط" —
+//  حتى لو نجحت المزامنة فعليًا.
+//
+//  ⚠️ حدود متعمّدة (النطاق هنا "وجود نشاط مسجّل"، مش ديف حقل-بحقل زي
+//  المراحل 1-4 أونلاين): طابور الأوفلاين (IndexedDB) بيخزّن بس البيانات
+//  الجديدة (op.data) وقت الكتابة الأصلية — مفيش "قيمة قديمة" متلقوطة
+//  وقتها لمقارنتها هنا بعد المزامنة (ده كان محتاج تغيير أعمق في شكل
+//  __dbWrite نفسه لالتقاط snapshot قبل كل عملية أوفلاين، خارج نطاق
+//  المرحلة دي). فبنسجل بس *إن* الحدث حصل (زي نمط INSERT/'إضافة قضية'
+//  الموجود بالفعل)، بعلامة "(أوفلاين)" واضحة في details.
+const OFFLINE_ACTIVITY_CONFIG: Partial<Record<DbWriteTable, {
+    entity_type: string;
+    actionUpdate: string;
+    actionDelete: string;
+    // اسم الحقل (لو موجود في op.data بعد UPDATE) اللي نعرضه كـdetails —
+    // مش كل UPDATE هيحمله (ممكن يكون تعديل حقل واحد بس، زي status)، فده
+    // best-effort مش مضمون.
+    nameField?: string;
+}>> = {
+    cases: { entity_type: 'case', actionUpdate: 'تعديل قضية', actionDelete: 'حذف قضية', nameField: 'title' },
+    clients: { entity_type: 'client', actionUpdate: 'تعديل موكل', actionDelete: 'حذف موكل', nameField: 'full_name' },
+    case_sessions: { entity_type: 'session', actionUpdate: 'تعديل جلسة', actionDelete: 'حذف جلسة' },
+    reminders: { entity_type: 'reminder', actionUpdate: 'تعديل تذكير', actionDelete: 'حذف تذكير' },
+    case_fees: { entity_type: 'fee', actionUpdate: 'تعديل أتعاب', actionDelete: 'حذف أتعاب' },
+    fee_payments: { entity_type: 'fee', actionUpdate: 'تعديل دفعة أتعاب', actionDelete: 'حذف دفعة أتعاب' },
+    case_notes: { entity_type: 'note', actionUpdate: 'تعديل ملاحظة', actionDelete: 'حذف ملاحظة' },
+    case_parties: { entity_type: 'case', actionUpdate: 'تعديل طرف دعوى', actionDelete: 'حذف طرف دعوى' },
+};
+
 let __syncQueueRunning = false;
 window.__syncOfflineQueue = async function() {
     // BUG FIX: القفل ده كان موجود فقط في __runOfflineSyncIfNeeded، لكن
@@ -535,6 +568,14 @@ window.__syncOfflineQueue = async function() {
             // تفاصيل القضية) — لازم يتصرّح هنا (مش جوه الفرع نفسه) عشان
             // يفضل متاح لفرع النجاح تحت بعد ما الـ if/else-if كله يخلص.
             let sessionCaseIdForRecalc: string | null = null;
+            // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4.1 (فجوة
+            // الأوفلاين)، 19 أغسطس 2026): resolvedOpId كانت متصرّحة جوه فرع
+            // UPDATE بس (`let` محلي للفرع) — بنرفعها هنا (زي
+            // sessionCaseIdForRecalc فوق بالظبط) عشان تفضل متاحة لفرع
+            // النجاح تحت بعد ما الـ if/else-if يخلص، ونستخدمها في تسجيل
+            // نشاط "تعديل" بالـid الحقيقي (مش op.id الخام، اللي ممكن يكون
+            // لسه تمبيد لو _offlineSelfTempId موجودة).
+            let resolvedOpId: string | null = null;
 
             if (op.type === 'INSERT') {
                 // البيانات هنا Record<string, unknown> عام (زي useAdminBackup.ts) —
@@ -622,7 +663,7 @@ window.__syncOfflineQueue = async function() {
                 // حاجة تانية — لو لسه معلّق أو مش قابل للحل، منعملش أي محاولة
                 // update أصلاً (بعكس _offlineFkTempId اللي بيحل حقول *جوه*
                 // data، مش هوية السطر المستهدف نفسه).
-                let resolvedOpId = op.id as string;
+                resolvedOpId = op.id as string;
                 // 🆕 المرحلة 6.5: sentinel `_offlineSessionCaseId` من
                 // useCaseSessions.ts (تعديل جلسة من صفحة تفاصيل القضية
                 // مباشرة) — case_id حقيقي دايمًا هنا (مش تمبيد)، بنلقطه هنا
@@ -722,6 +763,29 @@ window.__syncOfflineQueue = async function() {
                         case_name: title,
                         case_type: caseType,
                     });
+                }
+                // ⚡ NEW (مرحلة 4.1 "فجوة الأوفلاين"، 19 أغسطس 2026): تسجيل
+                // نشاط UPDATE/DELETE ناجح — راجع تعليق OFFLINE_ACTIVITY_CONFIG
+                // فوق للحدود المتعمّدة (details بس، مفيش changes/ديف حقول).
+                if (op.type === 'UPDATE' && resolvedOpId) {
+                    const cfg = OFFLINE_ACTIVITY_CONFIG[op.table];
+                    if (cfg) {
+                        const name = cfg.nameField ? (op.data?.[cfg.nameField] as string | undefined) : undefined;
+                        logActivity(db, cfg.actionUpdate, {
+                            entity_type: cfg.entity_type,
+                            entity_id: resolvedOpId,
+                            details: name ? `${name} (تعديل أوفلاين)` : 'تعديل أوفلاين',
+                        });
+                    }
+                } else if (op.type === 'DELETE') {
+                    const cfg = OFFLINE_ACTIVITY_CONFIG[op.table];
+                    if (cfg) {
+                        logActivity(db, cfg.actionDelete, {
+                            entity_type: cfg.entity_type,
+                            entity_id: (op.id as string) || null,
+                            details: 'حذف أوفلاين',
+                        });
+                    }
                 }
                 // 🆕 المرحلة 4: تسجيل ربط جلسة↔قضية ناجح في نفس الدورة —
                 // شوف تعريف casesLinkedThisCycle فوق. بيتحقق فعليًا بعد
