@@ -831,6 +831,30 @@ function EditCaseModalForm({caseData, onClose, onSave, countryCourts, countryCas
                         // (handleUpdateCase) بيستخدمها عشان يفرّق تعديل عن
                         // إضافة جديدة، وعشان يحدد أي صف اتشال فيحذفه.
                         existingPartyIds: existingPartyRows.map((r) => r.id),
+                        // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4.4، 19
+                        // أغسطس 2026): نفس existingPartyIds فوق بس بالبيانات
+                        // الكاملة — snapshot من case_parties وقت فتح الفورم
+                        // (existingPartyRows)، قبل أي تعديل من المستخدم.
+                        // useCaseActions.ts (handleUpdateCase → buildPartiesDiff)
+                        // بيقارنها بـ parties (الجديد) عشان يبني ديف الأطراف.
+                        // ⚠️ ملاحظة قضايا legacy (existingPartyRows فاضية،
+                        // fallback initialParties بـid ثابت
+                        // 'legacy-plaintiff'/'legacy-defendant'): existingPartyIds
+                        // فاضية أصلاً في الحالة دي، فـbuildPartiesDiff هيتعامل مع
+                        // أي طرف بالـid الثابت ده كـ"جديد" لو المستخدم لمسه —
+                        // سلوك متوقّع ومقصود (مفيش صف حقيقي في case_parties
+                        // أصلاً قبل كده يتقارن بيه).
+                        existingParties: existingPartyRows.map((r) => ({
+                            id: r.id,
+                            side: r.side,
+                            is_client: r.is_client,
+                            name: r.name || '',
+                            capacity: r.capacity || '',
+                            national_id: r.national_id || '',
+                            address: r.address || '',
+                            power_of_attorney: r.power_of_attorney || '',
+                            client_id: r.client_id || null,
+                        })),
                     };
                     const result = await onSave(saveData);
                     // 🔒 FIX (قرارات مفتوحة — خطة حفظ المسودات، 3 أغسطس 2026):
