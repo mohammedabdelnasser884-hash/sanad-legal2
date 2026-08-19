@@ -48,6 +48,7 @@ export interface Database {
           case_name: string | null
           case_type: string | null
           tenant_id: string | null
+          changes: Json | null
         }
         Insert: {
           id?: string
@@ -63,6 +64,7 @@ export interface Database {
           case_name?: string | null
           case_type?: string | null
           tenant_id?: string | null
+          changes?: Json | null
         }
         Update: {
           id?: string
@@ -78,6 +80,7 @@ export interface Database {
           case_name?: string | null
           case_type?: string | null
           tenant_id?: string | null
+          changes?: Json | null
         }
         // ⚠️ مطلوبة بنيويًا من supabase-js (بيتحقق منها داخليًا وقت استنتاج
         // نوع from()/insert()/update()) — من غيرها التحقق بينهار لـ `never`
