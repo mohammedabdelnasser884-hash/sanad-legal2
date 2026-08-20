@@ -1,7 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
-import type { CaseFeeRow } from '../../types';
 
 interface SummaryModalProps {
   showSummaryModal: boolean;
@@ -11,12 +10,18 @@ interface SummaryModalProps {
   grandTotal: number;
   grandPaid: number;
   grandRemaining: number;
-  feesByCategory: Record<string, CaseFeeRow[]>;
+  // 🔀 FIX (20 أغسطس 2026): كان feesByCategory (كائن محلي فاضي دايمًا —
+  // "deprecated" فعليًا فى useFeesActions.ts، فـ"توزيع القضايا" هنا كان
+  // بيعرض صفر فى التلاتة دايمًا). statusCounts هو العدد الحقيقي من
+  // السيرفر (نفس المصدر المستخدم فعليًا فى تابات الأتعاب) — التفصيل الكامل
+  // (محصّلة/مؤجلة/مفتوحة) لسه ظاهر هنا بالكامل حتى بعد دمج تابي "مؤجلة"
+  // و"مفتوحة" فى تاب واحد بالأعلى.
+  statusCounts: Record<string, number>;
 }
 
 function SummaryModal({
   showSummaryModal, setShowSummaryModal, loadingSummary, fmt,
-  grandTotal, grandPaid, grandRemaining, feesByCategory,
+  grandTotal, grandPaid, grandRemaining, statusCounts,
 }: SummaryModalProps) {
   // 🆕 (دفعة 2.3 — تقرير تشخيص تجربة سطح المكتب): نفس نمط SessionUpdateModal.tsx/
   // FeesTab.tsx — حدود ذهبية كاملة (border-t) مش border-white/10، فبنستبدل بس
@@ -71,9 +76,9 @@ function SummaryModal({
                     React.createElement('p',{className:"text-[9px] font-black text-slate-500 mb-2 tracking-widest"},"— توزيع القضايا —"),
                     React.createElement('div',{className:"grid grid-cols-3 gap-2 text-center"},
                         [
-                            {label:'محصّلة', value: feesByCategory.collected.length, color:'text-emerald-400', bg:'bg-emerald-500/10'},
-                            {label:'مؤجلة',  value: feesByCategory.deferred.length,  color:'text-amber-400',   bg:'bg-amber-500/10'},
-                            {label:'مفتوحة', value: feesByCategory.open.length,      color:'text-rose-400',    bg:'bg-rose-500/10'},
+                            {label:'محصّلة', value: statusCounts.collected||0, color:'text-emerald-400', bg:'bg-emerald-500/10'},
+                            {label:'مؤجلة',  value: statusCounts.deferred||0,  color:'text-amber-400',   bg:'bg-amber-500/10'},
+                            {label:'مفتوحة', value: statusCounts.open||0,      color:'text-rose-400',    bg:'bg-rose-500/10'},
                         ].map((s: {label: string; value: number; color: string; bg: string}) =>React.createElement('div',{key:s.label,className:`${s.bg} rounded-xl p-2.5`},
                             React.createElement('p',{className:`text-base font-black ${s.color}`},s.value),
                             React.createElement('p',{className:"text-[8px] text-slate-500 mt-0.5"},s.label)

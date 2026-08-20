@@ -40,9 +40,10 @@ interface FeesTabProps {
     ensureClientsLoaded?: (ids: (string | null | undefined)[]) => void;
 }
 
-// شكل عناصر feesSections الثابتة (تابات محصّلة/مؤجلة/مفتوحة) — من useFeesActions
+// شكل عناصر feesSections الثابتة (تابات محصّلة/غير محصّلة — بعد دمج
+// "مؤجلة" و"مفتوحة" في 20 أغسطس 2026) — من useFeesActions
 interface FeeSectionInfo {
-    key: 'collected' | 'deferred' | 'open';
+    key: 'collected' | 'pending';
     label: string;
     emoji: string;
     desc: string;
@@ -64,7 +65,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
       fetchFees, handleSave, handleAddPayment, handleDeletePayment, handleDelete, handlePermanentDeleteFee,
       // ── قيم محسوبة من الـ hook (مركزية — لا تُعاد هنا) ──
       fmt, fmtDate,
-      feesByCategory, feesSections, feesAfterCategoryFilter, filteredFees,
+      feesSections, feesAfterCategoryFilter, filteredFees,
       grandTotal, grandPaid, grandRemaining, loadingSummary,
       statusCounts,
     } = useFeesActions(cases, clients, country, profile);
@@ -199,12 +200,12 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         ),
 
         // ── Modal الملخص المالي الإجمالي ──
-        React.createElement(SummaryModal, { showSummaryModal, setShowSummaryModal, loadingSummary, fmt, grandTotal, grandPaid, grandRemaining, feesByCategory }),
+        React.createElement(SummaryModal, { showSummaryModal, setShowSummaryModal, loadingSummary, fmt, grandTotal, grandPaid, grandRemaining, statusCounts }),
 
-        // ── Pill Selector — أتعاب محصلة / مؤجلة / مفتوحة ──
+        // ── Pill Selector — أتعاب محصلة / غير محصلة (دمج مؤجلة+مفتوحة) ──
         React.createElement('div',{className:"flex items-center bg-white/5 rounded-2xl p-1 gap-1"},
             feesSections.map((s: FeeSectionInfo) => {
-                const count = statusCounts[s.key] ?? feesByCategory[s.key].length;
+                const count = statusCounts[s.key] ?? 0;
                 const isActive = feesFilter === s.key;
                 return React.createElement('button',{
                     key: s.key,
@@ -330,17 +331,14 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         : feesAfterCategoryFilter.length===0
             ? React.createElement('div',{className:"bg-premium-card border border-white/5 rounded-xl p-10 text-center space-y-2"},
                 React.createElement('div',{className:"text-3xl"},
-                    feesFilter==='collected' ? '✅' : feesFilter==='deferred' ? '⏳' : '⚠️'
+                    feesFilter==='collected' ? '✅' : '⏳'
                 ),
                 React.createElement('p',{className:"text-white/60 font-black text-sm"},
-                    feesFilter==='collected' ? 'لا توجد أتعاب محصّلة بعد'
-                    : feesFilter==='deferred' ? 'لا توجد أتعاب مؤجلة'
-                    : 'لا توجد أتعاب مفتوحة'
+                    feesFilter==='collected' ? 'لا توجد أتعاب محصّلة بعد' : 'لا توجد أتعاب غير محصّلة'
                 ),
                 React.createElement('p',{className:"text-slate-500 text-xs"},
                     feesFilter==='collected' ? 'الأتعاب المدفوعة بالكامل ستظهر هنا'
-                    : feesFilter==='deferred' ? 'الأتعاب المتفق عليها وغير المسددة بالكامل ستظهر هنا'
-                    : 'القضايا التي بدون اتفاق على مبلغ الأتعاب ستظهر هنا'
+                    : 'الأتعاب المتفق عليها وغير المسددة بالكامل، وكمان القضايا اللي لسه من غير مبلغ متفق عليه، هتظهر هنا'
                 )
               )
             : filteredFees.length===0

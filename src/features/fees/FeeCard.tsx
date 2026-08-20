@@ -70,7 +70,13 @@ function FeeCard({
   const caseType = linkedCase?.type || null;
   const pct = (fee.total_fees||0)>0 ? Math.round(((fee.paid_fees||0)/(fee.total_fees||0))*100) : 0;
   const rem = (fee.total_fees||0)-(fee.paid_fees||0);
-  const isFullyPaid = rem <= 0;
+  // 🔀 FIX (20 أغسطس 2026 — دمج تابي "مؤجلة"/"مفتوحة"): "مفتوحة" (لا يوجد
+  // مبلغ متفق عليه بعد، total_fees<=0) كانت بتحسب isFullyPaid=true غلط
+  // (لأن rem=total-paid<=0 برضو لو total=0)، فكانت بتظهر شارة "✅ مسدد"
+  // على قضية أصلاً لسه ملهاش مبلغ. دلوقتي بنستثنيها صراحة، وبنميّزها
+  // بشارة واضحة — مهم دلوقتي أكتر لأن التابين اتدمجوا فى واجهة واحدة.
+  const isOpenNoAmount = (fee.total_fees||0) <= 0;
+  const isFullyPaid = !isOpenNoAmount && rem <= 0;
   const feePayments = payments[fee.id]||[];
   const showPays = expandedPayments[fee.id];
   // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
@@ -92,7 +98,7 @@ function FeeCard({
                                     caseType && React.createElement('span',{className:"text-[9px] text-purple-400 font-bold"},"⚖️ "+caseType)
                                 )
                             ),
-                            React.createElement('span',{className:`text-[9px] font-black px-2 py-1 rounded-full shrink-0 ${isFullyPaid?'bg-emerald-500/15 text-emerald-400':'bg-amber-500/15 text-amber-400'}`}, isFullyPaid ? '✅ مسدد' : pct+'%')
+                            React.createElement('span',{className:`text-[9px] font-black px-2 py-1 rounded-full shrink-0 ${isOpenNoAmount?'bg-rose-500/15 text-rose-400':isFullyPaid?'bg-emerald-500/15 text-emerald-400':'bg-amber-500/15 text-amber-400'}`}, isOpenNoAmount ? '⚠️ مفتوحة' : isFullyPaid ? '✅ مسدد' : pct+'%')
                         ),
                         // ─ مودال التفاصيل الكاملة ─
                         detailsFor===fee.id && createPortal(React.createElement('div',{
@@ -124,8 +130,8 @@ function FeeCard({
                                     fee.receiver && React.createElement('p',{className:"text-[9px] text-purple-400 mt-0.5"},"🏛 المستلم: "+fee.receiver),
                                     fee.last_payment_date && React.createElement('p',{className:"text-[9px] text-slate-500 mt-0.5"},"📅 "+fmtDate(fee.last_payment_date))
                                 ),
-                                React.createElement('span',{className:`text-[9px] font-black px-2 py-1 rounded-full ${isFullyPaid?'bg-emerald-500/15 text-emerald-400':'bg-amber-500/15 text-amber-400'}`},
-                                    isFullyPaid ? '✅ مسدد' : pct+'%'
+                                React.createElement('span',{className:`text-[9px] font-black px-2 py-1 rounded-full ${isOpenNoAmount?'bg-rose-500/15 text-rose-400':isFullyPaid?'bg-emerald-500/15 text-emerald-400':'bg-amber-500/15 text-amber-400'}`},
+                                    isOpenNoAmount ? '⚠️ مفتوحة' : isFullyPaid ? '✅ مسدد' : pct+'%'
                                 )
                             ),
                             // الأرقام
