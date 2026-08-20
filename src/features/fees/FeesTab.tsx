@@ -157,7 +157,13 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
     return React.createElement('div',{className:"space-y-4 fade-in"},
 
-        // ── هيدر القسم: العنوان + أيقونة البحث ──
+        // ── هيدر القسم: العنوان + زر الملخص المالي + أيقونة البحث ──
+        // 🔀 FIX (20 أغسطس 2026 — طلب المستخدم): زر "الملخص المالي" اتنقل من
+        // الصف التاني (كان جمب زر الإضافة) لهنا، جمب زر البحث في الهيدر —
+        // حجم مضغوط (أيقونة بس على الموبايل، أيقونة+نص من sm: لفوق) بدل
+        // الزرار الطويل الأصلي. بيختفي وقت فتح صندوق البحث عشان يدّي مساحة
+        // كاملة لخانة الكتابة (نفس فلسفة اختفاء زر "بحث" الأصلي وقتها) —
+        // نفس السلوك على الموبايل والديسكتوب، مفيش فرق breakpoint هنا.
         React.createElement('div',{className:"flex items-center justify-between gap-2"},
             React.createElement('h3',{className:"text-sm font-black text-white shrink-0"},"💰 نظام الأتعاب"),
             searchOpen
@@ -187,15 +193,28 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         )
                     )
                 )
-                : React.createElement('button',{
-                    onClick:handleSearchOpen,
-                    className:"flex items-center gap-1 bg-white/8 border border-white/10 text-slate-300 px-2.5 py-2 rounded-xl text-[11px] font-black active:scale-95 transition-transform hover:border-amber-500/30 hover:text-amber-300",
-                    title:"بحث في الأتعاب"
-                },
-                    React.createElement('svg',{className:"w-3.5 h-3.5",fill:"none",viewBox:"0 0 24 24",strokeWidth:"2.5",stroke:"currentColor"},
-                        React.createElement('path',{strokeLinecap:"round",strokeLinejoin:"round",d:"m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"})
+                : React.createElement('div',{className:"flex items-center gap-1.5 shrink-0"},
+                    // ─ زر الملخص المالي (نقل هنا) ─
+                    React.createElement('button',{
+                        onClick:()=>setShowSummaryModal(true),
+                        'data-testid':'fees-summary-open',
+                        className:"flex items-center gap-1 bg-premium-gold/10 border border-premium-gold/25 text-premium-gold px-2.5 py-2 rounded-xl text-[11px] font-black active:scale-95 transition-transform hover:bg-premium-gold/15",
+                        title:"الملخص المالي الإجمالي"
+                    },
+                        React.createElement('span',{className:"text-sm leading-none"},"📊"),
+                        React.createElement('span',{className:"hidden sm:inline"},"الملخص المالي")
                     ),
-                    React.createElement('span',null,"بحث")
+                    // ─ زر البحث ─
+                    React.createElement('button',{
+                        onClick:handleSearchOpen,
+                        className:"flex items-center gap-1 bg-white/8 border border-white/10 text-slate-300 px-2.5 py-2 rounded-xl text-[11px] font-black active:scale-95 transition-transform hover:border-amber-500/30 hover:text-amber-300",
+                        title:"بحث في الأتعاب"
+                    },
+                        React.createElement('svg',{className:"w-3.5 h-3.5",fill:"none",viewBox:"0 0 24 24",strokeWidth:"2.5",stroke:"currentColor"},
+                            React.createElement('path',{strokeLinecap:"round",strokeLinejoin:"round",d:"m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"})
+                        ),
+                        React.createElement('span',{className:"hidden sm:inline"},"بحث")
+                    )
                 )
         ),
 
@@ -225,27 +244,13 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             })
         ),
 
-        // 🆕 Phase 3 (تقرير تشخيص تجربة سطح المكتب — 15 أغسطس): زرار
-        // الملخص المالي وزرار الإضافة كانوا مكدّسين فوق بعض بعرض كامل
-        // (`w-full`) — شكل منطقي على الموبايل، لكن على الديسكتوب بيبقى
-        // زرارين طويلين ممدودين بعرض الشاشة كله. `lg:flex` بيحطهم جنب
-        // بعض بعرض متساوي (`lg:flex-1` على كل واحد) بدل الامتداد الكامل،
-        // بلا أي تغيير على شكل/سلوك الموبايل.
-        React.createElement('div',{className:"space-y-2 lg:space-y-0 lg:flex lg:gap-3"},
-            // ─ زر الملخص المالي (بقى هنا مكان شريط البحث القديم) ─
-            React.createElement('button',{
-                onClick:()=>setShowSummaryModal(true),
-                'data-testid':'fees-summary-open',
-                className:"w-full lg:flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-2xl bg-premium-gold/10 border border-premium-gold/25 text-premium-gold text-xs font-black active:scale-95 transition-all hover:bg-premium-gold/15"
-            },"📊 الملخص المالي الإجمالي"),
-
-            // ─ زر الإضافة ─
-            React.createElement('button',{
-                onClick:()=>{setShowForm(!showForm);setEditId(null);setForm({case_id:'',client_id:'',client_name_manual:'',client_name_text:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); },
-                'data-testid':'add-fee-button',
-                className:"w-full lg:flex-1 py-3 border border-dashed border-premium-gold/30 rounded-2xl flex items-center justify-center gap-2 text-premium-gold text-xs font-black hover:bg-premium-gold/5 transition-all active:scale-[0.98]"
-            }, React.createElement(I.Plus), "إضافة أتعاب قضية")
-        ),
+        // ─ زر الإضافة (بعد ما زر الملخص المالي اتنقل للهيدر فوق، بقى الزرار
+        // الوحيد في الصف ده — عرض كامل ثابت على الموبايل والديسكتوب) ─
+        React.createElement('button',{
+            onClick:()=>{setShowForm(!showForm);setEditId(null);setForm({case_id:'',client_id:'',client_name_manual:'',client_name_text:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); },
+            'data-testid':'add-fee-button',
+            className:"w-full py-3 border border-dashed border-premium-gold/30 rounded-2xl flex items-center justify-center gap-2 text-premium-gold text-xs font-black hover:bg-premium-gold/5 transition-all active:scale-[0.98]"
+        }, React.createElement(I.Plus), "إضافة أتعاب قضية"),
 
         // ─ فورم الإضافة/التعديل (modal) ─
         showForm && createPortal(
