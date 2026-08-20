@@ -107,7 +107,14 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
     const [payClientName, setPayClientName] = useState('');
     const [payClientNameText, setPayClientNameText] = useState('');
     const [feesSearch, setFeesSearch] = useState('');
-    const [feesFilter, setFeesFilter] = useState<'collected'|'deferred'|'open'>('deferred');
+    // 🔀 FIX (دمج تابي "مؤجلة" و"مفتوحة" — 20 أغسطس 2026): الفلتر بقى تاني
+    // بقيمتين بس (collected/pending) بدل التلاتة. عمود status في الداتابيز
+    // نفسه فضل زي ما هو (3 قيم: collected/deferred/open) — الدمج على مستوى
+    // العرض والفلترة بس (fetchFees تحت بتستخدم .in() للـpending)، عشان منمسّش
+    // RPCs (record_fee_payment/create_fee_with_advance) ولا migration التصحيح
+    // القديم. راجع feesSections تحت لتفاصيل الدمج، وstatusCounts.pending
+    // للعدّاد المجمّع.
+    const [feesFilter, setFeesFilter] = useState<'collected'|'pending'>('pending');
 
     // ── pagination state ──
     const [feesPage, setFeesPage]   = useState(0);
@@ -120,7 +127,11 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
     const [loadingSummary, setLoadingSummary] = useState(false);
 
     // ── عدد كل تاب من السيرفر مباشرة (بديل feesByCategory.length المُهمَل) ──
-    const [statusCounts, setStatusCounts] = useState<Record<string, number>>({collected:0,deferred:0,open:0});
+    // 🔀 FIX (دمج التابين): statusCounts لسه بيجيب الـ3 أعداد الحقيقية
+    // (collected/deferred/open) من الداتابيز زي ما هي — مفيدة لعرض التفصيل
+    // الكامل في SummaryModal — بالإضافة لـpending المحسوب (deferred+open)
+    // عشان تاب "غير محصّلة" المدموج يعرض رقمه من غير استعلام رابع.
+    const [statusCounts, setStatusCounts] = useState<Record<string, number>>({collected:0,deferred:0,open:0,pending:0});
 
     const fetchStatusCounts = useCallback(async () => {
         if (!profile) return;
@@ -142,7 +153,8 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
                 db.from('case_fees').select('id', { count: 'exact', head: true }).eq('status','open').is('deleted_at', null).abortSignal(guard.controller.signal),
             ]);
             if (c1.error || c2.error || c3.error) throw (c1.error || c2.error || c3.error);
-            const counts = { collected: c1.count||0, deferred: c2.count||0, open: c3.count||0 };
+            const collected = c1.count||0, deferred = c2.count||0, open = c3.count||0;
+            const counts = { collected, deferred, open, pending: deferred + open };
             setStatusCounts(counts);
             saveFeesCache(FEES_COUNTS_CACHE_KEY, profile.tenant_id, counts);
             recordSuccess('db_fees');
@@ -201,10 +213,13 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
 
         let q = db.from('case_fees')
             .select('*', { count: 'exact' })
-            .eq('status', status)
             .is('deleted_at', null)
             .order('created_at', { ascending: false })
             .range(from, to);
+        // 🔀 FIX (دمج تابي "مؤجلة" و"مفتوحة"): تاب "pending" بيغطي حالتين
+        // فعليتين في الداتابيز (deferred + open) — .in() بدل .eq() واحدة.
+        // تاب "collected" لسه .eq() عادية زي ما كانت.
+        q = status === 'pending' ? q.in('status', ['deferred', 'open']) : q.eq('status', status);
 
         if (search.trim()) {
             const s = search.trim();
@@ -282,7 +297,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
     useEffect(() => { fetchFees(0, feesFilter, feesSearch, false); }, [fetchFees, feesFilter, feesSearch]);
 
     // ── عند تغيير التاب أو البحث ──
-    const handleFilterChange = (newFilter: 'collected'|'deferred'|'open') => {
+    const handleFilterChange = (newFilter: 'collected'|'pending') => {
         setFeesFilter(newFilter);
         setFeesSearch('');
         fetchFees(0, newFilter, '', false);
@@ -599,24 +614,19 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         return 'deferred';
     };
 
+    // 🔀 FIX (دمج تابي "مؤجلة" و"مفتوحة" — 20 أغسطس 2026): تابين بدل تلاتة.
+    // "pending" بيغطي حالتي deferred+open معًا (راجع fetchFees فوق) — الفرق
+    // بينهم (اتفقنا على المبلغ ولا لسه) بقى معروض كشارة على كل كارت في
+    // FeeCard.tsx بدل تاب منفصل، فمفيش فقد للمعلومة، بس أقل ضجة بصريًا.
     const feesSections = [
         {
-            key: 'deferred' as const,
-            label: 'مؤجلة',
+            key: 'pending' as const,
+            label: 'غير محصّلة',
             emoji: '⏳',
-            desc: 'فلوس في الطريق',
+            desc: 'متفق عليها أو لسه محتاجة تحديد',
             activeBg: 'bg-amber-500/20 border-amber-500/40',
             activeText: 'text-amber-300',
             countActiveBg: 'bg-amber-500/30 text-amber-200',
-        },
-        {
-            key: 'open' as const,
-            label: 'مفتوحة',
-            emoji: '⚠️',
-            desc: 'محتاجة تتحدد',
-            activeBg: 'bg-rose-500/20 border-rose-500/40',
-            activeText: 'text-rose-300',
-            countActiveBg: 'bg-rose-500/30 text-rose-200',
         },
         {
             key: 'collected' as const,
@@ -635,7 +645,6 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
 
     const filteredFees = fees;
     const feesAfterCategoryFilter = fees;
-    const feesByCategory: Record<string, CaseFeeRow[]> = { collected: [], deferred: [], open: [] }; // deprecated
 
     const grandTotal     = grandTotalAll;
     const grandPaid      = grandPaidAll;
@@ -659,7 +668,6 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
 
     getFeeCategory,
     feesSections,
-    feesByCategory,
     feesAfterCategoryFilter,
     filteredFees,
 
