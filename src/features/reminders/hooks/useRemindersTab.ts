@@ -73,7 +73,7 @@ export interface PillSection {
     emptyEmoji: string;
 }
 
-export function useRemindersTab(initialFilter?: string | null, profile: ProfileRow | null = null) {
+export function useRemindersTab(initialFilter?: string | null, profile: ProfileRow | null = null, externalRefreshSignal?: number) {
     const _userName = profile?.full_name || null;
     const [reminders, setReminders] = useState<ReminderRow[]>([]);
     const [loading, setLoading]     = useState(true);
@@ -271,6 +271,18 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
     }, [fetchUpcoming, fetchOverdue, fetchDone]);
 
     useEffect(()=>{ if(profile) fetchReminders(); },[fetchReminders, profile]);
+
+    // 🔧 FIX (20 أغسطس 2026): زرار الريفرش في الهيدر كان بيحدّث القضايا
+    // بس، وتاب التذكيرات عنده بياناته الخاصة (fetchReminders) اللي
+    // مالهاش علاقة بالقضايا — الزرار كان شكلي هنا. نفس نمط
+    // externalRefreshSignal بتاع SessionsCalendar.tsx/useFeesActions.ts.
+    const skippedFirstRun = useRef(false);
+    useEffect(() => {
+        if (!skippedFirstRun.current) { skippedFirstRun.current = true; return; }
+        if (externalRefreshSignal === undefined) return;
+        if (profile) fetchReminders();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [externalRefreshSignal]);
 
     const handleSave = async () => {
         if(!form.title||!form.due_date){ toast('يرجى إدخال العنوان والتاريخ',true); return; }
