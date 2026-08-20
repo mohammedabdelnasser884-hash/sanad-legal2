@@ -19,9 +19,13 @@ interface RemindersTabProps {
     // هنا كانت React state محلي بحت مش مسجّل في useNavigation، فزرار
     // الرجوع كان بيقفل التاب كله بدل ما يقفل المودال المفتوح بس.
     nav: NavigationState;
+    // 🔧 FIX (20 أغسطس 2026): نفس نمط externalRefreshSignal بتاع
+    // SessionsCalendar.tsx/FeesTab.tsx — App.tsx بيزوّد الرقم ده كل ما
+    // زرار الريفرش في الهيدر يتضغط.
+    externalRefreshSignal?: number;
 }
 
-function RemindersTab({initialFilter, profile=null, nav}: RemindersTabProps){
+function RemindersTab({initialFilter, profile=null, nav, externalRefreshSignal}: RemindersTabProps){
     const {
         loading, todayStr,
         showForm: showFormRaw, setShowForm: setShowFormRaw, form, setForm, saving, handleSave,
@@ -32,7 +36,7 @@ function RemindersTab({initialFilter, profile=null, nav}: RemindersTabProps){
         filter, setFilter, pillSections, activeSection,
         searchOpen, searchTerm, searchInputRef, searchLoading, filteredData,
         handleSearchOpen, handleSearchClear, handleSearchChange,
-    } = useRemindersTab(initialFilter, profile);
+    } = useRemindersTab(initialFilter, profile, externalRefreshSignal);
 
     const showForm = nav.isOpen('reminderForm') ? showFormRaw : false;
     const viewTarget = nav.isOpen('reminderView') ? viewTargetRaw : null;
