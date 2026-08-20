@@ -112,6 +112,12 @@ function App() {
     // الشهر يدويًا. راجع SessionsCalendar.tsx / AppModals.tsx.
     const [sessionsRefreshSignal, setSessionsRefreshSignal] = useState(0);
     const bumpSessionsRefreshSignal = useCallback(() => setSessionsRefreshSignal((k) => k + 1), []);
+    // 🔧 FIX (20 أغسطس 2026): نفس فكرة sessionsRefreshSignal فوق، لكن
+    // لتابات الأتعاب/التذكيرات — عندهم بياناتهم الخاصة اللي بتتجاب بمعزل
+    // عن fetchCases (useFeesActions/useRemindersTab)، فمكانتش بتتحدث لما
+    // زرار الريفرش في الهيدر يتضغط. راجع تعليق handleGlobalRefresh تحت.
+    const [dataRefreshSignal, setDataRefreshSignal] = useState(0);
+    const bumpDataRefreshSignal = useCallback(() => setDataRefreshSignal((k) => k + 1), []);
     const showFeesSummary    = nav.isOpen('feeSummary');
     const setShowFeesSummary = useCallback((v: boolean) => v ? nav.openModal('feeSummary') : nav.closeModal('feeSummary'), [nav]);
 
@@ -182,6 +188,36 @@ function App() {
         fetchCases, fetchLawyers, fetchClients, searchCases,
     } = data;
     const { sendTelegram }                                      = useTelegramAlerts(profile);
+
+    // 🔧 FIX (20 أغسطس 2026 — طلب المستخدم "زرار الريفرش شكلي في بعض
+    // الأقسام"): زرار الريفرش في الهيدر (AppHeader.tsx/DesktopHeader.tsx)
+    // كان بيستقبل fetchCases مباشرة كـonClick، يعني بيحدّث القضايا بس —
+    // مفيد فعليًا في تاب "القضايا"، لكن شكلي تمامًا في أي تاب تاني
+    // (الداشبورد/الموكلين/التقويم/الأتعاب/التذكيرات/الفريق) لأن التاب
+    // ده مبيعرضش بيانات القضايا الخام أصلًا. handleGlobalRefresh بيستدعي
+    // كل دوال الـfetch المتاحة على مستوى App.tsx مرة واحدة (رخيصة نسبيًا
+    // لأنها ضغطة يدوية نادرة، مش polling) + بيزوّد إشارتين خارجيتين
+    // (sessionsRefreshSignal/dataRefreshSignal) للتابات اللي عندها بيانات
+    // منفصلة تمامًا مُدارة بـhooks خاصة بيها (التقويم/الأتعاب/التذكيرات) —
+    // بما إن التاب الغير نشط مش mounted أصلًا (`tab === 'x' && Component`)،
+    // مفيش أي تكلفة إضافية من الإشارات دي على التابات الغير معروضة.
+    const handleGlobalRefresh = useCallback(() => {
+        fetchCases(casesPage, casesFilter);
+        fetchClients(clientsPage, clientSearch);
+        fetchLawyers();
+        fetchTodaySessions();
+        fetchUpcomingSessions();
+        fetchMissedSessions();
+        fetchTasks();
+        bumpSessionsRefreshSignal();
+        bumpDataRefreshSignal();
+    }, [
+        fetchCases, casesPage, casesFilter,
+        fetchClients, clientsPage, clientSearch,
+        fetchLawyers,
+        fetchTodaySessions, fetchUpcomingSessions, fetchMissedSessions, fetchTasks,
+        bumpSessionsRefreshSignal, bumpDataRefreshSignal,
+    ]);
 
     // ── Modal helpers ─────────────────────────────────────────
     const setSelectedCase = useCallback((caseOrUpdater: React.SetStateAction<MappedCase | null>, initialTab: string = 'timeline') => {
@@ -401,7 +437,7 @@ function App() {
     // ─────────────────────────────────────────────────────────
     //  Render
     // ─────────────────────────────────────────────────────────
-    const Header      = React.createElement(AppHeader, { profile, setShowMenu: (v: boolean) => setShowHeaderMenu(v), setShowSearch, isAdmin, fetchCases, casesFilter, loadingCases: casesLoading });
+    const Header      = React.createElement(AppHeader, { profile, setShowMenu: (v: boolean) => setShowHeaderMenu(v), setShowSearch, isAdmin, fetchCases: handleGlobalRefresh, casesFilter, loadingCases: casesLoading });
     const Dashboard   = React.createElement(DashboardTab, {
         profile, cases, clients: clientsWithExtras,
         todaySessions, upcomingSessions, missedSessions,
@@ -460,7 +496,7 @@ function App() {
     return React.createElement(AppShell, {
         tab, setTab, isAdmin, onAIClick: handleAIButtonClick,
         profile, setShowMenu: (v: boolean) => setShowHeaderMenu(v), setShowSearch,
-        fetchCases, casesFilter, loadingCases: casesLoading,
+        fetchCases: handleGlobalRefresh, casesFilter, loadingCases: casesLoading,
     },
 
         // ⚡ H2 (16 أغسطس 2026): AppHeader القديم بقى `lg:hidden` — كان
@@ -591,11 +627,11 @@ function App() {
             // مش بس عن طريق الضغط على زرار "الأتعاب". نفس نمط تاب 'team'
             // فوق بالظبط.
             tab === 'fees' && (canViewFees
-                ? React.createElement(FeesTab, { cases: casesWithExtras, clients: clientsWithExtras, showSummaryModal: showFeesSummary, setShowSummaryModal: setShowFeesSummary, country, profile, nav, ensureClientsLoaded })
+                ? React.createElement(FeesTab, { cases: casesWithExtras, clients: clientsWithExtras, showSummaryModal: showFeesSummary, setShowSummaryModal: setShowFeesSummary, country, profile, nav, ensureClientsLoaded, externalRefreshSignal: dataRefreshSignal })
                 : React.createElement('div', { className: 'text-center text-slate-500 text-xs pt-20' }, 'غير مصرح لك بهذا القسم')
             ),
             tab === 'reminders' && React.createElement('div', { className: 'space-y-4 fade-in' },
-                React.createElement(RemindersTab, { initialFilter: remindersInitialFilter, profile, nav })
+                React.createElement(RemindersTab, { initialFilter: remindersInitialFilter, profile, nav, externalRefreshSignal: dataRefreshSignal })
             ),
             tab === 'team' && (isAdmin
                 ? TeamTabContent
