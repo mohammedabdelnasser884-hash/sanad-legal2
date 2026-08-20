@@ -38,6 +38,11 @@ interface FeesTabProps {
     // فورًا وقت الاختيار عشان .find(client_id) وقت الحفظ (جوه
     // useFeesActions.ts) يلاقيه أكيد ومايرجّعش اسم فاضي.
     ensureClientsLoaded?: (ids: (string | null | undefined)[]) => void;
+    // 🔧 FIX (20 أغسطس 2026): نفس نمط externalRefreshSignal بتاع
+    // SessionsCalendar.tsx — App.tsx بيزوّد الرقم ده كل ما زرار الريفرش
+    // في الهيدر يتضغط، عشان تاب الأتعاب (بياناته منفصلة تمامًا عن
+    // fetchCases) يعمل refetch فعلي بدل ما الزرار يبقى شكلي هنا.
+    externalRefreshSignal?: number;
 }
 
 // شكل عناصر feesSections الثابتة (تابات محصّلة/غير محصّلة — بعد دمج
@@ -52,7 +57,7 @@ interface FeeSectionInfo {
     countActiveBg: string;
 }
 
-function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country, profile=null, nav, ensureClientsLoaded}: FeesTabProps){
+function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country, profile=null, nav, ensureClientsLoaded, externalRefreshSignal}: FeesTabProps){
     const {
       fees, payments, expandedPayments, setExpandedPayments,
       loading, showForm: showFormRaw, setShowForm: setShowFormRaw, form, setForm, saving, editId, setEditId,
@@ -68,7 +73,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
       feesSections, feesAfterCategoryFilter, filteredFees,
       grandTotal, grandPaid, grandRemaining, loadingSummary,
       statusCounts,
-    } = useFeesActions(cases, clients, country, profile);
+    } = useFeesActions(cases, clients, country, profile, externalRefreshSignal);
 
     const [detailsForRaw, setDetailsForRaw] = useState<string | null>(null); // معرف بطاقة الأتعاب المفتوحة تفاصيلها
     const detailsFor = nav.isOpen('feeDetail') ? detailsForRaw : null;
