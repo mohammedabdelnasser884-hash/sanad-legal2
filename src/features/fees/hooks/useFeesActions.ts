@@ -82,7 +82,7 @@ export interface FeeFormState {
     notes: string;
 }
 
-export function useFeesActions(cases: MappedCase[], clients: ClientRow[], country?: string, profile?: ProfileRow | null) {
+export function useFeesActions(cases: MappedCase[], clients: ClientRow[], country?: string, profile?: ProfileRow | null, externalRefreshSignal?: number) {
     const [fees, setFees] = useState<CaseFeeRow[]>([]);
     const [payments, setPayments] = useState<PaymentsByFeeId>({}); // keyed by fee_id
     const [expandedPayments, setExpandedPayments] = useState<Record<string, boolean>>({});
@@ -295,6 +295,24 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
     }, [profile, feesFilter, feesSearch]);
 
     useEffect(() => { fetchFees(0, feesFilter, feesSearch, false); }, [fetchFees, feesFilter, feesSearch]);
+
+    // 🔧 FIX (20 أغسطس 2026): زرار الريفرش في الهيدر كان بيحدّث القضايا
+    // بس (fetchCases)، وتاب الأتعاب عنده بياناته الخاصة (fetchFees/
+    // fetchGrandSummary/fetchStatusCounts) اللي مالهاش أي علاقة بالقضايا
+    // — يعني الزرار كان شكلي هنا، مبيغيّرش أي حاجة ظاهرة على الشاشة.
+    // نفس نمط externalRefreshSignal المستخدم فعليًا في SessionsCalendar.tsx
+    // (App.tsx بيبعت رقم بيزيد كل ضغطة، والـeffect ده بيعمل refetch كامل).
+    // skippedFirstRun بيمنع فetch مزدوج عند أول تحميل (الإشارة بتوصل بقيمة
+    // ابتدائية معرّفة من App.tsx مش undefined).
+    const skippedFirstRun = React.useRef(false);
+    useEffect(() => {
+        if (!skippedFirstRun.current) { skippedFirstRun.current = true; return; }
+        if (externalRefreshSignal === undefined) return;
+        fetchFees(0, feesFilter, feesSearch, false);
+        fetchGrandSummary();
+        fetchStatusCounts();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [externalRefreshSignal]);
 
     // ── عند تغيير التاب أو البحث ──
     const handleFilterChange = (newFilter: 'collected'|'pending') => {
