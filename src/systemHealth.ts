@@ -22,7 +22,23 @@ export type KnownServiceKey =
   | 'db_documents'
   | 'session_scheduler'
   | 'office_login'
-  | 'app_general';
+  | 'app_general'
+  // 🔀 FIX (20 أغسطس 2026 — طلب المستخدم بعد استفسار عن بانر "عملية في
+  // النظام" غامض): المفاتيح دي كانت بتُستخدم فعليًا في recordError() في
+  // أماكن مختلفة (useAppData.ts/AppModals.tsx/ClientsTab.tsx) من غير اسم
+  // عربي مخصص، فكانت كلها بتظهر بنفس العنوان العام المُربك "عملية في
+  // النظام" (resolveLabel/friendlyError كانوا بيرجعوا للـfallback العام
+  // لأي مفتاح مش في القاموس ده). إضافتهم هنا كمفاتيح معروفة بترجّع كل
+  // واحد لاسمه ورسالته الواضحة المناسبة، من غير أي تعديل في مكان
+  // الاستدعاء نفسه (الملف ده هو المصدر المركزي الوحيد).
+  | 'db_case_parties'
+  | 'db_case_by_id'
+  | 'db_sessions_by_case_ids'
+  | 'db_clients_by_id'
+  | 'db_cases_by_id'
+  | 'db_case_parties_by_client'
+  | 'db_cases_by_client_id'
+  | 'db_case_parties_by_client_ids';
 
 // أي مفتاح: من القائمة المعروفة فوق، أو أي نص مخصص من أي شاشة في التطبيق
 export type ServiceKey = KnownServiceKey | string;
@@ -65,6 +81,14 @@ const SERVICE_LABELS: Record<KnownServiceKey, string> = {
   session_scheduler: 'جدولة الإشعارات التلقائية',
   office_login:      'تسجيل الدخول',
   app_general:       'النظام',
+  db_case_parties:               'جلب أطراف القضية',
+  db_case_by_id:                 'جلب بيانات القضية',
+  db_sessions_by_case_ids:       'جلب جلسات القضايا',
+  db_clients_by_id:              'جلب بيانات الموكل',
+  db_cases_by_id:                'جلب القضايا المرتبطة',
+  db_case_parties_by_client:     'جلب قضايا الموكل',
+  db_cases_by_client_id:         'جلب قضايا الموكل',
+  db_case_parties_by_client_ids: 'جلب قضايا الموكلين',
 };
 
 function isKnownKey(key: ServiceKey): key is KnownServiceKey {
@@ -91,6 +115,14 @@ const KNOWN_ERROR_MSGS: Record<KnownServiceKey, string> = {
   session_scheduler: 'توقف نظام الإشعارات التلقائية. أعد فتح التطبيق.',
   office_login:      'تعذّر تسجيل الدخول. تحقق من اتصال الإنترنت وحاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.',
   app_general:       'حصلت مشكلة في النظام. تحقق من اتصال الإنترنت أو حاول تاني.',
+  db_case_parties:               'تعذّر تحميل بيانات أطراف القضية. تحقق من الاتصال بالإنترنت.',
+  db_case_by_id:                 'تعذّر تحميل بيانات هذه القضية. تحقق من الاتصال بالإنترنت.',
+  db_sessions_by_case_ids:       'تعذّر تحميل الجلسات المرتبطة بالقضايا. تحقق من الاتصال بالإنترنت.',
+  db_clients_by_id:              'تعذّر تحميل بيانات الموكل. تحقق من الاتصال بالإنترنت.',
+  db_cases_by_id:                'تعذّر تحميل القضايا المرتبطة. تحقق من الاتصال بالإنترنت.',
+  db_case_parties_by_client:     'تعذّر تحميل قضايا هذا الموكل. تحقق من الاتصال بالإنترنت.',
+  db_cases_by_client_id:         'تعذّر تحميل قضايا هذا الموكل. تحقق من الاتصال بالإنترنت.',
+  db_case_parties_by_client_ids: 'تعذّر تحميل عدد قضايا الموكلين. تحقق من الاتصال بالإنترنت.',
 };
 
 /** رسالة بسيطة بالعربي يفهمها صاحب المكتب، حتى لو المفتاح غير معروف */
