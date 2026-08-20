@@ -102,7 +102,7 @@ function OfficeNotificationsTab({ profile }: OfficeNotificationsTabProps) {
   return React.createElement('div', { className: "space-y-4 fade-in" },
 
     // ═══ زرار دليل الإعداد (صفحة HTML، مش PDF) ═══
-    // 📘 UPDATED (20 أغسطس 2026، تعديل رابع): جُرِّب PDF مبني بـ Playwright/
+    // 📘 UPDATED (20 أغسطس 2026، تعديل خامس): جُرِّب PDF مبني بـ Playwright/
     // Chromium مرتين (نسخة مفصّلة غامقة، ثم نسخة أبسط فاتحة بـ pictograms) —
     // اتقفلوا الاتنين لأن سيرفر التوليد مفيهوش خط عربي حقيقي مثبّت (كل خطوط
     // النظام بترجع لنفس fallback ضعيف)، فالـ PDF المُصدَّر كان بخط سيء دايمًا
@@ -111,6 +111,12 @@ function OfficeNotificationsTab({ profile }: OfficeNotificationsTabProps) {
     // بيرندر الخط (font-family عادي بدون خط مضمّن)، فبيطلع بخط الموبايل
     // الأصلي بتاعه تلقائيًا. صفحة واحدة تتمرر (مش مقسّمة صفحات PDF)، وشرح كل
     // خطوة أوسع من نسخة الـ PDF التانية (مش مختصر جدًا زي ما كان).
+    // 🐛 باگ اتلقّط بعد كده: فتح الملف كان بيرجّع لصفحة لوحة الإدارة بدل ما
+    // يفتح الدليل — السبب مش هنا خالص، كان في `vercel.json` (rewrite شامل
+    // `/(.*)` بيلقف أي مسار حتى لو ملف ثابت حقيقي زي الـ HTML ده ويحوّله لـ
+    // index.html). اتصلح هناك بإضافة negative lookahead يستثني أي مسار له
+    // امتداد ملف من الـ rewrite، فالملفات الثابتة في public/ (بما فيها الدليل
+    // ده) بقت بتتقدَّم على أي إعادة توجيه.
     React.createElement('div', { className: "bg-[#25d366]/10 border border-[#25d366]/25 rounded-2xl p-4 space-y-3" },
       React.createElement('div', { className: "flex items-center gap-2" },
         React.createElement('span', { className: "text-base" }, '📘'),
