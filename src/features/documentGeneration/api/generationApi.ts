@@ -15,6 +15,7 @@ import type {
   GeneratedDocument,
   DocumentContentSection,
 } from '../types';
+import type { Json } from '../../../database.types';
 
 // ──────────────────────────────────────────────────────────────────
 // binding_source المدعومة فعليًا في القوالب الأربعة (القسم 5 من الخطة):
@@ -347,7 +348,7 @@ export async function generateDocument(params: {
       case_id: params.caseId,
       source_mode: params.sourceMode,
       field_values_json: values,
-      document_content_json: documentContentJson,
+      document_content_json: documentContentJson as unknown as Json,
       rendered_html: null,
       status: 'draft',
       created_by: null,
@@ -356,5 +357,5 @@ export async function generateDocument(params: {
     .single();
   if (insertError) throw insertError;
 
-  return inserted as GeneratedDocument;
+  return inserted as unknown as GeneratedDocument;
 }
