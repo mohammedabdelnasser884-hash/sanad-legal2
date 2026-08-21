@@ -80,7 +80,7 @@ vi.mock('../../../supabaseClient', () => ({
 // بدل ما نموّك جدول office_settings كامل جوه makeMockDb (نطاق generationApi.ts
 // الفعلي بيستخدم الدالة الجاهزة من constants.ts مباشرة، مش استعلام خام).
 const loadOfficeSettingMock = vi.fn(async (_key: string) => 'مكتب المحامي أحمد عبدالله');
-const getCurrentTenantIdMock = vi.fn(() => 'tenant-1');
+const getCurrentTenantIdMock = vi.fn<() => string | null>(() => 'tenant-1');
 vi.mock('../../../constants', () => ({
   loadOfficeSetting: (...a: Parameters<typeof loadOfficeSettingMock>) => loadOfficeSettingMock(...a),
   getCurrentTenantId: (...a: Parameters<typeof getCurrentTenantIdMock>) => getCurrentTenantIdMock(...a),
