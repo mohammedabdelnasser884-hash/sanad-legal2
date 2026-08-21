@@ -1625,6 +1625,186 @@ export interface Database {
         // على .insert()/.update() في كل الجداول. مفيش foreign keys متضمّنة
         // هنا (محتاجة استعلام تاني على information_schema)، فسايبينها فاضية.
         Relationships: []
+      },
+      document_templates: {
+        Row: {
+          id: string
+          tenant_id: string | null
+          category: string
+          name_ar: string
+          description: string | null
+          is_system: boolean
+          status: string
+          current_published_version_id: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id?: string | null
+          category: string
+          name_ar: string
+          description?: string | null
+          is_system?: boolean
+          status?: string
+          current_published_version_id?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string | null
+          category?: string
+          name_ar?: string
+          description?: string | null
+          is_system?: boolean
+          status?: string
+          current_published_version_id?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      },
+      template_versions: {
+        Row: {
+          id: string
+          template_id: string
+          version_number: number
+          body_template: string
+          status: string
+          published_at: string | null
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          template_id: string
+          version_number: number
+          body_template: string
+          status?: string
+          published_at?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          template_id?: string
+          version_number?: number
+          body_template?: string
+          status?: string
+          published_at?: string | null
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      },
+      template_fields: {
+        Row: {
+          id: string
+          template_version_id: string
+          field_key: string
+          label_ar: string
+          field_type: string
+          is_required: boolean
+          binding_source: string | null
+          sort_order: number
+        }
+        Insert: {
+          id?: string
+          template_version_id: string
+          field_key: string
+          label_ar: string
+          field_type: string
+          is_required?: boolean
+          binding_source?: string | null
+          sort_order?: number
+        }
+        Update: {
+          id?: string
+          template_version_id?: string
+          field_key?: string
+          label_ar?: string
+          field_type?: string
+          is_required?: boolean
+          binding_source?: string | null
+          sort_order?: number
+        }
+        Relationships: []
+      },
+      generated_documents: {
+        Row: {
+          id: string
+          tenant_id: string
+          template_id: string
+          template_version_id: string
+          case_id: string | null
+          source_mode: string
+          field_values_json: Json
+          document_content_json: Json
+          rendered_html: string | null
+          status: string
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          template_id: string
+          template_version_id: string
+          case_id?: string | null
+          source_mode: string
+          field_values_json?: Json
+          document_content_json: Json
+          rendered_html?: string | null
+          status?: string
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          template_id?: string
+          template_version_id?: string
+          case_id?: string | null
+          source_mode?: string
+          field_values_json?: Json
+          document_content_json?: Json
+          rendered_html?: string | null
+          status?: string
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      },
+      case_document_links: {
+        Row: {
+          id: string
+          case_id: string
+          generated_document_id: string
+          stored_file_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          case_id: string
+          generated_document_id: string
+          stored_file_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          case_id?: string
+          generated_document_id?: string
+          stored_file_id?: string | null
+          created_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {
