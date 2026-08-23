@@ -4,6 +4,7 @@ import { Inp } from '@/shared/ui/Inp';
 import { Sel } from '@/shared/ui/Sel';
 import { formatArDate } from '@/shared/ui/arabicLocale';
 import type { CaseDocWithUrl } from '../hooks/useCaseDetailActions';
+import GenerateDocumentButton from '../../documentGeneration/components/GenerateDocumentButton';
 
 interface DocsSectionProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
@@ -25,12 +26,16 @@ interface DocsSectionProps {
   setViewingDoc: (doc: CaseDocWithUrl) => void;
   setConfirmDeleteDoc: (v: { id: string; file_name: string | null; storage_path: string | null } | null) => void;
   deletingDocId: string | null;
+  // ⚡ NEW (خطة توليد المستندات القانونية، المرحلة 3): اختياري عشان
+  // ميكسرش أي استدعاء تاني حالي لـDocsSection من غير السياق ده.
+  onGenerateDocument?: () => void;
 }
 
 function DocsSection({
   fileInputRef, handleFileSelect, showDocForm, setShowDocForm, pendingFile, setPendingFile,
   docLabel, setDocLabel, docCategory, setDocCategory, handleUploadDoc, uploadingDoc,
   docs, docSearch, setDocSearch, loadingSessions, setViewingDoc, setConfirmDeleteDoc, deletingDocId,
+  onGenerateDocument,
 }: DocsSectionProps) {
   return React.createElement('div', {className: "space-y-4 fade-in"},
 
@@ -50,15 +55,18 @@ function DocsSection({
                     style: {display: 'none'}
                 }),
 
-                // زر الرفع
-                !showDocForm && React.createElement('button', {
-                    'data-testid': 'doc-upload-toggle',
-                    onClick: () => fileInputRef.current && fileInputRef.current.click(),
-                    className: "w-full py-4 border-2 border-dashed border-purple-500/30 rounded-2xl flex flex-col items-center justify-center gap-2 text-purple-400 hover:bg-purple-500/5 transition-all active:scale-[0.98]"
-                },
-                    React.createElement('span', {className: "text-2xl"}, "📎"),
-                    React.createElement('span', {className: "text-xs font-black"}, "رفع مستند جديد"),
-                    React.createElement('span', {className: "text-[9px] text-slate-500"}, "صور · PDF · Word · Excel · PowerPoint")
+                // زر الرفع + زر توليد مستند (خطة توليد المستندات القانونية، المرحلة 3)
+                !showDocForm && React.createElement('div', {className: "grid grid-cols-1 sm:grid-cols-2 gap-3"},
+                    React.createElement('button', {
+                        'data-testid': 'doc-upload-toggle',
+                        onClick: () => fileInputRef.current && fileInputRef.current.click(),
+                        className: "w-full py-4 border-2 border-dashed border-purple-500/30 rounded-2xl flex flex-col items-center justify-center gap-2 text-purple-400 hover:bg-purple-500/5 transition-all active:scale-[0.98]"
+                    },
+                        React.createElement('span', {className: "text-2xl"}, "📎"),
+                        React.createElement('span', {className: "text-xs font-black"}, "رفع مستند جديد"),
+                        React.createElement('span', {className: "text-[9px] text-slate-500"}, "صور · PDF · Word · Excel · PowerPoint")
+                    ),
+                    onGenerateDocument && React.createElement(GenerateDocumentButton, { onClick: onGenerateDocument })
                 ),
 
                 // فورم تصنيف المستند بعد اختيار الملف
