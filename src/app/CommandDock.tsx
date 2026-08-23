@@ -36,6 +36,7 @@ function CommandDock({
                 ...[
                     { tab: 'clients' as TabName,   icon: I.Person, label: 'الموكلين',    color: 'text-emerald-400', inactiveBg: 'bg-emerald-500/15', inactiveColor: 'text-emerald-300', activeBg: 'bg-emerald-500/25' },
                     { tab: 'documents' as TabName, icon: I.Folder, label: 'المستندات',   color: 'text-purple-400',  inactiveBg: 'bg-purple-500/15',  inactiveColor: 'text-purple-300',  activeBg: 'bg-purple-500/25' },
+                    { tab: 'legalDocs' as TabName, icon: I.Doc,    label: 'مستندات قانونية', color: 'text-sky-400', inactiveBg: 'bg-sky-500/15', inactiveColor: 'text-sky-300', activeBg: 'bg-sky-500/25' },
                     // ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3): can_view_fees
                     // مقفول بلا استثناء لغير admin (قرار 2.1) = نفس isAdmin دايمًا —
                     // بالتالي زرار "الأتعاب" اتلحق بنفس شرط "لوحة الإدارة" تحت.
@@ -152,18 +153,18 @@ function CommandDock({
                 onClick: () => setShowMore((v) => !v),
                 'data-testid': 'nav-more-toggle',
                 className: 'flex flex-col items-center justify-center gap-[3px] flex-1 h-[50px] rounded-[18px] transition-all duration-200 active:scale-90 relative',
-                style: (showMore || ['clients', 'fees', 'documents', 'admin'].includes(tab)) ? { background: 'rgba(212,175,55,0.1)' } : {}
+                style: (showMore || ['clients', 'fees', 'documents', 'legalDocs', 'admin'].includes(tab)) ? { background: 'rgba(212,175,55,0.1)' } : {}
             },
                 React.createElement('svg', {
-                    className: `w-6 h-6 transition-all duration-200 ${(showMore || ['clients', 'fees', 'documents', 'admin'].includes(tab)) ? 'text-premium-gold -translate-y-[1px]' : 'text-white/80'}`,
+                    className: `w-6 h-6 transition-all duration-200 ${(showMore || ['clients', 'fees', 'documents', 'legalDocs', 'admin'].includes(tab)) ? 'text-premium-gold -translate-y-[1px]' : 'text-white/80'}`,
                     fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', strokeWidth: '2'
                 },
                     React.createElement('circle', { cx: '5',  cy: '12', r: '1.5', fill: 'currentColor' }),
                     React.createElement('circle', { cx: '12', cy: '12', r: '1.5', fill: 'currentColor' }),
                     React.createElement('circle', { cx: '19', cy: '12', r: '1.5', fill: 'currentColor' })
                 ),
-                React.createElement('span', { className: `text-[9.5px] font-bold transition-colors duration-200 ${(showMore || ['clients', 'fees', 'documents', 'admin'].includes(tab)) ? 'text-premium-gold' : 'text-white/70'}` }, 'المزيد'),
-                (showMore || ['clients', 'fees', 'documents', 'admin'].includes(tab)) && React.createElement('div', { className: 'absolute bottom-[5px] left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full', style: { background: '#D4AF37', boxShadow: '0 0 10px 3px rgba(212,175,55,0.5)', animation: 'glowPulse 2.5s ease-in-out infinite' } })
+                React.createElement('span', { className: `text-[9.5px] font-bold transition-colors duration-200 ${(showMore || ['clients', 'fees', 'documents', 'legalDocs', 'admin'].includes(tab)) ? 'text-premium-gold' : 'text-white/70'}` }, 'المزيد'),
+                (showMore || ['clients', 'fees', 'documents', 'legalDocs', 'admin'].includes(tab)) && React.createElement('div', { className: 'absolute bottom-[5px] left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full', style: { background: '#D4AF37', boxShadow: '0 0 10px 3px rgba(212,175,55,0.5)', animation: 'glowPulse 2.5s ease-in-out infinite' } })
             )
         )
     );
