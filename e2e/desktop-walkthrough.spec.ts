@@ -41,7 +41,15 @@ test('جولة فيديو كاملة على الديسكتوب', async ({ page }
   await pause(1500);
 
   // 2) إضافة قضية جديدة (بيانات كاملة: قيد رسمي + طرفين)
-  const caseTitle = `جولة فيديو — قضية ${Date.now()}`;
+  //
+  // 🔒 FIX (تحليل تسريب بيانات E2E — 19 أغسطس 2026): العناوين التلاتة في
+  // الملف ده (قضية/جلسة/تذكير) كانت "جولة فيديو — ..." من غير ماركر
+  // "اختبار E2E" خالص، فـglobal-teardown.ts (اللي شرطه MARKER =
+  // '%اختبار E2E%') كان بيفوّتها تمامًا — تراكم بقايا دائم من كل تشغيلة.
+  // اتضاف الماركر لبداية العنوان في الثلاثة (هنا وتحت) عشان التنظيف
+  // التلقائي يشتغل زي أي تست تاني. البقايا القديمة اتمسحت يدويًا بسكريبت
+  // SQL منفصل (مش جزء من الكود).
+  const caseTitle = `اختبار E2E — جولة فيديو — قضية ${Date.now()}`;
   await createCase(page, caseTitle);
   await pause(1500);
 
@@ -54,12 +62,12 @@ test('جولة فيديو كاملة على الديسكتوب', async ({ page }
   await pause(800);
 
   // 3) إضافة جلسة مستقلة (تقويم/جلسات)
-  const sessionTitle = `جولة فيديو — جلسة ${Date.now()}`;
+  const sessionTitle = `اختبار E2E — جولة فيديو — جلسة ${Date.now()}`;
   await createStandaloneSession(page, sessionTitle);
   await pause(2000);
 
   // 4) تذكير جديد
-  const reminderTitle = `جولة فيديو — تذكير ${Date.now()}`;
+  const reminderTitle = `اختبار E2E — جولة فيديو — تذكير ${Date.now()}`;
   await createReminder(page, reminderTitle);
   await pause(1800);
 
