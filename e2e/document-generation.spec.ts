@@ -37,7 +37,12 @@ test('توليد مستند قانوني من قضية مفتوحة، تصدير
   await page.getByTestId('doc-gen-submit-btn').click();
 
   // 4) DocumentPreviewEditor — معاينة المستند المولّد
-  await page.getByTestId('doc-gen-export-pdf-btn').waitFor({ state: 'visible', timeout: 15_000 });
+  // ⚡ FIX (24 أغسطس 2026): generate() دلوقتي بسقف داخلي 20 ثانية (بدل
+  // 8) — راجع useGenerateDocument.ts. الـ15 ثانية القديمة هنا كانت أقل
+  // من السقف الداخلي نفسه، يعني الاختبار كان مضمون يفشل حتى لو العملية
+  // نجحت فعليًا في آخر لحظة. رفعتها لـ25 ثانية عشان تدّي هامش حقيقي بعد
+  // أطول سيناريو ممكن للسلسلة الداخلية + وقت الرندر.
+  await page.getByTestId('doc-gen-export-pdf-btn').waitFor({ state: 'visible', timeout: 25_000 });
   await expect(page.locator('[data-testid^="doc-gen-preview-section-"]').first()).toBeVisible();
 
   // 5) تصدير PDF
