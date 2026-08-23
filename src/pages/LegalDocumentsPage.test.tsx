@@ -1,0 +1,116 @@
+// ══════════════════════════════════════════════════════════════════
+// LegalDocumentsPage.test.tsx — اختبار ريجريشن للباج:
+//   hasCaseContext كان بيتحسب من initialCaseId (الـprop الحي) بدل ما
+//   يتجمّد زي caseId، فبمجرد ما onInitialCaseConsumed بيرجّع initialCaseId
+//   لـ null في الـparent (بيحصل فورًا بعد أول render)، hasCaseContext كان
+//   بيرجع false ويخلي اختيار قالب يعدّي على SourceModeSelector بدل ما
+//   يقفز مباشرة لـ DynamicFieldsForm (القسم 9.5).
+//
+// الاختبار ده بيحاكي بالظبط سلوك الـparent الحقيقي: initialCaseId بيترجع
+// null بعد أول render (زي ما App.tsx/onInitialCaseConsumed بيعملوا)،
+// وبعدين بيتحقق إن اختيار قالب لسه بيقفز لـ 'fields' مباشرة، مش
+// 'sourceMode'.
+// ══════════════════════════════════════════════════════════════════
+
+import React from 'react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import LegalDocumentsPage from './LegalDocumentsPage';
+import type { DocumentTemplate } from '../features/documentGeneration/types';
+
+const fakeTemplate: DocumentTemplate = {
+  id: 'tmpl-1',
+  name_ar: 'قالب تجريبي',
+} as DocumentTemplate;
+
+// نموك للأطفال عشان نختبر آلة الحالات في LegalDocumentsPage بمعزل عن
+// تفاصيلهم الداخلية (فلترة، شبكة قوالب، إلخ).
+vi.mock('../features/documentGeneration/components/TemplatePicker/TemplatePicker', () => ({
+  default: ({ onSelectTemplate }: { onSelectTemplate: (t: DocumentTemplate) => void }) => (
+    <button data-testid="mock-select-template" onClick={() => onSelectTemplate(fakeTemplate)}>
+      اختر القالب
+    </button>
+  ),
+}));
+
+vi.mock('../features/documentGeneration/components/SourceModeSelector', () => ({
+  default: () => <div data-testid="mock-source-mode-selector">SourceModeSelector</div>,
+}));
+
+vi.mock('../features/documentGeneration/components/DynamicFieldsForm', () => ({
+  default: () => <div data-testid="mock-dynamic-fields-form">DynamicFieldsForm</div>,
+}));
+
+vi.mock('../features/documentGeneration/components/DocumentPreviewEditor', () => ({
+  default: () => <div data-testid="mock-document-preview-editor">DocumentPreviewEditor</div>,
+}));
+
+vi.mock('../features/documentGeneration/hooks/useGenerateDocument', () => ({
+  useGenerateDocument: () => ({
+    fields: [],
+    loadingFields: false,
+    loadError: null,
+    values: {},
+    setValue: vi.fn(),
+    missingRequiredFieldLabels: [],
+    isValid: true,
+    generating: false,
+    generateError: null,
+    generate: vi.fn(),
+  }),
+}));
+
+const navStub = { openModal: vi.fn() } as any;
+
+describe('LegalDocumentsPage — القسم 9.5: تخطي SourceModeSelector لما يكون جاي من قضية', () => {
+  it('لازم يقفز لـ DynamicFieldsForm مباشرة بعد اختيار القالب، حتى بعد ما initialCaseId يترجع null من الـparent (زي onInitialCaseConsumed الحقيقي)', () => {
+    // بنحاكي الـparent الحقيقي (App.tsx/LegalDocumentsPage wrapper):
+    // initialCaseId بيترجع null فورًا بعد أول render لما onInitialCaseConsumed
+    // ينادى — ده لازم ميأثرش على تصرف الصفحة بعد كده.
+    function Wrapper() {
+      const [initialCaseId, setInitialCaseId] = React.useState<string | null>('case-123');
+      return (
+        <LegalDocumentsPage
+          initialCaseId={initialCaseId}
+          onInitialCaseConsumed={() => setInitialCaseId(null)}
+          nav={navStub}
+        />
+      );
+    }
+
+    render(<Wrapper />);
+
+    // اختيار قالب من الشبكة
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+
+    // المفروض يقفز مباشرة للفورم، وميظهرش SourceModeSelector أبدًا
+    expect(screen.getByTestId('mock-dynamic-fields-form')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-source-mode-selector')).not.toBeInTheDocument();
+  });
+
+  it('لما مفيش initialCaseId من الأساس، اختيار قالب لازم يعدّي على SourceModeSelector عادي', () => {
+    render(<LegalDocumentsPage initialCaseId={null} nav={navStub} />);
+
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+
+    expect(screen.getByTestId('mock-source-mode-selector')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-dynamic-fields-form')).not.toBeInTheDocument();
+  });
+
+  it('زرار "+ مستند جديد" لازم يفضل مختفي لما الصفحة جاية من قضية (hasCaseContext=true) حتى بعد استهلاك initialCaseId', () => {
+    function Wrapper() {
+      const [initialCaseId, setInitialCaseId] = React.useState<string | null>('case-123');
+      return (
+        <LegalDocumentsPage
+          initialCaseId={initialCaseId}
+          onInitialCaseConsumed={() => setInitialCaseId(null)}
+          nav={navStub}
+        />
+      );
+    }
+
+    render(<Wrapper />);
+
+    expect(screen.queryByTestId('doc-gen-new-document-btn')).not.toBeInTheDocument();
+  });
+});
