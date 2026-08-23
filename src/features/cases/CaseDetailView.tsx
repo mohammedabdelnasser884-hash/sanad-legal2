@@ -77,6 +77,10 @@ interface CaseDetailViewProps {
     // إنه فعلاً محذوف مش بس مش محمّل. راجع useAppData.ts (ensureClientsLoaded).
     onEnsureClientsLoaded?: (ids: (string | null | undefined)[]) => void | Promise<void>;
     onClose: () => void;
+    // ⚡ NEW (خطة توليد المستندات القانونية، المرحلة 3): زرار "توليد مستند"
+    // جوه تبويب docs — اختياري عشان ميكسرش أي مكان تاني بيستخدم CaseDetailView
+    // من غير السياق ده.
+    onGenerateDocument?: (caseId: string) => void;
     onUpdate?: (newStatus: string) => void;
     onDelete?: (caseId: string) => void | Promise<void>;
     onEdit?: (caseId: string, form: CaseFormSubmitData) => void | boolean | Promise<void | boolean>;
@@ -128,7 +132,7 @@ interface CaseDetailViewProps {
     openNewClientModal?: (ctx: ClientModalContext) => void;
 }
 
-function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, onClose, onUpdate, onDelete, onEdit, onLinkClient, onLinkClientForParty, onUnlinkClient, onUnlinkClientForParty, onCreateAndLinkClient, onCreateAndLinkClientForParty, onNotify, initialTab='timeline', profile=null, country=null, savingCase=false, onOpenClientProfile, clientProfileOpen=false, openNewClientModal}: CaseDetailViewProps){
+function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, onClose, onUpdate, onDelete, onEdit, onLinkClient, onLinkClientForParty, onUnlinkClient, onUnlinkClientForParty, onCreateAndLinkClient, onCreateAndLinkClientForParty, onNotify, initialTab='timeline', profile=null, country=null, savingCase=false, onOpenClientProfile, clientProfileOpen=false, openNewClientModal, onGenerateDocument}: CaseDetailViewProps){
     // 🆕 (F2): بيستخدم بس في overlay مودال "تعديل القضية" (showEditCase)
     // اللي بيفتح من جوّه شاشة تفاصيل القضية دي — راجع تعليقات
     // useModalPresentation.ts لتفاصيل السلوك.
@@ -698,7 +702,7 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
             activeSection === 'notes' && React.createElement(NotesSection, { showAddNote, setShowAddNote, noteText, setNoteText, handleAddNote, savingNote, loadingSessions, notes, editingNoteId, setEditingNoteId, editingNoteText, setEditingNoteText, handleUpdateNote, deletingNoteId, setConfirmDeleteNote }),
 
             // ═══ المستندات ═══
-            activeSection === 'docs' && React.createElement(DocsSection, { fileInputRef, handleFileSelect, showDocForm, setShowDocForm, pendingFile, setPendingFile, docLabel, setDocLabel, docCategory, setDocCategory, handleUploadDoc, uploadingDoc, docs, docSearch, setDocSearch, loadingSessions, setViewingDoc, setConfirmDeleteDoc, deletingDocId }),
+            activeSection === 'docs' && React.createElement(DocsSection, { fileInputRef, handleFileSelect, showDocForm, setShowDocForm, pendingFile, setPendingFile, docLabel, setDocLabel, docCategory, setDocCategory, handleUploadDoc, uploadingDoc, docs, docSearch, setDocSearch, loadingSessions, setViewingDoc, setConfirmDeleteDoc, deletingDocId, onGenerateDocument: onGenerateDocument ? () => onGenerateDocument(caseData.id) : undefined }),
 
             // ═══ البيانات ═══
             activeSection === 'info' && React.createElement(InfoSection, {
