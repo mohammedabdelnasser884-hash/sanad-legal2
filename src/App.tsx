@@ -22,6 +22,7 @@ import FeesTab from './features/fees/FeesTab';
 import SessionsCalendar from '@/features/calendar/sessions-calendar/SessionsCalendar';
 import RemindersTab from './features/reminders/RemindersTab';
 import ArchiveTab from './features/dashboard/ArchiveTab';
+import LegalDocumentsPage from './pages/LegalDocumentsPage';
 // ⚡ FIX (تقرير تشخيص الديسكتوب، Phase 4، بند 4 — تقسيم حزمة الـ JS، 15
 // أغسطس 2026): AdminPanel وكل الأقسام الإدارية التسعة اللي بيستوردها
 // (~9000 سطر تقريبًا) كانوا بيتحملوا statically ضمن الـ bundle الرئيسي
@@ -133,6 +134,11 @@ function App() {
     const [savingClient,   setSavingClient]   = useState(false);
     const [sessionsInitialTab,      setSessionsInitialTab]      = useState<'month'|'calendar'|'missed'|null>(null);
     const [remindersInitialFilter,  setRemindersInitialFilter]  = useState<string|null>(null);
+    // ⚡ NEW (خطة توليد المستندات القانونية، المرحلة 3): caseId جاي من زرار
+    // "توليد مستند" جوه تبويب docs بالـCaseDetailView — بيتقرا مرة واحدة بس
+    // من جوه LegalDocumentsPage (onInitialCaseConsumed) عشان زيارة تانية
+    // للتاب من غير سياق قضية متبدأش نفس تدفق case_bound تلقائيًا.
+    const [legalDocsInitialCaseId, setLegalDocsInitialCaseId] = useState<string | null>(null);
 
     const [selectedCase,      _setSelectedCase]  = useState<MappedCase | null>(null);
     const [selectedCaseInitialTab, setSelectedCaseInitialTab] = useState('timeline');
@@ -638,6 +644,11 @@ function App() {
                 : React.createElement('div', { className: 'text-center text-slate-500 text-xs pt-20' }, 'غير مصرح لك بهذا القسم')
             ),
             tab === 'documents' && DocsTab,
+            tab === 'legalDocs' && React.createElement(LegalDocumentsPage, {
+                initialCaseId: legalDocsInitialCaseId,
+                onInitialCaseConsumed: () => setLegalDocsInitialCaseId(null),
+                nav,
+            }),
             tab === 'admin' && (isAdmin
                 // ⚡ FIX (8 أغسطس 2026 — البند 5 من تقرير حالة التنفيذ): clientsWithExtras
                 // بدل clients الخام — useAdminArchive بيدوّر بـ clients.find(id) عشان
@@ -692,6 +703,11 @@ function App() {
             setShowSearch, setShowAI, setShowAIComingSoon, setShowCaseModal, setShowNewSessionModal,
             setShowLawyerModal, setShowClientModal, setTab,
             setSelectedCase, setSelectedClient,
+            // ⚡ NEW (خطة توليد المستندات القانونية، المرحلة 3): زرار "توليد
+            // مستند" جوه تبويب docs بالـCaseDetailView — بيحفظ caseId وينقل
+            // التاب لـlegalDocs؛ setTab بينادي navigateTo اللي بيمسح
+            // modalStack تلقائيًا فمفيش داعي نقفل caseDetail يدويًا.
+            onGenerateDocument: (caseId: string) => { setLegalDocsInitialCaseId(caseId); setTab('legalDocs'); },
             _setDeleteConfirm, _setSelectedClient, _setSelectedCase,
             setCases, setCasesFilter, setCasesPage,
             fetchCases, fetchTodaySessions, fetchUpcomingSessions, fetchMissedSessions,
