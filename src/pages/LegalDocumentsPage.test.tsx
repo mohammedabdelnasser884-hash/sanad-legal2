@@ -97,8 +97,8 @@ describe('LegalDocumentsPage — القسم 9.5: تخطي SourceModeSelector ل�
     fireEvent.click(screen.getByTestId('mock-select-template'));
 
     // المفروض يقفز مباشرة للفورم، وميظهرش SourceModeSelector أبدًا
-    expect(screen.getByTestId('mock-dynamic-fields-form')).toBeInTheDocument();
-    expect(screen.queryByTestId('mock-source-mode-selector')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mock-dynamic-fields-form')).toBeTruthy();
+    expect(screen.queryByTestId('mock-source-mode-selector')).toBeNull();
   });
 
   it('لما مفيش initialCaseId من الأساس، اختيار قالب لازم يعدّي على SourceModeSelector عادي', () => {
@@ -106,8 +106,8 @@ describe('LegalDocumentsPage — القسم 9.5: تخطي SourceModeSelector ل�
 
     fireEvent.click(screen.getByTestId('mock-select-template'));
 
-    expect(screen.getByTestId('mock-source-mode-selector')).toBeInTheDocument();
-    expect(screen.queryByTestId('mock-dynamic-fields-form')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mock-source-mode-selector')).toBeTruthy();
+    expect(screen.queryByTestId('mock-dynamic-fields-form')).toBeNull();
   });
 
   it('زرار "+ مستند جديد" لازم يفضل مختفي لما الصفحة جاية من قضية (hasCaseContext=true) حتى بعد استهلاك initialCaseId', () => {
@@ -124,6 +124,6 @@ describe('LegalDocumentsPage — القسم 9.5: تخطي SourceModeSelector ل�
 
     render(<Wrapper />);
 
-    expect(screen.queryByTestId('doc-gen-new-document-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('doc-gen-new-document-btn')).toBeNull();
   });
 });
