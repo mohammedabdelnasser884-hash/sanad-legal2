@@ -1,0 +1,168 @@
+// ══════════════════════════════════════════════════════════════
+//  useFormDraft — حفظ مسودة أي فورم (قضية/جلسة مستقلة/موكل...)
+//  تلقائيًا في localStorage أثناء الكتابة، عشان لو المستخدم خرج من
+//  التطبيق فجأة قبل ما يدوس "حفظ" (مكالمة، تطبيق تاني ياخد الفوكس،
+//  إغلاق من الميموري...) ميرجعش يلاقي الفورم فاضي.
+//
+//  الاستخدام (جوه أي مكوّن فورم، بعد useState(form)):
+//
+//    const draft = useFormDraft({ key: 'new-case', data: form });
+//    useEffect(() => {
+//        if (draft.restoredDraft) {
+//            setForm(draft.restoredDraft);
+//            toast('تم استرجاع بيانات كنت بتكتبها قبل كده');
+//            draft.dismissRestoredDraft();
+//        }
+//        // eslint-disable-next-line react-hooks/exhaustive-deps
+//    }, [draft.restoredDraft]);
+//    // بعد نجاح الحفظ الفعلي فقط:
+//    draft.clearDraft();
+//
+//  المفتاح (key) لازم يكون مميز لكل فورم/سجل — مثلاً 'new-case' للفورم
+//  الفاضي، أو `edit-case:${caseId}` لفورم تعديل قضية بعينها، عشان
+//  مسودة قضية معينة ما تختلطش بمسودة قضية تانية.
+//
+//  الفورمات اللي فيها بيانات محمّلة من السيرفر أصلاً (Edit*) لازم تبعت
+//  enabled=false لحد ما البيانات الأولية تتحمّل فعليًا، عشان الفحص
+//  الأول للمسودة (وأي حفظ تلقائي) ميحصلش على بيانات فاضية مؤقتة.
+//
+//  خطة حفظ المسودات التلقائي — 1 أغسطس 2026.
+// ══════════════════════════════════════════════════════════════
+
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { db } from '../../supabaseClient';
+
+const DEBOUNCE_MS = 800;
+// ⚡ FIX (مسودات قديمة بتفاجئ المستخدم — 9 أغسطس 2026): لو مفيش لحظة
+// تأكيد صريحة (تطبيق اتقفل من الميموري، مكالمة، إلخ)، المسودة كانت بتفضل
+// محفوظة للأبد. أي مسودة أقدم من المدة دي بنتجاهلها تلقائيًا وقت الفتح
+// وبنمسحها، حتى لو محدش أكّد حاجة صراحة.
+const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000; // يوم واحد
+
+interface StoredDraft<T> {
+    data: T;
+    savedAt: number;
+}
+
+// هوية المستخدم بتتجاب مرة واحدة بس وتتكاش، عشان لو أكتر من فورم فاتح
+// نفس الوقت (أو بعضهم ورا بعض) ميحصلش نداء auth.getSession() لكل واحد.
+let cachedUserId: string | null = null;
+let userIdPromise: Promise<string> | null = null;
+
+async function resolveUserId(): Promise<string> {
+    if (cachedUserId) return cachedUserId;
+    if (!userIdPromise) {
+        userIdPromise = db.auth.getSession()
+            .then(({ data }) => {
+                cachedUserId = data.session?.user?.id || 'anon';
+                return cachedUserId;
+            })
+            .catch(() => 'anon');
+    }
+    return userIdPromise;
+}
+
+// ⚠️ المفتاح متضمّن هوية المستخدم عشان لو محامي تاني بيستخدم نفس
+// الجهاز (متصفح مشترك)، ميشوفش مسودة زميله ولا يختلط بيها.
+function storageKey(formKey: string, userId: string): string {
+    return `sanad_draft_v1_${userId}_${formKey}`;
+}
+
+export interface UseFormDraftOptions<T> {
+    /** مفتاح مميز لكل فورم/سجل — راجع الشرح فوق */
+    key: string;
+    /** بيانات الفورم الحالية (لازم تكون قابلة لـ JSON.stringify) */
+    data: T;
+    /** لو false، الـhook مبيعملش أي حفظ ولا فحص مسودات (مثلاً: لحد ما بيانات فورم التعديل تتحمّل) */
+    enabled?: boolean;
+    /** اختياري: دالة بترجع true لو الفورم/المسودة فاضية فعليًا (فمفيش داعي نخزنها أو نعرضها كمسودة) */
+    isEmpty?: (data: T) => boolean;
+}
+
+export interface UseFormDraftResult<T> {
+    /** مسودة اتلاقت محفوظة عند الفتح — null لو مفيش أو لسه بيتفحص */
+    restoredDraft: T | null;
+    /** ينادى بعد ما الفورم الأب يطبّق الـrestoredDraft، عشان الحلقة متتكررش */
+    dismissRestoredDraft: () => void;
+    /** ينادى بعد نجاح الحفظ الفعلي في قاعدة البيانات */
+    clearDraft: () => void;
+}
+
+export function useFormDraft<T>({ key, data, enabled = true, isEmpty }: UseFormDraftOptions<T>): UseFormDraftResult<T> {
+    const [restoredDraft, setRestoredDraft] = useState<T | null>(null);
+    const [checked, setChecked] = useState(false);
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const userIdRef = useRef<string>('anon');
+    // ⚡ FIX (تقرير التحقّق — النقطة 7): بعد نجاح الحفظ الفعلي (clearDraft)،
+    // لازم نمنع أي جدولة save تلقائي جديدة لفترة قصيرة، وإلا لو الفورم
+    // فضل mounted وrender جديد بنى نسخة جديدة من `data` (reference جديد
+    // بنفس المحتوى)، الـeffect تحت هيجدول timer جديد ويرجّع نفس المسودة
+    // اللي اتمسحت لتوّها في localStorage.
+    const suppressUntilRef = useRef<number>(0);
+
+    // فحص أوّلي: هل فيه مسودة محفوظة من قبل لنفس المفتاح؟
+    useEffect(() => {
+        if (!enabled) return undefined;
+        let cancelled = false;
+        setChecked(false);
+        resolveUserId().then((uid) => {
+            if (cancelled) return;
+            userIdRef.current = uid;
+            try {
+                const raw = localStorage.getItem(storageKey(key, uid));
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    // شكل قديم (قبل إضافة savedAt): كان بيتخزن الـdata مباشرة
+                    // من غير غلاف. نتعامل معاه كمسودة "طازة" مرة واحدة بس —
+                    // أول حفظ تلقائي جديد هيغلّفها بالشكل الجديد.
+                    const isWrapped = parsed && typeof parsed === 'object' && 'savedAt' in parsed && 'data' in parsed;
+                    const stored: StoredDraft<T> = isWrapped
+                        ? (parsed as StoredDraft<T>)
+                        : { data: parsed as T, savedAt: Date.now() };
+                    const isStale = Date.now() - stored.savedAt > DRAFT_MAX_AGE_MS;
+                    if (isStale) {
+                        localStorage.removeItem(storageKey(key, uid));
+                    } else if (!isEmpty || !isEmpty(stored.data)) {
+                        setRestoredDraft(stored.data);
+                    }
+                }
+            } catch { /* مسودة تالفة أو localStorage معطلة — نتجاهل، مش خطأ حرج */ }
+            setChecked(true);
+        });
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key, enabled]);
+
+    // حفظ تلقائي (debounced) بعد كل تغيير في بيانات الفورم
+    useEffect(() => {
+        if (!enabled || !checked) return undefined;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
+            // ⚡ لو لسه جوه نافذة الـsuppress بعد آخر clearDraft، متكتبش —
+            // ده اللي بيمنع رجوع المسودة بعد الحفظ الناجح.
+            if (Date.now() < suppressUntilRef.current) return;
+            try {
+                if (isEmpty && isEmpty(data)) {
+                    localStorage.removeItem(storageKey(key, userIdRef.current));
+                } else {
+                    const stored: StoredDraft<T> = { data, savedAt: Date.now() };
+                    localStorage.setItem(storageKey(key, userIdRef.current), JSON.stringify(stored));
+                }
+            } catch { /* localStorage ممتلئة/معطلة — الحفظ الأساسي مش متأثر، نتجاهل بصمت */ }
+        }, DEBOUNCE_MS);
+        return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data, enabled, checked, key]);
+
+    const clearDraft = useCallback(() => {
+        try { localStorage.removeItem(storageKey(key, userIdRef.current)); } catch { /* ignore */ }
+        // ألغِ أي timer مجدول حاليًا، وامنع أي جدولة جديدة لـ3 ثواني —
+        // كافية عشان أي re-render/setState بعد الحفظ مباشرة مايرجّعش المسودة.
+        if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+        suppressUntilRef.current = Date.now() + 3000;
+    }, [key]);
+
+    const dismissRestoredDraft = useCallback(() => setRestoredDraft(null), []);
+
+    return { restoredDraft, dismissRestoredDraft, clearDraft };
+}
