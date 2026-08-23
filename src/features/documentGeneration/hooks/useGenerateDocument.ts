@@ -127,18 +127,49 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
     if (!templateId || !sourceMode) return null;
     setGenerating(true);
     setGenerateError(null);
+
+    // ⚡ FIX (23 أغسطس 2026، تكملة الفيكس فوق): generateDocument() نفسها —
+    // اللي بتتنفذ عند الضغط على "توليد مستند" — عندها نفس المشكلة بالظبط
+    // اللي كانت في useEffect جلب الحقول: عدة نداءات db.from(...) متتالية
+    // (resolveTemplateVersion، template_fields، resolveCaseBindings،
+    // loadOfficeSetting، الـ insert) من غير أي guard/timeout. لو أي واحدة
+    // فيهم علّقت، generating كانت هتفضل true للأبد وزرار "توليد المستند"
+    // هيفضل معلّق من غير أي خطأ يبان (CI هنا وقع بالظبط على انتظار زرار
+    // "تصدير PDF" اللي مستحيل يظهر لحد ما generate() ترجع). نفس نمط
+    // Promise.race + createFetchGuard المستخدم فوق بالظبط — توقيع
+    // generateDocument() مقفول زي ما هو (مفيش abortSignal تمريره ليها مباشرة).
+    const guard = createFetchGuard();
+    if (guard.offline) {
+      setGenerateError('أنت أوف لاين — تعذّر توليد المستند. تحقق من الاتصال بالإنترنت.');
+      setGenerating(false);
+      return null;
+    }
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      guard.controller.signal.addEventListener('abort', () => reject(new Error('timeout')));
+    });
+
     try {
-      const doc = await generateDocument({
-        templateId,
-        caseId: caseId ?? null,
-        sourceMode,
-        manualValues: values,
-      });
+      const doc = await Promise.race([
+        generateDocument({
+          templateId,
+          caseId: caseId ?? null,
+          sourceMode,
+          manualValues: values,
+        }),
+        timeoutPromise,
+      ]);
       return doc;
     } catch (e: unknown) {
-      setGenerateError(e instanceof Error ? e.message : 'تعذّر توليد المستند، تحقق من البيانات المطلوبة');
+      const timedOut = guard.didTimeOut();
+      setGenerateError(
+        timedOut
+          ? 'انتهت مهلة توليد المستند. تحقق من الاتصال بالإنترنت وحاول تاني.'
+          : (e instanceof Error ? e.message : 'تعذّر توليد المستند، تحقق من البيانات المطلوبة')
+      );
+      recordError('doc_generation_generate', timedOut ? 'timeout' : (e instanceof Error ? e.message : String(e)));
       return null;
     } finally {
+      guard.cleanup();
       setGenerating(false);
     }
   }, [templateId, caseId, sourceMode, values]);
