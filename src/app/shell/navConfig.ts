@@ -56,6 +56,7 @@ export const primaryNavItems: NavItem[] = [
 export const moreNavItems: NavItem[] = [
     { tab: 'clients',   icon: I.Person, label: 'الموكلين',    testId: 'nav-more-clients' },
     { tab: 'documents', icon: I.Folder, label: 'المستندات',   testId: 'nav-more-documents' },
+    { tab: 'legalDocs', icon: I.Doc,    label: 'المستندات القانونية', testId: 'nav-more-legalDocs' },
     { tab: 'fees',      icon: I.Money,  label: 'الأتعاب',     testId: 'nav-more-fees', adminOnly: true },
     { tab: 'admin',     icon: I.Shield, label: 'لوحة الإدارة', testId: 'nav-more-admin', adminOnly: true },
 ];
