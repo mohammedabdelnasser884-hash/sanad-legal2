@@ -48,11 +48,13 @@ export default function SourceModeSelector({ onSelectMode, onBack }: SourceModeS
     let cancelled = false;
     setSearching(true);
     const t = setTimeout(() => {
-      db.from('cases')
-        .select('id, title, case_number_official')
-        .is('deleted_at', null)
-        .or(`title.ilike.%${q}%,case_number_official.ilike.%${q}%`)
-        .limit(15)
+      Promise.resolve(
+        db.from('cases')
+          .select('id, title, case_number_official')
+          .is('deleted_at', null)
+          .or(`title.ilike.%${q}%,case_number_official.ilike.%${q}%`)
+          .limit(15)
+      )
         .then(({ data }) => { if (!cancelled) setResults((data ?? []) as CaseSearchResult[]); })
         .finally(() => { if (!cancelled) setSearching(false); });
     }, 300);
