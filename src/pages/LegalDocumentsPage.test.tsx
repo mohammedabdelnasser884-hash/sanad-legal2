@@ -18,6 +18,19 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import LegalDocumentsPage from './LegalDocumentsPage';
 import type { DocumentTemplate } from '../features/documentGeneration/types';
 
+// LegalDocumentsPage.tsx بيستورد { I } من ../constants، واللي بدوره بيستورد
+// db من ./supabaseClient — وده بينادي createClient() فعليًا وقت الـimport
+// (top-level)، فبيرمي "supabaseUrl is required." في بيئة الاختبار (مفيش
+// VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY). نفس النمط المستخدم في
+// LoginScreen.test.tsx — نموك supabaseClient قبل ما أي حاجة تستورده.
+vi.mock('../supabaseClient', () => ({
+  db: {
+    from: vi.fn(),
+    auth: { getSession: vi.fn(), onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })) },
+    functions: { invoke: vi.fn() },
+  },
+}));
+
 const fakeTemplate: DocumentTemplate = {
   id: 'tmpl-1',
   name_ar: 'قالب تجريبي',
