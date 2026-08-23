@@ -81,6 +81,9 @@ interface AppModalsProps {
     setShowLawyerModal: (v: boolean) => void;
     setShowClientModal: (v: boolean) => void;
     setTab: (tab: TabName) => void;
+    // ⚡ NEW (خطة توليد المستندات القانونية، المرحلة 3): زرار "توليد مستند"
+    // جوه تبويب docs بالـCaseDetailView.
+    onGenerateDocument: (caseId: string) => void;
     setSelectedCase: (caseOrUpdater: React.SetStateAction<MappedCase | null>, initialTab?: string) => void;
     setSelectedClient: (clientOrNull: MappedClient | null, openInEditMode?: boolean) => void;
     _setDeleteConfirm: React.Dispatch<React.SetStateAction<DeleteConfirmState | null>>;
@@ -171,7 +174,7 @@ function AppModals({
     deleteConfirm, selectedClient, selectedClientEditMode, selectedCase, selectedCaseInitialTab,
     clientModalContext, openNewClientModal,
     setShowSearch, setShowAI, setShowAIComingSoon, setShowCaseModal, setShowNewSessionModal,
-    setShowLawyerModal, setShowClientModal, setTab,
+    setShowLawyerModal, setShowClientModal, setTab, onGenerateDocument,
     setSelectedCase, setSelectedClient, _setDeleteConfirm, _setSelectedClient, _setSelectedCase,
     setCases, setCasesFilter, setCasesPage,
     fetchCases, fetchTodaySessions, fetchUpcomingSessions, fetchMissedSessions, onStandaloneSessionSaved,
@@ -359,6 +362,7 @@ function AppModals({
             // الداشبورد لحد ما يحصل reload كامل للصفحة (dashboard-tab.spec.ts).
             // دلوقتي بنعمل ريفريش لتلات القوائم لما نقفل شاشة تفاصيل القضية.
             onClose: () => { nav.closeModal('caseDetail'); _setSelectedCase(null); fetchTodaySessions(); fetchUpcomingSessions(); fetchMissedSessions(); },
+            onGenerateDocument,
             onUpdate: (newStatus: string) => {
                 setSelectedCase((p) => ({ ...p, status: newStatus } as MappedCase));
                 setCases((prev) => prev.map((c) => c.id === selectedCase?.id ? { ...c, status: newStatus } : c));
