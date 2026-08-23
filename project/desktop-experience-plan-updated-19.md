@@ -1,0 +1,253 @@
+# خطة تنفيذ — تجربة Desktop احترافية لـ"سَنَد" مع الحفاظ الكامل على Mobile
+
+**تاريخ الفحص الأصلي:** 13 أغسطس 2026
+**تاريخ تقسيم المراحل:** 14 أغسطس 2026 (نسخة 2 — نفس الفحص، بس المراحل A–G مقسّمة داخليًا لمراحل جزئية أصغر)
+**آخر تحديث:** 15 أغسطس 2026 — بعد تسليم F3
+**نوع الملف:** خطة تنفيذ + تتبع حالة حي (Living Status Tracker) — هيتحدث بعد كل مرحلة جزئية.
+
+---
+
+## 0) طريقة العمل الجديدة (التسليم بعد كل مرحلة جزئية)
+
+بدل ما التسليم يحصل بعد كل مرحلة كبيرة (A، B، C...)، هيحصل بعد **كل مرحلة فرعية** (A1، A2، B1، B2...). كل تسليم فيه:
+
+1. **الزيب كامل محدث** — نفس نمط التسليم المعتاد (`sanad-project-updated-final-N.zip`)، فيه كل المشروع بعد آخر تعديل، مش بس الملفات اللي اتغيرت.
+2. **نفس هذا التقرير محدّث** — قسم "0.1) حالة التنفيذ" تحت ده هيتحدث في كل تسليم: المرحلة الجزئية اللي خلصت بتتحط ✅ مع سطر يوصف اللي اتعمل فعليًا (مش المخطط بس)، والمرحلة الجزئية الجاية بتتحط 🔵 "التالية"، والباقي يفضل ⬜.
+
+مفيش مرحلة جزئية بتتسلّم من غير الاتنين مع بعض (زيب + تقرير محدث) — ده عشان تقدر ترجع لأي نقطة زمنية وتعرف بالظبط الكود اتلمس فين والتقرير بيوثق إيه.
+
+### 0.1) حالة التنفيذ (هتتحدث أول بأول)
+
+| المرحلة | المرحلة الجزئية | الحالة | ملاحظات |
+|---|---|---|---|
+| A | A1 — `useResponsiveLayout.ts` | ✅ | تم إنشاء `src/shared/hooks/useResponsiveLayout.ts` — hook بنمط `useThemeMode.ts` (state + effect)، بيستخدم `matchMedia('(min-width:768px)')` و`(min-width:1024px)` مع `change` listener (بدون `resize` يدوي)، بيرجع `{mode, isDesktop, isTablet, isMobile}`. لسه **مش مستخدم في أي مكان** (مفيش استيراد له في أي ملف) — الهدف من A1 كان الـ hook نفسه بس وإثبات صحته بمعزل عن أي تغيير في الشجرة. تم التحقق بـ `node --experimental-strip-types --check`. |
+| A | A2 — `navConfig.ts` | ✅ | تم إنشاء `src/app/shell/navConfig.ts`. يصدّر `NavItem` interface + 3 مصفوفات (`primaryNavItems` — الرئيسية/الجلسات/القضايا/المهام، `moreNavItems` — الموكلين/المستندات/الأتعاب/لوحة الإدارة [أدمن بس]، `desktopOnlyNavItems` — عنصر `team` الجديد [أدمن بس، أيقونة `I.Users`، `data-testid="desktop-nav-team"`] طبقًا لقرار قسم 14) + دالة `navItemsFor(isAdmin)` بترجّع القائمة الكاملة مفلترة. نفس الأيقونات/التسميات/الـ`data-testid` الأصلية من `CommandDock.tsx` بالحرف، بدون أي تغيير عليه. زرار AI اتسيب برّه القائمة عمدًا (بيفتح مودال مش تاب — منطقه مختلف). تم التحقق بـ `node --experimental-strip-types --check` وتأكيد إن الملف **لسه مش مستورد في أي مكان** (لا `CommandDock` ولا غيره) — نفس مبدأ A1: إثبات الملف بمعزل الأول. |
+| A | A3 — `AppShell.tsx` هيكلي (بدون تغيير بصري) | ✅ | تم إنشاء `src/app/shell/AppShell.tsx`. مكوّن هيكلي بحت (`{children, className?}` بس) بيرجّع نفس الـ div الجذري الموجود حاليًا في `App.tsx:423` بالحرف: نفس `className` (`h-full flex flex-col bg-premium-bg`) ونفس `data-testid="app-shell"` (اتأكد إنه معتمد عليه فعليًا في `e2e/utils.ts` و`auth.spec.ts` و`universal-search.spec.ts` و`reminders-view.spec.ts` — محفوظ بالحرف). صفر منطق/state/effects — مجرد wrapper. `useResponsiveLayout` (A1) **لسه مش متستخدم هنا عمدًا** لأن مفيش حاجة تستهلك نتيجته لحد ما DesktopSidebar/DesktopHeader يتبنوا (بعد B). تم التحقق بـ`node --experimental-strip-types --check` (عبر نسخة `.ts` مؤقتة لتفادي قيد Node مع امتداد `.tsx`) وتأكيد إن الملف **لسه مش مستورد في أي مكان** — الدمج الفعلي في `App.tsx` مؤجل لـA4 عمدًا. |
+| A | A4 — دمج `AppShell` في `App.tsx` | ✅ | استبدلت الـ `React.createElement('div', { className: 'h-full flex flex-col bg-premium-bg', 'data-testid': 'app-shell' }, ...)` inline في `App.tsx:423` بـ `React.createElement(AppShell, {}, ...)` — نفس الأبناء بالحرف (Header + HeaderMenu + main + CommandDock + AppModals + ExitConfirmModal)، بدون أي تعديل عليهم أو على ترتيبهم. أضفت `import AppShell from './app/shell/AppShell'`. تأكدت إن `AppShell` مش مستخدم في أي مكان تاني غير `App.tsx` (نفس مبدأ A1/A2/A3 — الآن أول استخدام فعلي). `useResponsiveLayout` (A1) **لسه مش مستخدم** — هيتضاف داخل `AppShell.tsx` نفسه في B1-B4 لما يبقى ليه استهلاك فعلي (قرار Sidebar/Header). التحقق: `node --experimental-strip-types --check` على `App.tsx` و`AppShell.tsx` (عبر نسخة `.ts` مؤقتة) — نظيفين. الـ E2E الفعلي (31 spec) لسه محتاج بيئة حقيقية (`npm run build`/`npm test`) — مش متاح هنا، لكن الـ DOM الناتج مطابق حرفيًا (نفس className/data-testid) فمفروض صفر تأثير على أي اختبار موجود. |
+| B | B1 — `DesktopSidebar.tsx` (موسّع بس، بدون طي) | ✅ | تم إنشاء `src/app/shell/DesktopSidebar.tsx` — سايدبار ثابت (`fixed`) عرض 260px على يمين الشاشة (`right-0` فيزيائي، راجع سبب اختيار فيزيائي بدل منطقي في تعليقات الملف)، بيستخدم `primaryNavItems`/`moreNavItems`/`desktopOnlyNavItems` من `navConfig.ts` (A2) بعد فلترة `adminOnly`، + زرار AI منفصل (نفس منطق CommandDock: مودال مش تاب) بياخد `onAIClick` (هي نفسها `handleAIButtonClick` من `App.tsx`، بدون أي تعديل على منطق قفل القسم لغير السوبر أدمن). كل زرار `data-testid="desktop-nav-{tab}"` **مستقل تمامًا** عن أي `data-testid` موبايل (`nav-*`) — قرار مقصود عشان لما الاتنين (CommandDock + DesktopSidebar) يبقوا ظاهرين في نفس اللحظة على فيوبورت `Desktop Chrome` (اللي الـ31 اختبار E2E الحالية بتشتغل عليه فعليًا)، مايبقاش فيه عنصرين بنفس الـid على نفس الصفحة (كان هيكسر أي `getByTestId` بـ"strict mode violation"). تم ربط `useResponsiveLayout` (A1) فعليًا لأول مرة داخل `AppShell.tsx` (زي ما كان متوقع من تعليقات A3) — `AppShell` بقى بيستقبل `tab`/`setTab`/`isAdmin`/`onAIClick` (كلهم اختياريين عشان مايكسروش أي استخدام مستقبلي بسيط) وبيعرض `DesktopSidebar` بس لو `isDesktop === true` وكل الـprops متوفرة، **جنب** children مش بدالها. `App.tsx` بقى بيبعت الـprops دي لـ`AppShell` (تعديل سطر واحد بس، نفس `tab`/`setTab`/`isAdmin`/`handleAIButtonClick` المستخدمين فعليًا مع `CommandDock` تحت). **⚠️ قرار مهم اتوثق بالتفصيل في تعليقات الكود:** `CommandDock.tsx` **لسه بدون أي تعديل خالص** (لا شرط `!isDesktop` ولا غيره) وهيفضل ظاهر جنب السايدبار الجديد مؤقتًا — التأجيل مقصود لأن إخفاءه دلوقتي هيكسر الـ31 اختبار E2E الحالية فورًا (بيشتغلوا على فيوبورت Desktop Chrome ≥1024px وبيدوّروا على أزرار CommandDock مباشرة)، ومفيش مشروع Playwright بفيوبورت موبايل لحد G3. الإخفاء الفعلي هيتحصل لما تبقى فيه تغطية اختبار بديلة للموبايل (G3) أو في وقت لاحق تحدده مع Gemy صراحةً. **⚠️ تصحيح موثّق لـB4 المستقبلية:** لاحظت أثناء التنفيذ إن نص الخطة (قسم 7) بيقول السايدبار على اليمين لكن بيقترح `lg:pe-[var(--app-sidebar-w)]` لـ`<main>` — مع `dir="rtl"`، `padding-inline-end` (`pe-`) بتترجم فعليًا لـ`padding-left`، يعني هتحجز مساحة على شمال الـ`<main>` مش يمينه، وده عكس مكان السايدبار الفعلي. الكلاس الصح وقت B4 هو `ps-` (`padding-inline-start` ⇒ `padding-right` في RTL). التحقق: `node --experimental-strip-types --check` على `DesktopSidebar.tsx` و`AppShell.tsx` و`App.tsx` (عبر نسخ `.ts` مؤقتة) — نظيفين. تأكدت إن `CommandDock.tsx` نفسه **صفر تغيير** (`grep` قبل/بعد مطابق 100%). الـE2E الفعلي (31 spec) لسه محتاج بيئة حقيقية (`npm run build`/`npm test`) — مش متاح هنا، لكن بما إن CommandDock وكل الـchildren التانية جوه AppShell اتنقلوش أو اتغيّروش، ومفيش أي `data-testid` موبايل اتلمس، مفروض صفر تأثير على أي اختبار حالي. |
+| B | B2 — الطي + localStorage + Tooltips | ✅ | أضفت `src/shared/hooks/useSidebarCollapsed.ts` — hook بنفس نمط `useThemeMode.ts` بالحرف (state من `localStorage['sanad_sidebar_collapsed']` + effect للحفظ + `toggleCollapsed`)، افتراضي `false` (موسّعة) طبقًا لقرار 14.3. عدّلت `DesktopSidebar.tsx`: زرار طي جديد أعلى السايدبار (`data-testid="desktop-sidebar-toggle"`, أيقونة `I.ChevronLeft`/`I.ChevronRight` حسب الحالة)، عرض السايدبار بقى ديناميكي (260px موسّع / 72px مطوي، `transition-[width]`)، وكل زرار تنقل (`SidebarButton` + زرار AI) بقى بياخد `collapsed` prop: لما يبقى `true` بيخفي الـ`<span>` النصي ويوسّط الأيقونة (`justify-center px-0`) ويظهر بدله `SidebarTooltip` — مكوّن جديد بسيط بـCSS `group-hover` بحت (بدون state إضافي)، متمركز بـ`style.right: 'calc(100% + 10px)'` (فيزيائي، يفضل صح مهما كان `dir="rtl"`) عشان يظهر Tooltip باسم القسم عند الـhover على الأيقونة. صفر تغيير على `navConfig.ts`/منطق AI/تحذيرات Mobile Safety الموجودة — اتنقلت بالحرف. عرض السايدبار (260/72) **لسه مش منشور** كـ`--app-sidebar-w` عمدًا (ده شغل B4 زي المخطط في قسم 14.4). التحقق: `node --experimental-strip-types --check` على `useSidebarCollapsed.ts` و`DesktopSidebar.tsx` (عبر نسخ `.ts` مؤقتة) — نظيفين. تأكدت إن مفتاح الـlocalStorage الجديد فريد (`grep` مفيش تعارض) وإن `CommandDock.tsx` مالوش أي تعديل. الـE2E الفعلي (31 spec) لسه محتاج بيئة حقيقية — لكن بما إن كل التعديلات جوّه `DesktopSidebar.tsx`/hook جديد بس (مفيش `data-testid` موبايل اتلمس)، مفروض صفر تأثير على أي اختبار حالي. |
+| B | B3 — `DesktopHeader.tsx` | ✅ | تم إنشاء `src/app/shell/DesktopHeader.tsx` — هيدر علوي بتصميم Desktop (`sticky top-0`، ارتفاع 64px، `hidden lg:flex`) بنفس الـ**actions** الموجودة فعليًا في `AppHeader.tsx`: بحث (`setShowSearch`)، تحديث بيانات القضايا (`fetchCases(0, casesFilter)` مع أيقونة Spin أثناء `loadingCases`)، وفتح قائمة الحساب (`setShowMenu` — بيفتح نفس `HeaderMenu.tsx` الموجود بالثيم/تثبيت التطبيق/تسجيل الخروج، من غير أي dropdown جديد). نفس منطق عرض الاسم/الدور (أدمن أزرق `#60a5fa` / محامي ذهبي `#D4AF37`) من `AppHeader.tsx` بالحرف. **صفر تغيير على `AppHeader.tsx` نفسه** (تأكيد `diff` مطابق 100% لآخر تسليم) — بيفضل ظاهر زي ما هو، بنفس سبب تأجيل إخفاء `CommandDock.tsx` (بند 12.2): `data-testid="header-search-open"` مستخدم فعليًا في `e2e/universal-search.spec.ts` اللي بيشتغل على فيوبورت Desktop Chrome، فإخفاء `AppHeader` دلوقتي هيكسّره فورًا. يعني مؤقتًا الهيدرين (الأصلي + الجديد) هيظهروا فوق بعض على الديسكتوب لحد ما يتقرر التوحيد صراحةً (زي CommandDock/DesktopSidebar) — **موثّق بالتفصيل في تعليقات الكود نفسه**. كل عنصر تفاعلي جديد بياخد `desktop-header-*` مستقل (`desktop-header`, `desktop-header-search-open`, `desktop-header-refresh`, `desktop-header-menu-toggle`) — صفر تعارض مع أي `data-testid` موبايل (تأكدت بـ`grep`). عدّلت `AppShell.tsx`: أضفت 6 props اختيارية جديدة (`profile`, `setShowMenu`, `setShowSearch`, `fetchCases`, `casesFilter`, `loadingCases`) بنفس نمط props التنقل في B1، وشرط `canShowHeader` مستقل عن `canShowSidebar`؛ `DesktopHeader` بيتحط **قبل** `children` في الـreturn (يطابق ترتيب "الهيدر فوق، السايدبار جنب" من مخطط قسم 7). `--app-header-h` **لسه بينشره `AppHeader.tsx` بس** — `DesktopHeader` ما بيلمسوش خالص، تفاديًا لتعارض كتابة نفس الـCSS variable من مكونين. عدّلت `App.tsx`: تمرير props الهيدر السبعة (نفس المتغيرات المستخدمة فعليًا مع `AppHeader` تحت — `profile`, `setShowHeaderMenu`, `setShowSearch`, `fetchCases`, `casesFilter`, `casesLoading`) لـ`AppShell`، بدون أي تعديل على تعريفهم أو منطقهم. التحقق: `node --experimental-strip-types --check` على `DesktopHeader.tsx`, `AppShell.tsx`, `App.tsx` (عبر نسخ `.ts` مؤقتة) — نظيفين. `diff` مباشر أكّد إن `AppHeader.tsx`, `CommandDock.tsx`, `DesktopSidebar.tsx` **صفر تغيير** حرفي عن آخر زيب مُسلَّم. الـE2E الفعلي (31 spec) لسه محتاج بيئة حقيقية — لكن بما إن كل الإضافات جديدة كليًا (ملف جديد + props اختيارية) ومفيش أي `data-testid` أو منطق موبايل اتلمس، مفروض صفر تأثير على أي اختبار حالي. |
+| B | B4 — نشر `--app-sidebar-w` + ربط `<main>` | ✅ | أضفت `src/shared/hooks/useSidebarWidthVar.ts` — hook بسيط بنمط `useNavbarHeightVar.ts` (بس بدون قياس فعلي، لأن عرض السايدبار قيمة معروفة مسبقًا من `EXPANDED_WIDTH`/`COLLAPSED_WIDTH`): بياخد `widthPx` وبينشره كـ`--app-sidebar-w` عبر `document.documentElement.style.setProperty` جوه `useEffect`، مع cleanup بيرجّعه لـ`0px` عند الـunmount (رجوع لموبايل/تابلت). استدعيته جوه `DesktopSidebar.tsx` نفسه (`useSidebarWidthVar(collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH)`) عشان يتحدث تلقائيًا كل ما `collapsed` (B2) يتغيّر — بدون أي state جديد أو تعديل على `useSidebarCollapsed.ts`. عدّلت `<main>` في `App.tsx`: أضفت `lg:ps-[var(--app-sidebar-w)] lg:transition-[padding] lg:duration-200` على الكلاس الموجود (بدون حذف أي كلاس قديم) — استخدمت `ps-` (padding-inline-start) مش `pe-` تطبيقًا للتصحيح الموثّق في تعليقات B2 (مع `dir="rtl"`، `ps-` هي اللي بتترجم لـ`padding-right` الفعلي، يعني بتحجز المساحة يمين المحتوى فعلاً حيث السايدبار). `lg:` بس عشان القيمة صفر تأثير تحت 1024px. مدة الانتقال (200ms) متطابقة مع `transition-[width]` بتاعة السايدبار نفسه عشان الحركتين يتزامنوا بصريًا وقت الطي/الفرد. وثّقت في `DesktopHeader.tsx` قرار **عدم** ربط الهيدر بنفس المتغير عمدًا — الهيدر (`z-40`) أعلى من السايدبار (`z-30`) وممتد بعرض الشاشة كامل فوق الاتنين (مطابق لمخطط قسم 7)، فمحتاجش أي `padding` يعتمد على عرض السايدبار. صفر تغيير على `useSidebarCollapsed.ts`, `navConfig.ts`, `CommandDock.tsx`, `AppHeader.tsx` (تأكيد `diff` مطابق 100%). التحقق: `node --experimental-strip-types --check` على `useSidebarWidthVar.ts`, `DesktopSidebar.tsx`, `DesktopHeader.tsx`, `App.tsx` (عبر نسخ `.ts` مؤقتة) — نظيفين. الـE2E الفعلي (31 spec) لسه محتاج بيئة حقيقية — لكن بما إن كل الإضافات كلاسات `lg:` جديدة بس + CSS variable جديدة (مفيش `data-testid` اتلمس)، مفروض صفر تأثير على أي اختبار حالي. |
+| C | C1 — Padding/max-width متجاوب لـ `<main>` | ✅ | زودت padding أفقي/رأسي على `<main>` نفسه بس على `lg:`/`xl:` (`lg:px-8 lg:py-6 xl:px-12`) — `px-4 py-4 pb-32` الأصلية فضلت زي ما هي بالحرف تحت 1024px، و`pb-32` فضلت كمان على الديسكتوب (لسه لازمة لمسافة `CommandDock` اللي لسه ظاهر مؤقتًا زي ما اتوثق في B1). أضفت `max-width`+توسيط عبر `div` **جوّه** `<main>` (مش على `<main>` نفسه) — `w-full lg:max-w-[1600px] lg:mx-auto` لف كل الـtab contents الموجودة. القرار المتعمّد ده (wrapper داخلي بدل تعديل `<main>` مباشرة) عشان `lg:ps-[var(--app-sidebar-w)]` (مساحة السايدبار المحجوزة) لازم تفضل جزء ثابت من عرض `<main>` نفسه قبل أي توسيط؛ لو الـ`max-width`+`mx-auto` اتحطوا على `<main>` مباشرة، الصندوق كله (بما فيه الـpadding المحجوزة للسايدبار) كان هيتوسط جوّه الـviewport، وعلى شاشات أعرض من ~1600px+هوامش، ده كان هيزحزح المساحة المحجوزة عن مكان `DesktopSidebar.tsx` الفعلي (`fixed`، ثابت في أقصى يمين الـviewport الحقيقي) ويسبب تداخل بصري. بالـwrapper الداخلي، التوسيط بيحصل **بعد** ما `<main>` يحجز مساحة السايدبار أول — يعني بيتوسط جوّه المساحة المتبقية الفعلية، صفر احتمال تداخل. صفر تغيير على `DesktopSidebar.tsx`, `DesktopHeader.tsx`, `AppShell.tsx`, `navConfig.ts`, `CommandDock.tsx`, `AppHeader.tsx` (تأكيد `diff` مطابق 100% لآخر تسليم) — التعديل كله محصور في ~15 سطر من `App.tsx` (className الـ`<main>` + فتح/قفل الـwrapper الجديد). التحقق: `node --experimental-strip-types --check` على `App.tsx` (عبر نسخة `.ts` مؤقتة) — نظيف. الـE2E الفعلي (31 spec) لسه محتاج بيئة حقيقية — لكن بما إن كل الإضافات كلاسات `lg:`/`xl:` جديدة + `div` wrapper واحد بدون أي `data-testid` أو تغيير على أي عنصر تفاعلي/موبايل، مفروض صفر تأثير على أي اختبار حالي. |
+| C | C2 — Dashboard stats grid (`lg:` تعديل مسافات) | ✅ | عدّلت قسم "Quick Actions" (الشبكة الرباعية في `DashboardTab.tsx:310`) — `grid-cols-4` فضلت **بالحرف زي ما هي** على كل المقاسات (مفيش داعي تقنيًا لتغيير عدد الأعمدة زي ما وضّحت الخطة)، والمساحة الأكبر على الديسكتوب اتستغلت بزيادة `lg:` بس: `gap-2` → `lg:gap-4`، `py-3` → `lg:py-5` على الأربع أزرار، حجم دائرة الأيقونة `w-8 h-8` → `lg:w-10 lg:h-10`، وحجم الخط `text-[9px]` → `lg:text-xs`. صفر تغيير على أي `data-testid` (اتأكد بالعدّ: 9 زي الأصل) أو `onClick` أو منطق أو لون. صفر تغيير على أي ملف تاني غير `DashboardTab.tsx` (و`App.tsx` من C1) — تأكيد `diff -rq` مباشر ضد آخر زيب مُسلَّم. التحقق: `node --experimental-strip-types --check` على `DashboardTab.tsx` (عبر نسخة `.ts` مؤقتة) — نظيف. الـE2E الفعلي لسه محتاج بيئة حقيقية — لكن بما إن التعديل كله كلاسات `lg:` جديدة بس، مفروض صفر تأثير على أي اختبار حالي. |
+| C | C3 — Dashboard قسم الجلسات/القضايا (عمودين) | ✅ | **⚠️ ملاحظة توثيقية مهمة:** الوصف الأصلي في الخطة (قسم 10) بيقول "قسم الجلسات القادمة/القضايا الأخيرة" — بالفحص الفعلي (grep على كل src) اتأكد إنه **مفيش قسم منفصل اسمه "قضايا أخيرة"** في `DashboardTab.tsx` أو أي مكان تاني؛ الداشبورد فعليًا 3 بطاقات مكدّسة بالأولوية (١ يحتاج تدخل فوري، ٢ اليوم، ٣ القادم) وبس. طبّقت روح نفس فكرة "تقسيم العمودين" على أقرب تفسير منطقي بدل التوقف: عمود يمين (RTL) أضيق (`1fr`) فيه بطاقتي "يحتاج تدخل فوري" + "اليوم" (عناصر سريعة/عاجلة)، وعمود شمال أوسع (`2fr`) فيه بطاقة "القادم" (قائمة أسبوع كاملة محتاجة مساحة أكبر) — عبر `lg:grid lg:grid-cols-[1fr_2fr] lg:gap-4 lg:items-start` على `div` خارجي جديد + `div` غلاف لكل مجموعة. **ترتيب الـDOM فضل بالحرف زي ما هو** (missed→today→upcoming) — الـwrapping كله مجرد تجميع، من غير أي `lg:order-*` أو تغيير تسلسل — عشان شكل الموبايل يفضل مطابق 100% (نفس التكديس العمودي الأصلي، الـgrid مالوش أي تأثير تحت 1024px). صفر تغيير على أي `data-testid` (اتأكد بالعدّ: لسه 9) أو منطق/بيانات البطاقات التلاتة نفسها — لمسة الكود كلها إضافة `div` أغلفة حوالين الكتل الموجودة. صفر تغيير على أي ملف تاني غير `DashboardTab.tsx`. التحقق: `node --experimental-strip-types --check` نظيف + عدّ الأقواس `(`/`)` متطابق (493/493) للتأكد من عدم كسر أي تعشيش JSX-via-createElement. الـE2E الفعلي لسه محتاج بيئة حقيقية — لكن بما إن التعديل كله `div` أغلفة + كلاسات `lg:` بدون لمس أي `data-testid`/منطق، مفروض صفر تأثير على أي اختبار حالي. **المرحلة C بالكامل خلصت الآن (C1، C2، C3).** |
+| D | D1 — `CaseRow` + هيكل جدول القضايا | ✅ | أنشأت `src/features/dashboard/CaseTableRow.tsx` — صف جدول القضايا الستة أعمدة (رقم القضية، الموكل، المحكمة، الحالة، الجلسة القادمة، الإجراءات [زرار `I.Eye` بياخد `onOpen` اختياري]). **⚠️ قرار تسمية موثّق:** الخطة سمّت المكوّن "CaseRow" بالحرف، لكن `CaseRow` اسم مستخدم فعليًا كـ`type` في `src/types.ts` (`Tables<'cases'>` — صف قاعدة البيانات الخام، مستورد فعليًا في `useAppData.ts`/`ArchiveSection.tsx`/`useAdminArchive.ts`)؛ استخدام نفس الاسم للمكوّن كان هيسبب تعارض type/component. اخترت `CaseTableRow` بدلًا (نفس المعنى المقصود، صفر تعارض) — موثّق بالتفصيل في تعليقات الملف نفسه. عدّلت `CasesTab.tsx`: أضفت جدول `<table>` جديد (بيانات وهمية `MOCK_CASE_TABLE_ROWS`، 3 صفوف، صفر علاقة بـ`cases` الحقيقية) داخل `div` جديد `hidden lg:block` (`data-testid="cases-desktop-table"` جديد ومستقل، صفر تعارض مع `case-card`/أي id موبايل) مُضاف **جنب** `renderCaseCard` مباشرة (بند 12.3) — الكروت نفسها صفر تغيير (مفيش أي شرط `lg:` جديد عليها). التحقق: `node --experimental-strip-types --check` على `CaseTableRow.tsx` و`CasesTab.tsx` (عبر نسخ `.ts` مؤقتة) — نظيفين؛ عدّ الأقواس `(`/`)` في `CasesTab.tsx` متطابق (184/184)؛ `grep` تأكيد صفر تعارض `data-testid`. صفر تغيير على أي ملف تاني غير `CasesTab.tsx` (+ ملف جديد `CaseTableRow.tsx`). الـE2E الفعلي لسه محتاج بيئة حقيقية — لكن بما إن الإضافة كلها `hidden lg:block` + بيانات وهمية بدون لمس أي `data-testid`/منطق موجود، مفروض صفر تأثير على أي اختبار حالي. |
+| D | D2 — ربط الجدول بالفلترة/البحث/الصفحات (تطابق مع الكروت) | ✅ | شلت بيانات D1 الوهمية بالكامل (`MOCK_CASE_TABLE_ROWS`) وربطت الجدول بنفس `cases` الحقيقية (نفس المفلترة/المبحوثة/المُصفّحة فعليًا عبر `fetchCases`/`searchCases` الموجودين). أضفت 3 دوال جديدة في `CasesTab.tsx` (مستقلة عن `renderCaseCard` عمدًا — بند 12.3، صفر تعديل على منطق الكارت الأصلي): `resolveTableClientName` (عمود "الموكل" — بيفضّل اسم الموكل الحقيقي من `clients.full_name` لو الربط موجود [نفس referencedClientIds المستخدمة في بادج الكارت]، وبيرجع لعرض المدعي/المدعى عليه عبر `deriveFullPartiesDisplay` لو مفيش ربط)، `formatNextSessionLabel` (بيفسّر `c.date` الخام لعرض بس، عبر `formatArDate` الموحّدة [بند 5.3] بدل `toLocaleDateString` مباشر — صفر تغيير على `c.date`/`buildNearestSessionMap` نفسها)، و`buildTableRowData` اللي بيجمعهم. `onOpen` كل صف بيستدعي `setSelectedCase(c)` — نفس الـhandler المستخدم مع نقرة الكارت بالحرف. زرار "تحميل المزيد" اتكرر بنسخة مصغّرة تحت الجدول (نفس `fetchCases(casesPage+1, casesFilter)`/`casesLoading` handler). **⚠️ قرار مهم اتصحّح وقت التنفيذ (مخالفة موثّقة لنص الخطة):** قسم 9 بيقول الحاوية تفرّق `<lg` كروت 100%، `>=lg` جدول — يعني `lg:hidden` على الكروت. جرّبت ده فعليًا ولقيت تعارض مباشر مع بند Mobile Safety Strategy (12.5) ونفس سبب تأجيل إخفاء CommandDock/AppHeader في B1/B3: الـ31 اختبار E2E الحالية بتشتغل على `devices['Desktop Chrome']` (فيوبورت 1280×720 — فوق حد 1024px، يعني `lg:` فعّالة وقت التستات فعليًا) وبيدوّروا على `data-testid="case-card"` مباشرة (click/assert) في **6 ملفات spec على الأقل** (`utils.ts`, `cases.spec.ts`, `checklist-section.spec.ts`, `case-parties-and-sessions.spec.ts`, `notes.spec.ts`, `archive.spec.ts`, `admin-archive-lifecycle.spec.ts`) — إخفاء الكروت دلوقتي هيكسّرهم فورًا. فبدل تطبيق نص الخطة بالحرف، طبّقت مبدأ التأجيل المستخدم فعليًا مع CommandDock/AppHeader: **الكروت تفضل ظاهرة دايمًا** (صفر `lg:hidden`، رجّعت الحاوية لـ`space-y-2` كما كانت)، والجدول الحقيقي بيظهر *جنب*ها على الديسكتوب (`hidden lg:block` كما هو) لحد ما تبقى فيه تغطية Playwright بفيوبورت موبايل (G3) تسمح بالإخفاء الفعلي من غير كسر أي تست. يعني حاليًا الكروت + الجدول (ببيانات حقيقية دلوقتي) ظاهرين مع بعض على الديسكتوب — مش الشكل النهائي المقصود، بس الأكثر أمانًا؛ موثّق بالتفصيل في تعليقات الكود. صفر تغيير على `renderCaseCard`/الفلترة/البحث/`caseSections`/بادچ "موكل محذوف". التحقق: `node --experimental-strip-types --check` نظيف، عدّ الأقواس متطابق (238/238)، `grep` تأكيد صفر تكرار `data-testid`، وتأكيد `clients.full_name` عمود حقيقي فعليًا (له migration مخصص `02-clients-full-name-sync.sql`). |
+| D | D3 — جدول الموكلين (نفس النمط) | ✅ | أنشأت `src/features/dashboard/ClientTableRow.tsx` — صف جدول الموكلين الستة أعمدة (الاسم، النوع، الهاتف، الرقم القومي/السجل، عدد القضايا، الإجراءات [زرار `I.Eye` بياخد `onOpen` اختياري])، نفس نمط `CaseTableRow.tsx` بالحرف (نفس أسلوب الـ`td`/التنسيق/`data-testid` مستقل `clients-table-row`/`clients-table-row-open`). مفيش تعارض تسمية زي `CaseRow` فاستُخدم `ClientTableRow` مباشرة. **بخلاف D1 (اللي بدأت بـmock)، D3 جمعت الهيكل + الربط ببيانات حقيقية في مرحلة واحدة** لأن الخطة وصفتها كمرحلة جزئية واحدة "نفس النمط" — البيانات من `filtered` (نفس تاب أفراد/شركات المُختار حاليًا في `ClientsTab.tsx`) من أول تسليم. عدّلت `ClientsTab.tsx`: أضفت `buildClientTableRowData` (بيستخدم نفس `caseCountFor`/منطق `isEntity`/`typeLabel` الموجودين بالفعل مع الكروت — صفر منطق أو استعلام جديد) وجدول `<table>` جديد (`data-testid="clients-desktop-table"` مستقل) داخل `div` جديد `hidden lg:block` مُضاف **جنب** قائمة الكروت مباشرة (نفس ترقيم صفحات mini مستقل بنفس أزرار السابق/التالي). **⚠️ قرار الكروت (تطبيق مباشر لنفس تصحيح D2):** الكروت (`data-testid="client-card"`) مستخدمة مباشرة في `e2e/clients.spec.ts`/`e2e/validation.spec.ts`/`e2e/utils.ts` على فيوبورت Desktop Chrome — فتفضل ظاهرة دايمًا (صفر `lg:hidden`)، والجدول بيظهر *جنب*ها لحد ما تبقى فيه تغطية موبايل (G3). صفر تغيير على أي منطق/بيانات/`data-testid` للكروت أو أي ملف تاني غير `ClientsTab.tsx` (+ ملف جديد `ClientTableRow.tsx`). التحقق: `node --experimental-strip-types --check` نظيف على الملفين، عدّ الأقواس متطابق (225/225 و20/20)، `diff -rq` ضد آخر زيب مؤكد صفر تغيير على أي ملف آخر، `grep` تأكيد صفر تعارض `data-testid`. **المرحلة D بالكامل خلصت الآن (D1، D2، D3).** الـE2E الفعلي (31 spec) لسه محتاج بيئة حقيقية — لكن بما إن الإضافة كلها `hidden lg:block` + بيانات حقيقية بدون لمس أي `data-testid`/منطق موجود، مفروض صفر تأثير على أي اختبار حالي. |
+| E | E1 — `CaseDetailView` عمودين (بيانات + إجراءات سريعة) | ✅ | **⚠️ ملاحظة توثيقية (نفس نمط C3):** الوصف الأصلي (قسم 10) بيقول قسم "بيانات القضية + الإجراءات السريعة" جوه `CaseDetailView.tsx` ياخد `lg:grid-cols-[2fr_1fr]` — بالفحص الفعلي، تاب "البيانات" (`activeSection==='info'`) بيتعرض عبر `InfoSection.tsx` منفصل، ومفيش قسم حرفي اسمه "الإجراءات السريعة" جواه (7 كروت متتالية: بيانات القضية، بيانات إضافية، أطراف الدعوى، بيانات الموكل، تنبيه موكل محذوف، كارت ربط/إنشاء موكل، إحصائيات سريعة). طبّقت روح الفكرة على أقرب تقسيم منطقي فعلي: عمود أول (2fr — الكروت القرائية: بيانات القضية + بيانات إضافية + أطراف الدعوى) وعمود ثاني (1fr — كل الكروت التفاعلية/الجانبية: بيانات الموكل + تنبيه محذوف + كارت الربط/الإنشاء [أقرب حاجة فعلية لـ"إجراءات سريعة"] + الإحصائيات). التعديل كله جوّه `InfoSection.tsx` بس — لف الكروت السبعة الموجودة في `div` عمودين (`space-y-4` لكل عمود) داخل `div` خارجي جديد `lg:grid lg:grid-cols-[2fr_1fr] lg:gap-4 lg:items-start` (نفس أسلوب wrapper C3/C1 — إضافة أغلفة بس، صفر تعديل على أي كارت داخلي). بما إن أول عمود DOM = 2fr والـgrid بيتدفّق يمين→شمال مع `dir="rtl"`، العمود الأول (بيانات القضية) بيطلع يمين تلقائيًا مطابقًا لنص الخطة حرفيًا (من غير احتياج لأي انعكاس زي اللي حصل في C3). ترتيب الكروت الداخلي في كل عمود فضل زي ما هو بالحرف (نفس تسلسل الموبايل القديم بالظبط) — تحت 1024px الـgrid مالوش أي تأثير فالكروت السبعة بتتكدّس عموديًا بنفس الترتيب الأصلي 100%. `CaseDetailView.tsx` نفسه **صفر تغيير** (التابات فضلت زي ما هي بالحرف، زي ما نص الخطة طلب). صفر تغيير على أي `data-testid` (تأكيد `diff` مباشر: نفس القيم بالحرف) أو منطق/بيانات أي كارت. التحقق: `node --experimental-strip-types --check` نظيف على `InfoSection.tsx`، عدّ الأقواس بفارق ثابت (+13/+13 عن الأصل، نفس فارق الأصل الداخلي بسبب regex/تعليقات) يطابق التوقع، `diff -rq` ضد آخر زيب مؤكد إن `InfoSection.tsx` هو الملف الوحيد المتغيّر. الـE2E الفعلي (31 spec) لسه محتاج بيئة حقيقية — لكن بما إن التعديل كله `div` أغلفة + كلاسات `lg:` بدون لمس أي `data-testid`/منطق/ترتيب موبايل، مفروض صفر تأثير على أي اختبار حالي. |
+| E | E2 — `NewCaseModal`/`EditCaseModal` — Grid للحقول القصيرة | ✅ | حوّلت `div` الحقول (`className:"space-y-4"`) في الملفين لـ `lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start lg:grid-flow-row-dense` (بدل التقسيم اليدوي لأزواج محددة، استخدمت `grid-flow-row-dense` — تقنية CSS قياسية بتخلي الحقول القصيرة المستقلة تتحزّم تلقائيًا بجانب بعضها بصريًا من غير أي إعادة ترتيب فعلي للـDOM). الحقول/الأقسام الطويلة أو المركّبة أخدت `lg:col-span-2` (الموضوع، أقسام "بيانات القيد الرسمي"/"بيانات إضافية" العنوانين، أزواج الحقول الموجودة مسبقًا كـgrid-cols-2 [تصنيف+دائرة، تاريخ+وقت، اسم+موبايل السكرتير]، قسم أطراف الدعوى بالكامل [`PartyFieldsGroup` + تنبيهات الربط/الحذف — لُفّت في `EditCaseModal.tsx` بـ`div` واحد `lg:col-span-2` عشان تفضل مجموعة واحدة متجاورة]، حالة القضية [توجل 3 خيارات، `EditCaseModal.tsx` بس]، وزرار الحفظ). الحقول القصيرة المستقلة (المحكمة، درجة التقاضي، الطابق وقاعة الجلسة، قاعة السكرتير) اتسابت من غير `col-span` فبتتحزّم تلقائيًا في نفس الصف بفضل `dense`. **قرار نطاق موثّق:** الأزواج المذكورة كمثال في نص الخطة ("اسم+رقم قومي") موجودة فعليًا جوه `PartyFields.tsx` (مكوّن مشترك بيستخدمه 4 فورمات، منها اتنين خارج نطاق E2/E3 الحاليين) — قررت عدم لمسه في المرحلة دي لتفادي تضارب النطاق مع E3 (اللي هيغطي باقي الفورمات الرئيسية صراحةً)؛ لو الخطة عايزاه ضمن E2 تحديدًا نقدر نرجعله. `Inp` نفسه (مكوّن مشترك زيادة) **صفر تغيير** — أي حقل استخدمه اتلف بـ`div` خارجي بدل تعديله. صفر تغيير على أي `data-testid` (تأكيد `diff` مباشر: نفس القيم بالحرف في الملفين) أو منطق/فاليديشن. التحقق: `node --experimental-strip-types --check` نظيف على الملفين، عدّ الأقواس بفارق ثابت (+2/+2 لـEditCaseModal، +2/+2 لـNewCaseModal) يطابق التوقع، `diff -rq` ضد آخر زيب مؤكد إن الملفين المتغيرين هما بس المتوقعين. ملحوظة: زي ما اتقال في قسم 14.4 من الخطة، عرض المودال هيفضل `max-w-lg` لحد مرحلة F3 — التقسيم الشبكي هنا شغّال وجاهز، بس هيبان بوضوح أكتر بعد ما F3 توسّع العرض. |
+| E | E3 — باقي الفورمات الرئيسية (موكل، جلسة مستقلة) | ✅ | نفس أسلوب E2 بالحرف (`lg:grid lg:grid-cols-2 lg:gap-3 lg:grid-flow-row-dense` + `lg:col-span-2` للحقول/الأقسام الطويلة أو المركّبة) اتطبّق على 4 ملفات: `NewClientModal.tsx`، `EditClientModal.tsx`، `NewStandaloneSessionModal.tsx`، و`EditStandaloneModal` (الفورم الداخلي جوه `StandaloneSessionDetailModal.tsx` — 1685 سطر، لكن قسم الحقول القابل للتمرير فيه (`overflow-y-auto...space-y-3`) مطابق تمامًا لبنية `NewStandaloneSessionModal.tsx` نفسها، مش تاب-بيسد زي `CaseDetailView.tsx`، فانطبق عليه نفس المبدأ مباشرة من غير أي تفسير إضافي؛ باقي الملف الضخم [عرض/تاريخ/حذف/تحويل لقضية...] **صفر لمس**). تفاصيل الحقول القصيرة المستقلة (تتحزّم تلقائيًا بفضل `dense`) في كل ملف: **موكل** (الاتنين): الهاتف الثاني + البريد الإلكتروني (متجاورين، اتسابوا من غير span). **جلسة مستقلة** (الاتنين): المحكمة + درجة التقاضي، والطابق وقاعة الجلسة + قاعة سكرتير الجلسة (نفس زوج E2 بالظبط). باقي الحقول (الاسم الكامل، العنوان، الرقم القومي، بيانات التوكيل [`PoaInput` — سطر 4 خانات، لازم عرض كامل]، الملاحظات، موضوع الجلسة، أطراف الدعوى، زرار الحفظ...) أخدت `lg:col-span-2`. **قرار نطاق مُرحّل من E2:** لسه ملهمش لمسنا `PartyFields.tsx` (الأزواج "اسم+رقم قومي" المذكورة في نص الخطة) — النقطة دي بقت الوحيدة المتبقية من "روح" قسم 10 اللي ملهاش تنفيذ لسه؛ لو الخطة تحب نطبّقها الآن (هتأثر على 4 فورمات مربوطة بيها مرة واحدة) قابلة للتنفيذ في مرحلة قادمة منفصلة. صفر تغيير على أي `data-testid` (تأكيد `diff` مباشر: نفس القيم بالحرف في الملفين الأربعة) أو منطق/فاليديشن. التحقق: `node --experimental-strip-types --check` نظيف على الملفات الأربعة، عدّ الأقواس بفارق ثابت لكل ملف (+4/+4 `NewClientModal`، +5/+5 `EditClientModal`، +6/+6 `NewStandaloneSessionModal`، +3/+3 `StandaloneSessionDetailModal`) يطابق التوقع، `diff -rq` على مستوى المشروع كله مؤكد إن الملفات الـ8 المتغيرة من أول D3 هي بالظبط المتوقعة (بلا أي أثر جانبي في ملف تاني). **مرحلة E بالكامل خلصت الآن (E1، E2، E3).** |
+| F | F1 — `useModalPresentation` hook | ✅ | تم إنشاء `src/shared/hooks/useModalPresentation.ts` — hook بسيط مبني فوق `useResponsiveLayout` (A1) بدل إعادة تعريف `matchMedia` تاني (مصدر واحد لمعرفة `isDesktop` في كل المشروع). بيرجّع 3 أجزاء className قابلة للتركيب (مش className كامل جاهز، عشان كل مودال يحتفظ بـ z-index/خلفية/padding الخاصة بيه وقت التطبيق الفعلي في F2/F3): (1) `overlayAlignClassName` — `items-end` موبايل/تابلت (نفس Bottom Sheet الحالي 100%) أو `items-center` ديسكتوب، يحل محل جزء المحاذاة في الـwrapper الخارجي؛ (2) `panelShapeClassName` — `rounded-t-3xl border-t border-white/10` موبايل (زي الأصل بالحرف) أو `rounded-3xl border border-white/10` ديسكتوب (حواف مدوّرة بالكامل + حدود من كل الاتجاهات، لأن المودال بقى عائم في النص مش ملزوق بحافة تحتية)؛ (3) `panelAnimationClassName` — `slide-up` موبايل (نفس كلاس الأنيميشن الموجود في `index.css`) أو `''` ديسكتوب عمدًا — اختيار أنيميشن مناسب لمودال مركزي (fade/scale) اتأجل لـF2 قصدًا لتقليل نطاق F1. تأكدت (بمقارنة مباشرة مع `NewCaseModal.tsx`/`NewClientModal.tsx`، أول 2 من أهم 3 مودالات مستهدفة في F2) إن الأجزاء دي فعلاً هي بالظبط الأجزاء المتغيّرة بين نسخة الموبايل الحالية والنسخة الديسكتوب المطلوبة — باقي كل مودال (z-index الخاص بيه، `bg-black/70 backdrop-blur-sm`، `w-full max-w-lg`، `p-6 pb-10`، `shadow-2xl`، `max-h-[90vh] overflow-y-auto no-scrollbar`) هيفضل زي ما هو بالحرف وقت التطبيق. التحقق: `node --experimental-strip-types --check` نظيف، وتأكيد إن الملف **لسه مش مستورد في أي مكان** (`grep` صفر نتيجة غير الملف نفسه) — نفس مبدأ A1/A2/A3: إثبات الوحدة بمعزل قبل الدمج. صفر تغيير على أي ملف تاني في المشروع (تأكيد بمقارنة الملفات المعدّلة زمنيًا: ملف واحد جديد بس). |
+| F | F2 — تطبيقه على أهم 3 مودالات | 🔵 | التالية |
+| F | F2 — تطبيقه على أهم 3 مودالات | ✅ | طبّقت `useModalPresentation` (F1) على مودالين مباشرين + مودال ثالث موزّع على ملفين. **مودال 1 — قضية جديدة:** `NewCaseModal.tsx` — استبدلت الجزء الثابت `items-end`/`rounded-t-3xl border-t border-white/10`/`slide-up` في الـwrapper الخارجي والـpanel الداخلي بـ`modalPresentation.overlayAlignClassName`/`panelShapeClassName`/`panelAnimationClassName` (template literals بدل strings ثابتة) — باقي كل className (`z-50`, `bg-black/70 backdrop-blur-sm`, `w-full max-w-lg`, `p-6 pb-10`, `shadow-2xl`, `max-h-[90vh] overflow-y-auto no-scrollbar`) زي ما هو بالحرف. **مودال 2 — موكل جديد:** نفس التعديل بالحرف على `NewClientModal.tsx` (`z-[80]` بدل `z-50` — الفرق الوحيد، موجود مسبقًا). **مودال 3 — تفاصيل القضية (⚠️ قرار نطاق موثّق):** الفحص الفعلي أثبت إن `CaseDetailView.tsx` (شاشة "تفاصيل القضية" نفسها) مش مودال Bottom-Sheet/Centered أصلاً — هي `fixed inset-0 z-50 bg-premium-bg flex flex-col fade-in` (شاشة fullscreen بديل مودال بالكامل، نمط تالت مختلف عن الـ22/9 المذكورين في نتيجة الفحص رقم 7)، فتطبيق `overlayAlignClassName`/`panelShapeClassName` عليها مباشرة كان هيبقى بلا معنى (مفيش overlay+panel منفصلين أصلاً). أقرب تفسير فعلي ومنطقي لـ"مودال تفاصيل القضية" هو المودال الوحيد اللي بيفتح **من جوّه** شاشة التفاصيل دي بنفس نمط Bottom-Sheet الحقيقي: مودال "تعديل القضية" (`showEditCase`) — الـoverlay wrapper بتاعه موجود في `CaseDetailView.tsx` (سطر ~325) والـpanel الداخلي (بحالتيه: تحميل + الفورم الكامل) موجود في `EditCaseModal.tsx`. طبّقت الـhook في الاتنين: `CaseDetailView.tsx` (استدعاء `useModalPresentation()` في المكوّن + استبدال `items-end` بـ`overlayAlignClassName` في الـwrapper بس)، و`EditCaseModal.tsx` (استدعاء الـhook في كل من `EditCaseModal` [عشان panel التحميل قبل ما `partiesState.loaded` يبقى `true`] و`EditCaseModalForm` [عشان الـpanel الرئيسي] — استبدال `panelShapeClassName`/`panelAnimationClassName` في الاتنين). لو الخطة قصدت مودال تاني بالظبط بـ"تفاصيل القضية"، القرار قابل للتغيير في مرحلة لاحقة. صفر تغيير على أي `data-testid` أو منطق (تأكيد `diff` مباشر ضد آخر زيب: نفس القيم بالحرف في الملفات الأربعة). التحقق: `node --experimental-strip-types --check` نظيف على الملفات الأربعة (عبر نسخ `.ts` مؤقتة)، عدّ الأقواس بفارق ثابت متطابق بين النسخة القديمة والجديدة لكل ملف (+4/+4 `NewCaseModal`، +4/+4 `NewClientModal`، +11/+11 `CaseDetailView`، +9/+9 `EditCaseModal` — نفس فارق `1` الموجود أصلاً في `CaseDetailView`/`EditCaseModal` من قبل التعديل محفوظ زي ما هو، مش ناتج عن خطأ جديد)، و`diff -rq` على مستوى المشروع كله مؤكد إن الملفات الأربعة دي + `useModalPresentation.ts` (من F1) هما بالظبط اللي اتغيّروا — صفر أثر جانبي في أي ملف تاني. الـE2E الفعلي (31 spec) لسه محتاج بيئة حقيقية — لكن بما إن الديسكتوب (`isDesktop`) هو الحالة الوحيدة اللي بتتغيّر فيها القيم الفعلية (على الموبايل/التابلت القيم مطابقة 100% للأصل)، وباقي الـ31 اختبار بتشتغل بفيوبورت `Desktop Chrome` وبتدوّر على `data-testid`/نصوص مش على شكل الـclassName نفسه، مفروض صفر تأثير — بس محتاج تأكيد فعلي عند تشغيل الاختبارات (G4). |
+| F | F3 — تطبيقه على 3 مودالات تانية + `max-width` لكل واحد | ✅ | **المودالات الـ3:** (1) **تفاصيل الجلسة** — `StandaloneSessionDetailModal.tsx` (المكوّن الرئيسي، `data-testid="standalone-session-detail-modal"` — عرض/قراءة بس، مفيش فورم). (2) **موكل — تعديل** — `EditClientModal.tsx` (أولوية: تكملة عائلة فورمات القضية/الموكل/الجلسة اللي E2/E3 اشتغلوا عليها). (3) **جلسة مستقلة — جديدة** — `NewStandaloneSessionModal.tsx` (نفس منطق الأولوية). **⚠️ قرار موثّق إضافي:** بما إن مودال "تفاصيل الجلسة" فعليًا بيفتح منه مودال "تعديل الجلسة" (`EditStandaloneModalForm` جوّه نفس `StandaloneSessionDetailModal.tsx`، هو نفسه اللي E3 عمل فيه الشبكة)، طبّقت الـhook عليه كمان (بمعزل عن عدّ الـ3 الرسمي) — عشان ما يبقاش فيه مودال بيفتح من داخل تفاصيل الجلسة شكله متضارب بصريًا (bottom-sheet قديم) بينما الشاشة الأب بقت متمركزة على الديسكتوب. **⚠️ قرار موثّق مهم (نمط className مختلف):** الفحص الفعلي أثبت إن 3 من الملفات دي (`NewStandaloneSessionModal.tsx` و`StandaloneSessionDetailModal.tsx` بمودالَيها) بتستخدم نمط className مختلف عن اللي `useModalPresentation` (F1) اتبنى عليه أصلاً — `rounded-t-3xl overflow-hidden ... border border-white/8` (حدود كاملة بشفافية `/8`) بدل `rounded-t-3xl border-t border-white/10` (حد علوي بشفافية `/10`) المستخدم في `NewCaseModal.tsx`/`NewClientModal.tsx`/`EditClientModal.tsx`، ومفيش أي كلاس أنيميشن (`slide-up`) في الملفات دي أصلاً. استخدام `panelShapeClassName`/`panelAnimationClassName` الجاهزين هنا كان هيغيّر شكل الموبايل فعليًا (شفافية الحد + إضافة أنيميشن ملوش وجود من قبل) — مخالف مباشر لمبدأ "صفر تغيير على الموبايل" المتبع في كل مرحلة سابقة. الحل: استخدمت بس `modalPresentation.isDesktop` (الخاصية التالتة اللي الـhook بيرجّعها من F1، مصممة بالظبط لحالات زي دي) وركّبت الـrounded يدويًا (`isDesktop ? 'rounded-3xl' : 'rounded-t-3xl'`) مع الحفاظ على `border border-white/8`/`overflow-hidden` الأصليين بالحرف، وصفر إضافة أنيميشن. أما `EditClientModal.tsx` فمطابق 100% لنمط `NewCaseModal.tsx` (نفس `border-t border-white/10`/`slide-up`)، فاستخدمت فيه `panelShapeClassName`/`panelAnimationClassName` مباشرة زي F2 بالظبط. **`overlayAlignClassName` (items-end/items-center) اتطبّق بنفس الطريقة في كل الحالات** — الجزء ده متطابق شكليًا بين النمطين فمفيش داعي لتمييز. **الـmax-width:** طبّقت `lg:max-w-2xl` (بدل `max-w-lg` الثابت) على كل الفورمات الشبكية اللي E2/E3 عملوا فيها `grid-cols-2` فعليًا — 6 ملفات: `NewCaseModal.tsx`، `EditCaseModal.tsx` (بس الـpanel الرئيسي؛ panel التحميل/Spin فضل `max-w-lg` لأنه مش فورم)، `NewClientModal.tsx`، `EditClientModal.tsx`، `NewStandaloneSessionModal.tsx`، و`EditStandaloneModalForm` (جوّه `StandaloneSessionDetailModal.tsx`) — ده تنفيذ فعلي للملاحظة التحذيرية اللي كانت متوثقة في E2 ("عرض المودال هيفضل max-w-lg لحد مرحلة F3... هيبان بوضوح أكتر بعد ما F3 توسّع العرض"). مودال "تفاصيل الجلسة" (العرض/القراءة، `standalone-session-detail-modal`) **فضل `max-w-lg` بدون تغيير** عمدًا — مفيش شبكة فيه أصلاً (قائمة صفوف قراءة بس)، توسيعه كان هيبقى بلا داعي بصري. صفر تغيير على أي `data-testid` (تأكيد `diff`/عدّ مباشر: نفس القيم بالحرف في كل الملفات الستة). التحقق: `node --experimental-strip-types --check` نظيف على الملفات الستة، عدّ الأقواس بفارق ثابت متطابق لكل ملف (+5/+5 `NewStandaloneSessionModal`، +4/+4 `EditClientModal`، +8/+8 `StandaloneSessionDetailModal` — الفارق الأصلي `945/947` محفوظ زي ما هو)، و`diff -rq` على مستوى المشروع كله مؤكد إن 7 ملفات فقط (الأربعة من F2 + الثلاثة الجديدة دي) + `useModalPresentation.ts` (F1) هما بالظبط اللي اتغيّروا من أول بداية F1 — صفر أثر جانبي. الـE2E الفعلي لسه محتاج بيئة حقيقية (G4) — نفس منطق F2: التغييرات كلها className مشروطة بـ`isDesktop` (فيوبورت `Desktop Chrome` المستخدم في الـ31 اختبار هيبقى `isDesktop === true` فعليًا، فده أول مرة القيم الفعلية بتتغيّر وقت التستات — لازم تأكيد فعلي في G4 مش افتراض نظري بس). **مرحلة F بالكامل خلصت الآن (F1، F2، F3).** |
+| G | G1 — Drawer للـ Tablet | 🔵 | التالية |
+| G | G2 — aria-labels / A11y pass | ⬜ | |
+| G | G3 — Playwright project لفيوبورت موبايل + سكريبت تحقق بصري | ⬜ | |
+| G | G4 — تشغيل الـ 31 E2E الحالية + تقرير ختامي شامل | ⬜ | |
+
+**مفتاح الحالة:** ⬜ لسه ماتعملش · 🔵 المرحلة الجزئية الجاية (التالية في الدور) · 🟡 شغال عليها دلوقتي · ✅ خلصت وتم التسليم (زيب + تقرير)
+
+---
+
+## 1) ملخص اللي لقيته فعليًا في الكود (Findings)
+
+| # | الملاحظة | الدليل |
+|---|---|---|
+| 1 | **صفر** استخدام لأي responsive prefix من Tailwind (`sm:` `md:` `lg:` `xl:` `2xl:`) في كل المشروع (95 ملف `.tsx`). | `grep -rho "\(sm\|md\|lg\|xl\|2xl\):" src/` → 0 نتيجة |
+| 2 | مفيش أي `<table>` HTML في المشروع كله. القضايا/الموكلين بيتعرضوا كـ **كروت عمودية واحدة تحت التانية** (`space-y-2`) — `CasesTab.tsx:139` (`renderCaseCard`) و`ClientsTab.tsx`. | `grep -rl "<table" src/features` → لا يوجد |
+| 3 | `tailwind.config.js` مفيهوش breakpoints مخصصة → يبقى الافتراضي: `sm:640 md:768 lg:1024 xl:1280 2xl:1536`. مفيش تعارض لو استخدمناها. | `tailwind.config.js` |
+| 4 | جذر التطبيق (`App.tsx:423`) مفيهوش أي `max-width` — يعني على شاشة كبيرة، الـ `<main>` بياخد العرض كامل فعليًا، لكن كل المحتوى جواه (كروت/فورمات بـ`max-w-sm`/`max-w-lg`) بيفضل ضيق وسط فراغ. ده بالظبط سبب شكل "الموبايل المكبّر". | `App.tsx:423-434` |
+| 5 | التنقل الأساسي حاليًا **شريط سفلي عائم** (`CommandDock.tsx`) — عناصره: 🏠 الرئيسية، 📅 الجلسات، 🤖 AI (وسط)، ⚖️ القضايا، 🔔 تذكيرات، + زر "المزيد" بيفتح شبكة (👥 الموكلين، 📁 المستندات، 💰 الأتعاب، 🛡 لوحة الإدارة [أدمن بس]). | `CommandDock.tsx` سطور 81-140 و`data-testid="nav-*"` |
+| 6 | `useNavigation.ts` (Custom History API navigation، **مفيش react-router** في المشروع) بيعرّف 9 تابات: `dashboard, cases, clients, calendar, fees, reminders, team, documents, admin`. تاب `team` معرّف وشغال (`App.tsx:474`) لكن **مالوش زرار تنقل مباشر**. | `useNavigation.ts` سطور 30-46 |
+| 7 | الـ Modals كلها (39+ مودال) بتستخدم نمط "Bottom Sheet" — 22 ملف بنمط `items-end justify-center`، و9 ملفات confirm dialogs بنمط `items-center`. أقصى عرض مستخدم `max-w-lg` (512px). | `grep "items-end justify-center"` → 22 |
+| 8 | فيه CSS variables جاهزة ومركزية (Design Tokens): `--bg --card --gold --border --text-primary ...` في `index.css`، وكمان `--app-header-h` و`--app-navbar-h` بيتم نشرهم ديناميكيًا من `useNavbarHeightVar.ts` و`AppHeader.tsx`. | `index.css:52-75`, `useNavbarHeightVar.ts` |
+| 9 | `body`/`html` عندهم `h-full overflow-hidden`، والـ scroll الفعلي جوه `<main class="flex-1 overflow-y-auto no-scrollbar">`. أي Shell جديد لازم يحافظ على نفس نمط الـ scroll container. | `index.html:24,26-31`, `App.tsx:423-434` |
+| 10 | فيه بالفعل `src/app/` فيه `AppModals.tsx`، `CommandDock.tsx`، `HeaderMenu.tsx`، `AppLoadingScreen.tsx`، `ExitConfirmModal.tsx` — مكان الـ Shell الجديد الطبيعي هو `src/app/shell/...`. | `ls src/app` |
+| 11 | `AppModals.tsx` فعليًا بياخد ~40 prop (تأكيد العدّ من `App.tsx:501-528`). | `App.tsx:501-528` |
+| 12 | فيه grid ثنائي/رباعي مستخدم بس على مستوى الموبايل (`grid-cols-4` في `DashboardTab.tsx:310`، `grid-cols-2` في `NewCaseModal.tsx`) — ثابت مش Responsive. | `DashboardTab.tsx:310`, `NewCaseModal.tsx` |
+| 13 | مفيش أي hook لـ media query حاليًا. أقرب مرجع: `useThemeMode.ts`، `useNavbarHeightVar.ts`. | `src/hooks/` |
+| 14 | `package.json`: `react` + `react-dom` + `@supabase/supabase-js` بس — مفيش UI library خارجية ولا router. | `package.json` |
+| 15 | `playwright.config.ts` بيشغّل على `devices['Desktop Chrome']` — الاختبارات الحالية مش خط دفاع كافي ضد كسر شكل الموبايل بصريًا، لازم فحص بصري إضافي. | `playwright.config.ts` |
+
+---
+
+## 2) استراتيجية الـ Breakpoints
+
+| الاسم | العرض | الاستخدام |
+|---|---|---|
+| Mobile | `< 768px` (بدون prefix) | نفس التصميم الحالي 100% |
+| Tablet | `768px – 1023px` (`md:`) | Sidebar → Drawer، أعمدة أقل |
+| Desktop | `>= 1024px` (`lg:`) | Shell كامل: Sidebar ثابت + Header + عدة أعمدة |
+| Desktop كبير | `>= 1536px` (`2xl:`) اختياري | زيادة max-width الداخلي بس |
+
+---
+
+## 3) الـ Architecture المقترحة
+
+```
+src/
+├── app/
+│   ├── shell/                        ← 🆕
+│   │   ├── AppShell.tsx              ← 🆕 (A3, A4)
+│   │   ├── DesktopSidebar.tsx        ← 🆕 (B1, B2)
+│   │   ├── DesktopHeader.tsx         ← 🆕 (B3)
+│   │   └── navConfig.ts              ← 🆕 (A2)
+│   ├── AppModals.tsx                 ← تعديل طفيف
+│   ├── CommandDock.tsx               ← بدون تغيير منطقي
+│   └── HeaderMenu.tsx / ExitConfirmModal.tsx / AppLoadingScreen.tsx  ← بدون تغيير
+│
+├── shared/
+│   ├── hooks/
+│   │   └── useResponsiveLayout.ts    ← 🆕 (A1)
+│   └── ui/
+│       └── ModalShell.tsx            ← 🆕 اختياري (F1)
+```
+
+---
+
+## 4) `useResponsiveLayout` (مرحلة A1)
+
+```ts
+// src/shared/hooks/useResponsiveLayout.ts
+export type LayoutMode = 'mobile' | 'tablet' | 'desktop';
+
+export function useResponsiveLayout(): { mode: LayoutMode; isDesktop: boolean; isMobile: boolean } {
+  // matchMedia فقط — بدون resize listener يدوي
+}
+```
+- بنمط `useThemeMode.ts` بالظبط.
+- `window.matchMedia('(min-width: 1024px)')` و`(min-width: 768px)` — `change` event بس.
+- بيتستخدم في **مكان واحد بس**: `AppShell.tsx`.
+
+---
+
+## 5) `AppShell.tsx` (مراحل A3–A4)
+
+**A3 — هيكلي بس:** إنشاء المكوّن، يستقبل نفس الـ props اللي `App.tsx` بيحسبها حاليًا (Header, Dashboard, tab contents) لكن من غير أي فرع `isDesktop` فعلي لسه — الهدف إثبات إن اللف نفسه (wrapping) ما بيكسرش حاجة قبل ما نضيف أي منطق جديد.
+
+**A4 — الدمج الفعلي:** لف الجزء من `<div data-testid="app-shell">` في `App.tsx` بمكوّن `AppShell` بدل الـ`<div>` الخام. التغيير محصور في آخر ~15 سطر من `App.tsx`. بعد A4، شكل الموبايل والديسكتوب لسه **زي بعض تمامًا** (مفيش Sidebar/Header ديسكتوب لسه) — الهدف إثبات صحة إعادة الهيكلة قبل إضافة أي شكل جديد.
+
+**تقليل الـ Prop Drilling:** `navConfig.ts` (A2) هيشيل تكرار تعريف عناصر التنقل بين `CommandDock` و`DesktopSidebar`. أي تحسين أعمق لـ `AppModals` props هيتطرح كتوصية مستقبلية منفصلة، مش جزء من هذه الخطة.
+
+---
+
+## 6) Desktop Sidebar (مراحل B1–B2)
+
+من `CommandDock.tsx` + `useNavigation.ts`:
+
+| الأيقونة | التاب | مصدره |
+|---|---|---|
+| 🏠 | `dashboard` | `nav-dashboard` |
+| ⚖️ | `cases` | `nav-cases` |
+| 👥 | `clients` | `nav-more-clients` |
+| 📅 | `calendar` | `nav-calendar` |
+| 💰 | `fees` | `nav-more-fees` |
+| 🔔 | `reminders` | `nav-reminders` |
+| 📁 | `documents` | `nav-more-documents` |
+| 🤖 | AI (مودال) | `nav-ai-center` — مقفول لغير السوبر أدمن حاليًا |
+| 🛡 | `admin` (أدمن بس) | `nav-more-admin` |
+| — | `team` | معرّف بلا زرار — ✅ **قرار محسوم:** هيتضاف (أدمن بس)، راجع قسم 14 |
+
+**B1:** السايدبار في وضعه الموسّع بس (260px)، بدون طي، بدون tooltips — هدفها إثبات إن الـ layout والـ navigation شغالين صح الأول.
+**B2:** إضافة الطي (`sanad_sidebar_collapsed` في localStorage، بنمط `sanad_theme`) + tooltips على الأيقونات في وضع الطي.
+
+كل الأزرار هتحافظ على نفس `data-testid` الموجودة، وهضيف `data-testid="desktop-nav-*"` مستقل.
+
+---
+
+## 7) الترتيب المكاني (RTL) والـ CSS Variables (مرحلة B3–B4)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     DesktopHeader (sticky top-0)         │
+├──────────────────────────────────────────┬───────────────┤
+│              <main> المحتوى               │  Sidebar      │
+│              flex:1 min-width:0           │  (يمين، RTL)  │
+└────────────────────────────────────────────┴───────────────┘
+```
+- `dir="rtl"` مضبوطة من `index.html:2`، فالـ Sidebar هيتحط في DOM order **بعد** المحتوى عشان RTL الطبيعي يحطه يمين تلقائيًا.
+- **B3:** بناء `DesktopHeader.tsx` بنفس الـ actions الموجودة في `AppHeader.tsx` بتصميم Desktop.
+- **B4:** نشر `--app-sidebar-w` (260px موسّع / 76px مطوي) بنفس نمط `useNavbarHeightVar.ts`، و`<main>` يستخدمها بس على `lg:` (`lg:pe-[var(--app-sidebar-w)]` — `pe-` مش `pr-`).
+
+---
+
+## 8) الـ Modals على Desktop (مراحل F1–F3)
+
+22 مودال Bottom-Sheet، 9 Centered — كل واحد بيكتب wrapper بنفسه.
+
+- **F1:** إنشاء `useModalPresentation()` hook بيرجع الـ className المناسب (`items-end` موبايل / `items-center` ديسكتوب) + `rounded` المناسب — بدون تطبيقه على أي مودال لسه (الهدف اختبار الـ hook لوحده).
+- **F2:** تطبيقه على أهم 3 مودالات (قضية جديدة، موكل جديد، تفاصيل القضية).
+- **F3:** تطبيقه على 3 مودالات تانية (تفاصيل الجلسة + 2 حسب الأولوية وقت التنفيذ) + تحديد `max-width` لكل مودال حسب محتواه (`lg:max-w-2xl` للفورمات الكبيرة، `max-w-sm` لمودالات التأكيد). باقي المودالات (30+) هتفضل زي ما هي — مقبولة بصريًا لأنها أصلاً صغيرة.
+
+---
+
+## 9) الجداول (مراحل D1–D3)
+
+مفيش جدول موجود أصلاً (نقطة 2) — بناء جديد بالكامل، جنب الكروت مش بدالها.
+
+- **D1:** إنشاء `CaseRow` component + هيكل `<table>` فاضي/ستاتيك جنب `renderCaseCard` — الأعمدة: رقم القضية | الموكل | المحكمة | الحالة | الجلسة القادمة | الإجراءات. من غير ربط فعلي بالبيانات لسه (مجرد هيكل + بيانات وهمية للتأكد من الشكل).
+- **D2:** ربط الجدول الفعلي بنفس الـ `MappedCase` object ونفس الـ handlers (`setSelectedCase`...) ونفس منطق الفلترة/البحث/الصفحات — الـ container: `< lg` يعرض الكروت زي ما هو 100%، `>= lg` يعرض الجدول.
+- **D3:** نفس المبدأ بالظبط لـ `ClientsTab.tsx`.
+
+---
+
+## 10) Dashboard / Case Detail / Forms (مراحل C2–C3, E1–E3)
+
+- **C2:** `grid-cols-4` الموجودة في `DashboardTab.tsx:310` تفضل زي ما هي على موبايل، `lg:` تعديل مسافات/أحجام خط بس.
+- **C3:** قسم الجلسات القادمة/القضايا الأخيرة (عمودي حاليًا) ياخد `lg:grid-cols-[2fr_1fr]`.
+- **E1:** `CaseDetailView.tsx` — الـ Tabs تفضل زي ما هي بالظبط، بس قسم "بيانات القضية + الإجراءات السريعة" ياخد `lg:grid-cols-[2fr_1fr]`.
+- **E2:** `NewCaseModal`/`EditCaseModal` — الحقول القصيرة المتجاورة منطقيًا (اسم+رقم قومي، هاتف+بريد) تاخد `lg:grid-cols-2`، الحقول الطويلة تفضل `lg:col-span-2`.
+- **E3:** نفس المبدأ على باقي الفورمات الرئيسية (موكل، جلسة مستقلة) حسب طبيعة حقول كل فورم.
+
+---
+
+## 11) جدول المراحل الكبير → الجزئي (مرجع سريع)
+
+| المرحلة | المحتوى العام | المراحل الجزئية |
+|---|---|---|
+| **A — الأساس** | هيكل بدون تغيير بصري | A1 hook → A2 navConfig → A3 AppShell هيكلي → A4 دمج فعلي |
+| **B — Header + Sidebar** | عناصر Desktop الأساسية | B1 Sidebar موسّع → B2 طي+Tooltips → B3 DesktopHeader → B4 نشر المتغير + ربط main |
+| **C — Content + Dashboard** | تجاوب المساحة الرئيسية | C1 Padding/max-width → C2 Dashboard stats → C3 Dashboard عمودين |
+| **D — الجداول** | بناء جديد بالكامل | D1 هيكل CaseRow → D2 ربط فعلي بالبيانات → D3 جدول الموكلين |
+| **E — Case Detail + Forms** | تخطيط عمودين | E1 CaseDetailView → E2 فورم القضية → E3 باقي الفورمات |
+| **F — Modals** | عرض متوسط للمودالات | F1 hook → F2 أهم 3 مودالات → F3 3 مودالات تانية + max-width |
+| **G — Tablet + A11y + تحقق نهائي** | إغلاق وتحقق شامل | G1 Drawer تابلت → G2 A11y → G3 Playwright موبايل + سكريبت بصري → G4 تشغيل E2E + تقرير ختامي |
+
+كل مرحلة جزئية قابلة للتسليم والاختبار **لوحدها** من غير ما تكسر اللي قبلها، ومفيش مرحلة بتلمس Database/Supabase/Auth/Offline Queue/Health Monitoring إطلاقًا.
+
+---
+
+## 12) ضمان عدم كسر Mobile (Mobile Safety Strategy)
+
+1. **لا حذف ولا تعديل** على أي className موجود إلا بالإضافة (`lg:`/`md:` جديدة).
+2. `CommandDock.tsx` هيتحط جواه شرط عرض بسيط (`!isDesktop`) بدل ما يتشال أو يتعدل.
+3. أي مكوّن جديد (`CaseRow`, `DesktopSidebar`, إلخ) بيتضاف **جنب** الكود الحالي مش بدله — قابل للتعطيل بسطر واحد.
+4. فحص بصري يدوي (screenshots) على 320/360/390/414px بعد **كل مرحلة جزئية**، مش بس بعد كل مرحلة كبيرة.
+5. الاختبارات الحالية (31 E2E spec) هتتشغل زي ما هي بعد كل مرحلة جزئية — أي فشل إشارة مباشرة لتأثر Mobile flow.
+
+---
+
+## 13) حدود صريحة (Out of Scope)
+
+مش هتغيّر أبدًا: Supabase queries، RLS، migrations، Authentication، Multi-tenancy، Offline Queue (`window.__dbWrite`, `offlineQueue.ts`)، `systemHealth.ts`، PWA manifest/service worker، Telegram alerts، أي business rule موجودة. لو اكتشفت أثناء التنفيذ إن حاجة من دول لازم تتلمس، هوقف وأقولك السبب قبل أي تعديل.
+
+---
+
+## 14) إجابات الأسئلة (اتحسمت بتاريخ 14 أغسطس 2026)
+
+1. **تاب `team`:** ✅ **هيتضاف** للسايدبار الجديد (أدمن بس، زي `admin`) بنفس الـ `data-testid="desktop-nav-team"` الجديد — هيتحط في B1 مع باقي عناصر السايدبار.
+2. **الـ AI section:** ✅ **نفس السلوك بالظبط** — لسه مقفولة لغير السوبر أدمن، وبتفتح "مودال قريبًا" عبر نفس `handleAIButtonClick` الموجودة، من غير أي تغيير في منطق الصلاحيات. السايدبار هيستدعي نفس الدالة زي ما هي.
+3. **الحالة الافتراضية للسايدبار:** ✅ **موسّعة (Expanded)** أول مرة يفتح المستخدم Desktop — `sanad_sidebar_collapsed` هيبدأ بـ `false` لو مفيش قيمة محفوظة في localStorage من قبل. هتتنفذ فعليًا في B2.
+4. **ترتيب البدء:** الترتيب A→B→C→D→E→F→G **صح ومقصود** ومفيش داعي نغيره — كل مرحلة معتمدة على اللي قبلها فعليًا مش ترتيب اعتباطي:
+   - **A** لازم أول واحدة لأن `AppShell` هو اللي هيستضيف كل حاجة جاية بعده (Sidebar، Header) — من غيره مفيش مكان نحط فيه B.
+   - **B** لازم قبل C لأن `--app-sidebar-w` (اللي B4 بينشرها) هي اللي C1 محتاجها عشان يحسب padding الـ `<main>` صح.
+   - **C** قبل D/E منطقي لأنها بتظبط الـ container العام (Dashboard) اللي D وE بيتحطوا جواه، لكن من الناحية التقنية D وE مستقلين عن بعض فعليًا لو حبيت تبدّل ترتيبهم — مفيش تعارض تقني، بس هسيبهم بالترتيب الحالي لأن الجداول (D) أعلى مخاطرة (بناء جديد بالكامل، بند 9) والأفضل نثبّتها الأول قبل ما نضيف طبقة تانية من التغييرات في E.
+   - **F (المودالات)** بعد E عمدًا — لأن بعض المودالات المستهدفة في F2/F3 (زي مودال "قضية جديدة") هي نفسها اللي E2 بيعدّل حقولها الداخلية، فالأفضل نخلص شكل الفورم جوه المودال (E) قبل ما نغيّر إطار عرض المودال نفسه (F) — تقليل تعارض التعديلات على نفس الملفات في نفس الوقت.
+   - **G** آخر واحدة دايمًا لأنها التحقق الشامل النهائي (Tablet + A11y + فحص بصري + E2E) وبتحتاج كل حاجة قبلها تكون خلصت عشان تبقى ذات معنى.
+
+   يعني الترتيب المحدد سليم تقنيًا ومفيش داعي لتبديل أي مرحلة مكان التانية. البدء الفعلي هيكون بـ **A1**.
+
+---
+
+**الخلاصة:** نفس تحليل الفحص الأصلي بالكامل (مفيش تغيير في الفهم أو الاستراتيجية)، لكن الـ 7 مراحل الكبيرة (A–G) بقت 24 مرحلة جزئية، وكل مرحلة جزئية بتتسلّم بزيب محدث + هذا التقرير محدّث موثّق فيه اللي خلص واللي باقي.
