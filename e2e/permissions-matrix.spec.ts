@@ -111,7 +111,11 @@ test.afterEach(async ({ page }) => {
 
 test('lawyer: يقدر يضيف قضية لكن مايشوفش زرار حذف القضية ولا تاب الأتعاب', async ({ page }) => {
   const fullName = `اختبار E2E صلاحيات lawyer - ${Date.now()}`;
-  const caseTitle = `قضية اختبار صلاحيات - ${Date.now()}`;
+  // 🔒 FIX (تحليل تسريب بيانات E2E — 19 أغسطس 2026): كان `قضية اختبار
+  // صلاحيات - ${Date.now()}` — فيه "اختبار" بس من غير "E2E" جنبها، فمش
+  // بيطابق MARKER = '%اختبار E2E%' في global-teardown.ts. القضايا دي
+  // كانت بتفضل عالقة للأبد. اتضاف "E2E" جنب "اختبار" فعليًا.
+  const caseTitle = `اختبار E2E صلاحيات - قضية - ${Date.now()}`;
   cleanupName = fullName;
 
   // 1) admin: ينشئ مستخدم lawyer تجريبي + قضية (عشان lawyer يفتحها بعدين)
