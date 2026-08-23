@@ -1,0 +1,872 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { I } from '../../constants';
+import { Inp } from '@/shared/ui/Inp';
+import { Sel } from '@/shared/ui/Sel';
+import { ClientSearchSelect, type ClientSearchResult } from '@/shared/ui/ClientSearchSelect';
+import { toast } from '../../shared/lib/notifications';
+import { onlyDigits, normalizeArabicDigits } from '../../shared/lib/sanitize';
+import DatePicker from '@/shared/ui/DatePicker';
+import { db } from '../../supabaseClient';
+import { usePartyFields } from '@/shared/parties/usePartyFields';
+import { PartyFieldsGroup } from '@/shared/parties/PartyFieldsGroup';
+import type { PartyFieldValue, PartySide } from '@/shared/parties/partyTypes';
+// 🆕 (خطة توحيد قفل الطرف، المرحلة 2 — 6 أغسطس 2026): مصدر الحقيقة
+// الموحّد لحالة قفل/ربط أي طرف، بدل !!party.client_id المباشر.
+// 🆕 (مرحلة F2 — خطة Desktop): شكل الـpanel (rounded/border/animation)
+// حسب نوع الشاشة — الـoverlay align نفسه بيتحدد في CaseDetailView.tsx
+// (الأب اللي بيرندر هذا المودال).
+import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
+import {
+    getPartyState,
+    isLinkedState,
+    isOrphanState,
+    isOrphanedLink,
+    canCreateNewClientFromParty,
+    getPartyStateMessage,
+    type PartyDomainContext,
+} from '@/shared/parties/partyDomainService';
+import { findPartyDataMismatches, type FieldMismatch } from '../calendar/hooks/caseSessionLinkingShared';
+import { useFormDraft } from '@/shared/hooks/useFormDraft';
+import { useUnsavedChangesGuard } from '@/shared/hooks/useUnsavedChangesGuard';
+import type { MappedCase } from '../../hooks/useAppData';
+import type { CaseFormSubmitData } from './hooks/useCaseActions';
+import type { ClientRow } from '../../types';
+import type { ClientModalContext } from '../clients/hooks/useClientActions';
+
+interface EditCaseModalProps {
+    caseData: MappedCase;
+    onClose: () => void;
+    onSave: (form: CaseFormSubmitData) => void | boolean | Promise<void | boolean>;
+    countryCourts?: string[];
+    countryCaseTypes?: string[];
+    // 🔒 FIX (تقرير الموثوقية — نتيجة 1): المودال ده ما كانش فيه أي حماية
+    // دبل كليك خالص (بعكس NewCaseModal). بنستقبل نفس savingCase state من
+    // App.tsx عشان نقفل الزرار أثناء الحفظ.
+    saving?: boolean;
+    // ⚡ NEW (خطة توحيد مصدر بيانات الموكل، مرحلة 2): لما caseData.client_id
+    // موجود، الصفحة الأب (CaseDetailView) بتمرر هنا الموكل الحقيقي (الصف
+    // الحي من جدول clients، مش النسخة المحفوظة جوه القضية). لو موجود:
+    // بنقفل اسم الموكل + الرقم القومي + بيانات التوكيل + العنوان ونعرضهم
+    // من هنا مباشرة (مصدر الحقيقة الوحيد). لو client_id موجود لكن الموكل
+    // اتمسح (soft-deleted) فـ linkedClient بتوصل null — الحقول تفضل حرة
+    // زي قضية مش مربوطة (fallback الموكل المحذوف، مرحلة 7 من الخطة، أولوية
+    // منخفضة دلوقتي لأنه صفر حالة فعلية حاليًا).
+    linkedClient?: ClientRow | null;
+    // ⚡ CHANGED (قفل بيانات كل الأطراف المربوطة بموكل حقيقي، لا الطرف
+    // الأساسي بس): بقى بياخد الموكل (ClientRow) المطلوب فتح فورم تعديله —
+    // بيتحدد وقت الضغط حسب party.client_id بتاع الطرف اللي اتضغط عليه، مش
+    // بس linkedClient الأساسي. بيقفل فورم القضية الحالي ويودّي مباشرة لفورم
+    // تعديل الموكل نفسه (مش شاشة تفاصيل بس).
+    onOpenClientProfile?: (client: ClientRow) => void;
+    // ⚡ NEW (خطة تطوير أطراف الدعوى — مرحلة 4 خطوة 2، 23 يوليو 2026): قائمة
+    // الموكلين + فتح موديل "إنشاء موكل جديد" الموحّد — لأي طرف *غير* الموكل
+    // الأصلي المقفول (linkedClient فوق)، زي أي طرف جديد يتضاف أثناء
+    // التعديل، أو الطرف التاني (الخصم) لو اتحول لموكلنا لاحقًا.
+    clients?: ClientRow[];
+    openNewClientModal?: (ctx: ClientModalContext) => void;
+}
+
+interface EditCaseForm {
+    title: string; caseNum: string; caseYear: string;
+    court: string; court_floor: string; court_hall: string;
+    type: string;
+    court_level: string; circuit_number: string;
+    status: string; date: string; session_time: string;
+    session_hall: string; secretary_hall: string; secretary_name: string; secretary_mobile: string;
+    // ⚡ ملحوظة (مرحلة 5.1 — خطة تعدد الأطراف، 22 يوليو 2026): بيانات
+    // الموكل/الخصم (اللي كانت هنا كـ client_name/client_capacity/opponent/
+    // opponent_capacity/plaintiff_national_id/plaintiff_power_of_attorney/
+    // defendant_national_id/plaintiff_address) بقت كلها جوه usePartyFields()
+    // تحت (array أطراف)، بنفس التغيير اللي حصل في NewCaseModal.tsx (مرحلة
+    // 4.1) — راجع PartyFieldsGroup في الـ JSX تحت.
+}
+
+// ⚡ شكل صف case_parties كما بيرجع من الداتابيز — case_parties لسه مش
+// موجودة في database.types.ts (اتضافت بـ SQL مباشر، قسم 3 من الخطة، ومفيش
+// طريقة نولّد بيها الأنواع من هنا من غير نت) — نفس القيد اللي خلّى
+// useCaseActions.ts يستخدم window.__dbWrite بدل db.from() مباشرة لنفس
+// الجدول ده.
+interface CasePartyRow {
+    id: string;
+    side: PartySide;
+    is_client: boolean;
+    name: string;
+    capacity: string;
+    national_id: string | null;
+    address: string | null;
+    power_of_attorney: string | null;
+    client_id: string | null;
+    sort_order: number;
+    // 🆕 (خطة توحيد "ربط طرف بموكل موجود" — مرحلة 2، 6 أغسطس 2026): نفس
+    // إضافة CasePartyRow في useCaseDetailActions.ts — موجودة فعليًا مع
+    // select('*') تحت، ناقصة من النوع بس.
+    updated_at: string | null;
+}
+
+// خيارات وقت الجلسة — كانت زرارين، دلوقتي select واحد عشان تقدر تقعد جنب
+// حقل التاريخ في نفس السطر (طلب مباشر، 22 يوليو 2026).
+const SESSION_TIME_OPTIONS = [
+    { value: 'صباحي', label: '🌅 صباحي' },
+    { value: 'مسائي', label: '🌆 مسائي' },
+];
+
+// ══════════════════════════════════════════════════════════════
+//  EditCaseModal (outer shell) — مرحلة 5.1 من خطة تعدد الأطراف: قبل ما
+//  الفورم الحقيقي (EditCaseModalForm تحت) يتبني، لازم نجيب أطراف القضية
+//  الموجودة فعلاً من case_parties (لو القضية دخلت عليها بيانات من قبل عن
+//  طريق الفورم الجديد أو الـ backfill)، عشان usePartyFields() يتهيّأ بالقيم
+//  الصح من أول رندر (initialPlaintiffs/initialDefendants بتتقرا مرة واحدة
+//  بس وقت الـ mount). القضايا اللي معهاش أي صف في case_parties (الأغلبية
+//  حاليًا — قسم 11، نتيجة مرحلة 2) بترجع array فاضية، والفورم الداخلي
+//  بيعمل fallback لبيانات الأعمدة القديمة (plaintiff/defendant) زي ما كان
+//  يحصل بالظبط قبل التعديل ده.
+// ══════════════════════════════════════════════════════════════
+function EditCaseModal(props: EditCaseModalProps) {
+    const { caseData } = props;
+    // 🆕 (F2): مطلوب هنا كمان (مش بس في EditCaseModalForm تحت) عشان
+    // panel التحميل (partiesState.loaded === false) ياخد نفس الشكل.
+    const modalPresentation = useModalPresentation();
+    const [partiesState, setPartiesState] = useState<{ loaded: boolean; rows: CasePartyRow[] }>({ loaded: false, rows: [] });
+
+    useEffect(() => {
+        let cancelled = false;
+        setPartiesState({ loaded: false, rows: [] });
+        (async () => {
+            // ⚠️ case_parties بقت مضافة في database.types.ts (خطة تعدد
+            // الأطراف، مرحلة 1) — مفيش داعي لكاست 'as cases' تاني هنا.
+            const { data, error } = await db.from('case_parties')
+                .select('*')
+                .eq('case_id', caseData.id)
+                .order('sort_order', { ascending: true });
+            if (cancelled) return;
+            // لو الاستعلام فشل (مثلاً مشكلة اتصال): نرجع لسلوك fallback
+            // (طرف واحد من الأعمدة القديمة) بدل ما نمنع فتح فورم التعديل
+            // بالكامل — تحسين مستقبلي ممكن يعرض تنبيه، مش جزء من نطاق 5.1.
+            setPartiesState({ loaded: true, rows: error ? [] : ((data as unknown as CasePartyRow[]) || []) });
+        })();
+        return () => { cancelled = true; };
+    }, [caseData.id]);
+
+    if (!partiesState.loaded) {
+        return React.createElement('div', {className: `bg-premium-card w-full max-w-lg ${modalPresentation.panelShapeClassName} p-10 shadow-2xl ${modalPresentation.panelAnimationClassName} flex items-center justify-center`},
+            React.createElement(I.Spin)
+        );
+    }
+
+    return React.createElement(EditCaseModalForm, { ...props, existingPartyRows: partiesState.rows });
+}
+
+interface EditCaseModalFormProps extends EditCaseModalProps {
+    existingPartyRows: CasePartyRow[];
+}
+
+function EditCaseModalForm({caseData, onClose, onSave, countryCourts, countryCaseTypes, saving = false, linkedClient = null, onOpenClientProfile, existingPartyRows, clients = [], openNewClientModal}: EditCaseModalFormProps){
+    // 🆕 (F2): بيرجع أجزاء className الجاهزة حسب نوع الشاشة — راجع
+    // تعليقات useModalPresentation.ts لتفاصيل القرار.
+    const modalPresentation = useModalPresentation();
+    // ⚡ NEW: القضية مربوطة فعليًا بموكل حي لو client_id موجود واتلقّى
+    // فعلاً صف الموكل من الأب (مش soft-deleted ولا orphaned).
+    const isLinked = !!linkedClient;
+    // ⚡ NEW (خطة توحيد مصدر بيانات الموكل، مرحلة 7 — fallback الموكل
+    // المحذوف): القضية عندها client_id فعلي، لكن الأب مش لاقي صف الموكل
+    // (اتمسح/soft-deleted). الحقول بترجع حرة تلقائيًا (isLinked=false)
+    // من غير أي تغيير هنا — الإضافة الوحيدة هي تنبيه واضح للمستخدم بدل
+    // ما يفتكر إن القضية دي مكانتش مربوطة بحد أصلاً.
+    // ⚡ CHANGED (خطة توحيد قفل الطرف، المرحلة 2): بدل الشرط المكرر
+    // `!!caseData.client_id && !isLinked`، بنستخدم isOrphanedLink()
+    // الموحّدة من partyDomainService — نفس النتيجة بالظبط، لكن من مصدر
+    // واحد بدل 4 نسخ متفرقة (EditCaseModal، StandaloneSessionDetailModal
+    // بنسختيه، InfoSection).
+    const isOrphaned = isOrphanedLink(caseData.client_id, linkedClient);
+    const splitNum = (num: string) => {
+        if(!num||num==='—') return {n:'',y:''};
+        const parts = num.split('/');
+        return parts.length===2 ? {n:parts[0],y:parts[1]} : {n:num,y:''};
+    };
+    const split = splitNum(caseData.number);
+
+    // ⚡ توحيد منطق مكان الجلسة: كان فيه حقلين منفصلين (court_floor +
+    // court_hall) بالإضافة لحقل session_hall في "بيانات إضافية" —
+    // نفس المعنى مكرر في 3 حقول. من دلوقتي session_hall هو المصدر
+    // الوحيد. لو القضية قديمة ومعندهاش session_hall لكن عندها
+    // court_floor/court_hall، بندمجهم هنا مرة واحدة عشان البيانات
+    // القديمة متضيعش (بدون ما نلمس الأعمدة القديمة في الداتابيز).
+    const mergedSessionHall = caseData.session_hall || [
+        caseData.court_floor ? `الدور ${caseData.court_floor}` : '',
+        caseData.court_hall ? `قاعة ${caseData.court_hall}` : '',
+    ].filter(Boolean).join(' - ');
+
+    // ⚡ FIX: الموكل والصفة كانوا بيتقروا بـ regex من نص plaintiff نفسه
+    // (نمط "الاسم (الصفة)") — ده كان بيتعارض مع عمود plaintiff_role/
+    // defendant_role الموجود فعليًا في جدول cases (ومُستخدم بالفعل في
+    // الجلسات المستقلة). دلوقتي بنقرا الصفة من عمودها المخصص مباشرة.
+    // الـ fallback على الـ regex اتسيب بس لأي صف قديم لسه معندوش
+    // plaintiff_role متعبي (قبل تشغيل migration الـ backfill)، عشان
+    // مايضيعش بيانات صفة قديمة كانت متخزنة جوه النص.
+    //
+    // ⚠️ FIX تاني: الموكل ممكن يكون شركة، وأسماء الشركات المصرية غالبًا
+    // بتنتهي بـ"(ش.م.م)" أو "(ذ.م.م)" — ده جزء من اسم الشركة مش صفة
+    // قانونية. عشان كده الـ fallback بيقسم بس لو اللي جوه القوسين فعلاً
+    // كلمة صفة معروفة (مدعي/مدعى عليه/مستأنف/طاعن...)، وإلا بيسيب النص
+    // كله زي ما هو كاسم (من غير ما يقطع جزء من اسم الشركة).
+    const knownCapacityPattern = /مدعي|مدعى عليه|مستأنف|طاعن|مطعون ضده|متهم|مجني عليه|محكوم عليه|خصم|مدين|دائن|موكل|وكيل|طالب|مطلوب ضده|منفذ ضده/;
+    const splitParty = (val: string | null) => {
+        if(!val) return {name:'',capacity:''};
+        const m = val.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+        if(m && knownCapacityPattern.test(m[2])) return {name:m[1].trim(), capacity:m[2].trim()};
+        return {name:val, capacity:''};
+    };
+    const clientParts = caseData.plaintiff_role
+        ? {name: caseData.plaintiff || '', capacity: caseData.plaintiff_role}
+        : splitParty(caseData.plaintiff);
+    const opponentParts = caseData.defendant_role
+        ? {name: caseData.defendant || '', capacity: caseData.defendant_role}
+        : splitParty(caseData.defendant);
+
+    // ⚡ CHANGED (طلب مباشر — 9 أغسطس 2026): درجة التقاضي بقت مربع نص حر
+    // زي "المحكمة"/"تصنيف الدعوى" فوق بالظبط، بدل أزرار اختيار مقفولة
+    // (ابتدائي/استئناف/نقض/أخرى) — نفس السبب: تقييد اختيارات مش موجودة
+    // فعليًا (درجات تقاضي تانية زي "دائرة أحوال شخصية استئناف" أو مسميات
+    // خاصة بدول تانية) كان بيجبر المستخدم يدوس "أخرى" ويكتب في حقل ثاني
+    // منفصل. مفيش داعي بعد كده لـknownLevels/isOther — بنقرا القيمة زي
+    // ما هي مباشرة.
+    const existingLevel = caseData.court_level || '';
+
+    // ⚡ FIX (طلب مباشر من جيمي، 22 يوليو 2026): المحكمة وتصنيف الدعوى بقوا
+    // مربع نص حر دايمًا (شوف تعليق الرندر تحت) — مفيش داعي بعد كده لتفرقة
+    // "أخرى" عن قيمة من القايمة، فبنقرا القيمتين مباشرة زي ما هما.
+    const existingCourt = caseData.court==='—' ? '' : (caseData.court || '');
+    const existingType = caseData.type==='عام' ? '' : (caseData.type || '');
+
+    const [form, setForm] = useState<EditCaseForm>({
+        title: caseData.title || '',
+        caseNum: split.n,
+        caseYear: split.y,
+        court: existingCourt,
+        court_floor: caseData.court_floor || '',
+        court_hall: caseData.court_hall || '',
+        type: existingType,
+        court_level: existingLevel,
+        circuit_number: caseData.circuit_number || '',
+        status: caseData.status || 'نشطة',
+        date: caseData.date==='—'?'':caseData.date || '',
+        session_time: caseData.session_time || 'صباحي',
+        session_hall: mergedSessionHall,
+        secretary_hall: caseData.secretary_hall || '',
+        secretary_name: caseData.secretary_name || '',
+        secretary_mobile: caseData.secretary_mobile || '',
+    });
+    const s = <K extends keyof EditCaseForm>(k: K,v: EditCaseForm[K]) => setForm((p) =>({...p,[k]:v}));
+
+    // ⚡ NEW (مرحلة 5.1 — خطة تعدد الأطراف): array أطراف الدعوى (مدعين
+    // ومدعى عليهم، بلا حدود) بدل حقلي "الموكل"/"الخصم" المفردين القدامى —
+    // نفس منطق NewCaseModal.tsx (مرحلة 4.1)، بس هنا القيم الابتدائية بتيجي
+    // من case_parties لو القضية دي دخل عليها بيانات فعلاً من الفورم الجديد،
+    // وإلا fallback لنفس منطق clientParts/opponentParts القديم (الأعمدة
+    // القديمة plaintiff/defendant) — حساب لمرة واحدة بس وقت الـ mount
+    // (useState lazy initializer)، مش بيتغيّر لو caseData اتغيّرت لاحقًا.
+    const [initialParties] = useState<{ plaintiffs: PartyFieldValue[]; defendants: PartyFieldValue[] }>(() => {
+        if (existingPartyRows.length > 0) {
+            const toField = (row: CasePartyRow): PartyFieldValue => ({
+                id: row.id,
+                side: row.side,
+                is_client: row.is_client,
+                name: row.name || '',
+                capacity: row.capacity || '',
+                national_id: row.national_id || '',
+                address: row.address || '',
+                power_of_attorney: row.power_of_attorney || '',
+                client_id: row.client_id || null,
+                // 🆕 (خطة توحيد "ربط طرف بموكل موجود" — مرحلة 2): بتتقرا من
+                // case_parties.updated_at الحقيقي، وبتنقل مع الطرف طول عمر
+                // الفورم عشان syncCaseParties تستخدمها كـknownUpdatedAt وقت
+                // الحفظ (UPDATE) — راجع useCaseActions.ts.
+                updated_at: row.updated_at || null,
+            });
+            return {
+                plaintiffs: existingPartyRows.filter((r) => r.side === 'plaintiff').map(toField),
+                defendants: existingPartyRows.filter((r) => r.side === 'defendant').map(toField),
+            };
+        }
+        // fallback لقضية قديمة معهاش أي صف في case_parties لسه — طرف واحد
+        // في كل جهة، بنفس القيم اللي كانت بتتعرض في الحقول المفردة القديمة
+        // (بما فيها قفل بيانات الموكل المربوط لو isLinked).
+        // ⚠️ الـ id هنا نص ثابت ('legacy-plaintiff'/'legacy-defendant') مش
+        // UUID حقيقي من case_parties — علامة واضحة إن الصف ده لسه ملوش نظير
+        // في الداتابيز، هيلزم وقت ربط الكتابة الفعلية (مرحلة 5.2) لتحديد
+        // INSERT جديد بدل UPDATE.
+        return {
+            plaintiffs: [{
+                id: 'legacy-plaintiff',
+                side: 'plaintiff' as PartySide,
+                is_client: true,
+                name: isLinked ? (linkedClient!.full_name || '') : clientParts.name,
+                capacity: clientParts.capacity,
+                national_id: isLinked ? (linkedClient!.national_id || '') : (caseData.plaintiff_national_id || ''),
+                address: isLinked ? (linkedClient!.address || '') : (caseData.plaintiff_address || ''),
+                power_of_attorney: isLinked ? (linkedClient!.cr_number || '') : (caseData.plaintiff_power_of_attorney || ''),
+                client_id: caseData.client_id || null,
+            }],
+            defendants: [{
+                id: 'legacy-defendant',
+                side: 'defendant' as PartySide,
+                is_client: false,
+                name: opponentParts.name,
+                capacity: opponentParts.capacity,
+                national_id: caseData.defendant_national_id || '',
+                address: '',
+                power_of_attorney: '',
+                client_id: null,
+            }],
+        };
+    });
+    // ⚡ NEW (خطة توحيد قفل الطرف، المرحلة 2): سياق الربط الموحّد —
+    // primaryClientId هو caseData.client_id (بغض النظر لو orphan دلوقتي
+    // أو لأ، getPartyState هو اللي بيقرر)، وقائمة clients بندمج معاها
+    // linkedClient نفسه احتياطًا (لو مش موجود أصلًا في clients لأي سبب —
+    // نفس نمط linkedClients في CaseDetailView.tsx). بيتحسب من جديد في كل
+    // render عمدًا (مش initial-only) عشان orphan تتحدّث فورًا لو clients
+    // اتغيّرت (مثلاً موكل اتضاف لسه من مكان تاني).
+    const domainContext = useMemo<PartyDomainContext>(() => {
+        const byId = new Map(clients.map((c) => [c.id, c]));
+        if (linkedClient) byId.set(linkedClient.id, linkedClient);
+        return { primaryClientId: caseData.client_id || null, clients: Array.from(byId.values()) };
+    }, [clients, linkedClient, caseData.client_id]);
+
+    const partyFields = usePartyFields({
+        initialPlaintiffs: initialParties.plaintiffs,
+        initialDefendants: initialParties.defendants,
+        // 🆕 (خطة "المسمى القانوني" — مرحلة 3): تحميل القيمة الحالية (لو
+        // موجودة) من الأعمدة اللي اتضافت في المرحلة 1 — نفس نمط تحميل
+        // initialParties فوق، بيتقرا مرة واحدة بس وقت الـ mount.
+        initialLegalTitles: {
+            plaintiff: caseData.plaintiff_legal_title || '',
+            defendant: caseData.defendant_legal_title || '',
+        },
+        // 🆕 (المرحلة 2): يغذّي فاليديشن الاسم (casePartiesValidation.ts)
+        // بالأطراف الـorphan فعليًا، عشان اسم طرف orphan يخضع لنفس فحص
+        // أي اسم يدوي (إصلاح باگ 5.5).
+        domainContext,
+    });
+
+    // الطرف اللي لازم يتقفل (readOnly) — الطرف المربوط فعليًا بموكل حي من
+    // clients (نفس فكرة قفل حقول "الموكل" القديمة). بيتحدد بمطابقة client_id.
+    // ⚡ FIX (تقرير التحقّق — النقطة 6، الثغرة الثانية): كان useState لقطة
+    // واحدة وقت الـmount بس — لو المستخدم ربط طرفًا جديدًا بالموكل الأساسي
+    // بعد فتح الفورم (عن طريق دروب-داون "ربط بموكل من النظام")، الطرف الجديد
+    // مكنش بيتحسب كـlinkedPartyId، فكان لسه بيتعرض له سلوت الربط بدل ما
+    // يتقفل بالكامل زي المفروض. useMemo بيتحسب من partyFields.plaintiffs/
+    // defendants الحيّة (بدل initialParties الثابتة)، فيتحدّث تلقائيًا مع أي
+    // تغيير فعلي في الأطراف.
+    const linkedPartyId = useMemo<string | null>(() => {
+        if (!isLinked) return null;
+        const all = [...partyFields.plaintiffs, ...partyFields.defendants];
+        return all.find((p) => p.client_id === caseData.client_id)?.id ?? null;
+    }, [isLinked, partyFields.plaintiffs, partyFields.defendants, caseData.client_id]);
+    // ⚡ CHANGED (بيانات الموكل مش قابلة للتعديل من داخل القضية): القفل مش
+    // مقتصر على linkedPartyId (الطرف الأساسي بتاع القضية) بس دلوقتي — أي
+    // طرف اتربط بموكل حقيقي (سواء الأساسي أو عن طريق دروب-داون "ربط بموكل
+    // من النظام" جوه renderPartyExtra تحت) بياناته الشخصية تتقفل. الصفة
+    // (capacity) فضلت قابلة للتعديل دايمًا زي ما هي — دي دور الطرف في
+    // القضية دي بالذات، مش بيانات الموكل نفسه.
+    // ⚡ CHANGED (المرحلة 2): بدل !!party.client_id مباشرة — دلوقتي طرف
+    // orphan (أساسي أو ثانوي، الموكل المربوط بيه اتمسح) بيرجع false
+    // (قابل للتعديل الحر)، مش true زي قبل كده. isLinkedState بترجع true
+    // بس للحالتين LINKED/PRIMARY_CLIENT (موكل حي فعليًا).
+    const renderPartyReadOnly = (party: PartyFieldValue) => isLinkedState(getPartyState(party, domainContext));
+
+    // ══════════════ حفظ مسودة تلقائي (خطة 1 أغسطس 2026) ══════════════
+    // نفس منطق NewCaseModal.tsx بالحرف، بس المفتاح هنا متضمّن caseData.id
+    // عشان مسودة قضية متختلطش بمسودة قضية تانية. EditCaseModalForm بيتبني
+    // بس بعد ما partiesState.loaded (راجع EditCaseModal الخارجي فوق)،
+    // فالفورم هنا دايمًا بيبدأ ببيانات القضية الحقيقية من أول رندر —
+    // مفيش داعي لـenabled=false زي ما كان متوقع بالخطة الأصلية.
+    interface EditCaseDraftData {
+        form: EditCaseForm;
+        parties: PartyFieldValue[];
+        legalTitles: { plaintiff: string; defendant: string };
+    }
+    const draftData: EditCaseDraftData = { form, parties: partyFields.parties, legalTitles: partyFields.legalTitles };
+    const draft = useFormDraft<EditCaseDraftData>({ key: `edit-case:${caseData.id}`, data: draftData });
+
+    useEffect(() => {
+        if (!draft.restoredDraft) return;
+        setForm(draft.restoredDraft.form);
+        partyFields.replaceParties(draft.restoredDraft.parties);
+        partyFields.replaceLegalTitles(draft.restoredDraft.legalTitles);
+        toast('📝 تم استرجاع بيانات كنت بتكتبها قبل كده');
+        draft.dismissRestoredDraft();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [draft.restoredDraft]);
+
+    // تحذير قبل الإغلاق لو فيه بيانات مكتوبة لسه ما اتحفظتش (الـbaseline
+    // هنا هو بيانات القضية المحمّلة فعليًا، مش فورم فاضي)
+    const { guardedClose, confirmModal } = useUnsavedChangesGuard(draftData, { form, parties: partyFields.parties, legalTitles: partyFields.legalTitles }, onClose, draft.clearDraft);
+
+    // ⚡ NEW (خطة تطوير أطراف الدعوى — مرحلة 4 خطوة 2، 23 يوليو 2026): نفس
+    // فكرة linkClientToParty في NewCaseModal.tsx بالحرف — بس هنا لأي طرف
+    // *غير* الموكل الأصلي المقفول (اللي عليه readOnly بالفعل من فوق). بتملى
+    // الاسم/الرقم القومي/التوكيل/العنوان من بيانات موكل حقيقي مختار من
+    // القائمة.
+    // ⚡ CHANGED (8 أغسطس 2026 — البند 6، الجزء الثاني): بياخد الصف الكامل
+    // (ClientSearchResult | null) اللي ClientSearchSelect.onSelect بيرجّعه
+    // مباشرة، بدل clientId + `clients.find()` محلي على قايمة `clients`
+    // (أول 15 موكل محمّلين بس) — راجع تقرير حالة التنفيذ 8-8-v3.
+    const linkClientToParty = (partyId: string, picked: ClientSearchResult | null) => {
+        if(!picked){ partyFields.updateParty(partyId,'client_id',null); return; }
+        partyFields.updateParty(partyId,'client_id',picked.id);
+        partyFields.updateParty(partyId,'name',picked.full_name || '');
+        partyFields.updateParty(partyId,'national_id',picked.national_id || '');
+        partyFields.updateParty(partyId,'power_of_attorney',picked.cr_number || '');
+        partyFields.updateParty(partyId,'address',picked.address || '');
+    };
+
+    // ⚡ NEW (خطة توحيد "ربط طرف بموكل موجود" — مرحلة 1، فقرة 1 من التقرير):
+    // كان الدروب-داون فوق بيستبدل الاسم/الرقم القومي/التوكيل/العنوان
+    // المكتوبين فورًا من غير أي تحذير لو فيه بيانات حرة مختلفة عن الموكل
+    // المختار. دلوقتي بنفحص التعارض الأول (findPartyDataMismatches)، ولو
+    // فيه فرق حقيقي بنوقف ونعرض تأكيد صغير جوه كارت الطرف (نفس نمط
+    // unlinkConfirmPartyId تحت) بدل الاستبدال الصامت.
+    const [linkMismatchState, setLinkMismatchState] = useState<{ partyId: string; picked: ClientSearchResult; mismatches: FieldMismatch[] } | null>(null);
+    const requestLinkClientToParty = (party: PartyFieldValue, picked: ClientSearchResult | null) => {
+        if(!picked){ linkClientToParty(party.id,null); return; }
+        const mismatches = findPartyDataMismatches(
+            { name: party.name, national_id: party.national_id, power_of_attorney: party.power_of_attorney, address: party.address },
+            picked,
+        );
+        if(mismatches.length > 0){ setLinkMismatchState({ partyId: party.id, picked, mismatches }); return; }
+        linkClientToParty(party.id, picked);
+    };
+
+    // ⚡ NEW (خطة توحيد قفل الطرف — المرحلة 3، "preview قبل فك الربط"،
+    // 6 أغسطس 2026): فك ربط طرف *مربوط فعليًا بموكل حي* (LINKED، مش
+    // ORPHAN_PARTY — orphan أصلًا مالوش موكل حي يتفك عنه فعليًا) بقى
+    // بيمر بخطوة تأكيد صغيرة جوه نفس كارت الطرف بدل ما ينفذ فورًا من
+    // اختيار "— بدون ربط —" في الدروب-داون مباشرة — نفس النمط المستخدم
+    // بالفعل في InfoSection.tsx (unlinkPartyConfirmId، "إصلاح 5" — 5
+    // أغسطس 2026). partyId واحد بس ممكن يكون في وضع التأكيد في نفس الوقت.
+    const [unlinkConfirmPartyId, setUnlinkConfirmPartyId] = useState<string | null>(null);
+
+    // ⚡ NEW (مرحلة 4 خطوة 2): بعد حفظ موكل جديد عبر الموديل الموحّد (هدف
+    // 'localParty' — الطرف هنا لسه صف محلي في partyFields، حتى لو كانت
+    // القضية نفسها محفوظة بالفعل)، بنطبّق بياناته فورًا من onLinked (نفس
+    // منطق NewCaseModal.tsx بالحرف).
+    const applyCreatedClientToParty = (partyId: string, clientId: string, form?: {full_name:string; national_id:string; cr_number:string; address:string}) => {
+        partyFields.updateParty(partyId,'client_id',clientId);
+        if(form){
+            partyFields.updateParty(partyId,'name',form.full_name || '');
+            partyFields.updateParty(partyId,'national_id',form.national_id || '');
+            partyFields.updateParty(partyId,'power_of_attorney',form.cr_number || '');
+            partyFields.updateParty(partyId,'address',form.address || '');
+        }
+    };
+
+    // ⚡ CHANGED (توحيد تجربة الطرف الأساسي/الثانوي — 12 أغسطس 2026): الطرف
+    // الأساسي (party.id === linkedPartyId) كان بيرجع null بالكامل من هنا —
+    // يعني مفيش زرار "عدّل من ملف الموكل" ليه أصلاً، بعكس أي طرف ثانوي
+    // مربوط. الفرق في مصدر الربط (cases.client_id قديم مقابل
+    // case_parties.client_id) مش المفروض يترجم لفرق في تجربة المستخدم —
+    // فبقى عنده فرع مختصر تحت بيوريله بس زرار "عدّل من ملف الموكل"، من
+    // غير دروب-داون الربط/فك الربط (ده مش منطقي للطرف الأساسي؛ فك ربط
+    // القضية بموكلها الأساسي لسه بيتم من تاب البيانات زي ما هو موثّق).
+    const renderPartyExtra = (party: PartyFieldValue) => {
+        if (party.id === linkedPartyId) {
+            if (!party.is_client || !onOpenClientProfile || !linkedClient) return null;
+            return React.createElement('div', { className: 'flex items-center justify-between' },
+                React.createElement('p', { className: 'text-[9px] text-slate-500' }, '🟢 موكل المكتب — بيانات هذا الطرف بتتقرا من ملف الموكل'),
+                React.createElement('button', {
+                    type: 'button',
+                    onClick: () => onOpenClientProfile(linkedClient),
+                    className: 'text-[9px] font-black text-premium-gold shrink-0',
+                    'data-testid': `edit-case-open-client-profile-${party.id}`,
+                }, '✏️ عدّل من ملف الموكل')
+            );
+        }
+        if(!party.is_client) return null;
+        // ⚡ CHANGED (المرحلة 2 — إصلاح باگ 5.1): الحالة الموحّدة بدل فحص
+        // client_id/linkedPartyClient المتفرق. طرف LINKED/PRIMARY_CLIENT
+        // بياناته مقفولة ("عدّل من ملف الموكل" يظهر). طرف ORPHAN_PARTY
+        // (client_id موجود لكن الموكل اتمسح) كان قبل كده بيوصل لـdead-end
+        // (دروب-داون الربط كان بيعرض قيمة client_id مش موجودة أصلًا في
+        // الخيارات، وزرار "إنشاء موكل جديد" كان مخفي بالكامل) — دلوقتي
+        // بيتعرضله تنبيه واضح + الدروب-داون بترجع لـ"— بدون ربط —" (مش
+        // قيمة orphan شبحية) + زرار "إنشاء موكل جديد" بيرجع يظهر بدل ما
+        // يفضل مخفي للأبد.
+        const state = getPartyState(party, domainContext);
+        const linkedPartyClient = party.client_id ? clients.find((c: ClientRow) => c.id === party.client_id) : null;
+        const orphanMessage = getPartyStateMessage(state);
+        const confirmingUnlink = unlinkConfirmPartyId === party.id;
+        return React.createElement('div',{className:'space-y-2'},
+            isOrphanState(state) && React.createElement('div',{className:'bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2', 'data-testid':`edit-case-party-orphaned-warning-${party.id}`},
+                React.createElement('p',{className:'text-[9px] text-amber-400 font-bold leading-relaxed'}, `⚠️ ${orphanMessage}`)
+            ),
+            isLinkedState(state) && onOpenClientProfile && linkedPartyClient && React.createElement('div',{className:'flex items-center justify-between'},
+                React.createElement('p',{className:'text-[9px] text-slate-500'},'🔗 مربوط بموكل من النظام — بيانات الطرف ده بتتقرا من ملف الموكل'),
+                React.createElement('button',{
+                    type:'button',
+                    onClick:()=>onOpenClientProfile(linkedPartyClient),
+                    className:'text-[9px] font-black text-premium-gold shrink-0',
+                    'data-testid':`edit-case-open-client-profile-${party.id}`,
+                },'✏️ عدّل من ملف الموكل')
+            ),
+            // ⚡ CHANGED (المرحلة 3 — preview قبل فك الربط): لو الطرف ده
+            // LINKED فعليًا (موكل حي) واختار المستخدم "— بدون ربط —"، منعملش
+            // linkClientToParty فورًا — بنفتح تأكيد صغير جوه الكارت الأول.
+            // أي اختيار تاني (ربط بموكل جديد، أو فك ربط طرف orphan أصلًا
+            // مالوش موكل حي حاليًا) بينفذ على طول زي ما كان.
+            // ⚡ CHANGED (8 أغسطس 2026 — البند 6، الجزء الثاني): `Sel` القديم
+            // (مبني على قايمة `clients` أول 15 محمّلين) اتحول لـ
+            // `ClientSearchSelect` (بحث حقيقي في الداتابيز). "— بدون ربط —"
+            // بقى `manualOption` بدل `<option value=''>` — نفس فرع فك
+            // الربط اللي بيفتح تأكيد (unlinkConfirmPartyId) لطرف LINKED
+            // فعليًا محفوظ زي ما هو بالظبط.
+            !confirmingUnlink && linkMismatchState?.partyId !== party.id && React.createElement(ClientSearchSelect,{
+                label:"ربط بموكل من النظام (اختياري)",
+                selectedLabel: linkedPartyClient ? (linkedPartyClient.full_name || '') : '',
+                isManualSelected: !linkedPartyClient,
+                manualOption: { label: '— بدون ربط (بيانات يدوية) —' },
+                onManualSelect: () => {
+                    if(isLinkedState(state) && linkedPartyClient){ setUnlinkConfirmPartyId(party.id); return; }
+                    requestLinkClientToParty(party, null);
+                },
+                onSelect: (picked: ClientSearchResult) => requestLinkClientToParty(party, picked),
+                testId: `edit-case-party-client-search-${party.id}`,
+            }),
+            // ⚡ NEW (خطة توحيد "ربط طرف بموكل موجود" — مرحلة 1): تأكيد
+            // تعارض بيانات — بيظهر بس لو requestLinkClientToParty لقت فرق
+            // حقيقي بين بيانات الطرف الحرة وملف الموكل المختار.
+            linkMismatchState?.partyId === party.id && React.createElement('div',{className:'bg-amber-500/10 border border-amber-500/20 rounded-xl p-2.5 space-y-2', 'data-testid':`edit-case-link-mismatch-${party.id}`},
+                React.createElement('p',{className:'text-[9px] text-amber-400 font-black'},'⚠️ القيم دي مختلفة عن ملف الموكل:'),
+                linkMismatchState.mismatches.map((m: FieldMismatch) => React.createElement('p',{key:m.field, className:'text-[9px] text-slate-300'},
+                    `${m.label}: في الطرف "${m.freeTextValue}" ← في ملف الموكل "${m.clientValue}"`
+                )),
+                React.createElement('div',{className:'flex gap-2'},
+                    React.createElement('button',{
+                        type:'button',
+                        onClick:()=>{ linkClientToParty(party.id, linkMismatchState.picked); setLinkMismatchState(null); },
+                        className:'flex-1 py-2 rounded-lg bg-premium-gold text-premium-bg text-[10px] font-black',
+                        'data-testid':`edit-case-link-mismatch-confirm-${party.id}`,
+                    },'استخدم بيانات الموكل'),
+                    React.createElement('button',{
+                        type:'button',
+                        onClick:()=>setLinkMismatchState(null),
+                        className:'flex-1 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 text-[10px] font-black',
+                        'data-testid':`edit-case-link-mismatch-cancel-${party.id}`,
+                    },'إلغاء')
+                )
+            ),
+            confirmingUnlink && React.createElement('div',{className:'bg-rose-500/10 border border-rose-500/20 rounded-xl p-2.5 space-y-2', 'data-testid':`edit-case-unlink-preview-${party.id}`},
+                React.createElement('p',{className:'text-[9px] text-rose-300 font-bold leading-relaxed'},
+                    `⚠️ هيتم فك ربط "${party.name || 'هذا الطرف'}" عن الموكل "${linkedPartyClient?.full_name}". بيانات الطرف (الاسم/الرقم القومي/العنوان/التوكيل) هتفضل زي ما هي دلوقتي كنسخة يدوية قابلة للتعديل الحر، ومش هتتحدّث تلقائيًا من ملف الموكل تاني.`
+                ),
+                React.createElement('div',{className:'flex gap-2'},
+                    React.createElement('button',{
+                        type:'button',
+                        onClick:()=>{ linkClientToParty(party.id,null); setUnlinkConfirmPartyId(null); },
+                        className:'flex-1 py-2 rounded-lg bg-rose-500 text-white text-[10px] font-black',
+                        'data-testid':`edit-case-unlink-confirm-${party.id}`,
+                    },'فك الربط'),
+                    React.createElement('button',{
+                        type:'button',
+                        onClick:()=>setUnlinkConfirmPartyId(null),
+                        className:'flex-1 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 text-[10px] font-black',
+                        'data-testid':`edit-case-unlink-cancel-${party.id}`,
+                    },'إلغاء')
+                )
+            ),
+            canCreateNewClientFromParty(state) && openNewClientModal && React.createElement('button',{
+                type:'button',
+                onClick:()=>openNewClientModal({
+                    initialData:{full_name:party.name || '', national_id:party.national_id || '', cr_number:party.power_of_attorney || '', address:party.address || ''},
+                    linkTarget:{type:'localParty'},
+                    contextLabel:'سيتم ربطه بهذا الطرف تلقائيًا بعد الحفظ',
+                    onLinked:(_target,clientId,form)=>applyCreatedClientToParty(party.id,clientId,form),
+                }),
+                className:'text-[10px] font-bold text-emerald-400 mt-1',
+                'data-testid':'edit-case-create-client-'+party.id,
+            },'➕ إنشاء موكل جديد من هذه البيانات')
+        );
+    };
+
+    const inputCls = "w-full p-3 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600 transition-colors";
+    const inpStyle = {fontFamily:'Cairo,sans-serif'};
+
+    return React.createElement(React.Fragment, null,
+    confirmModal,
+    React.createElement('div', {className: `bg-premium-card w-full max-w-lg lg:max-w-2xl ${modalPresentation.panelShapeClassName} p-6 pb-10 shadow-2xl ${modalPresentation.panelAnimationClassName} max-h-[90vh] overflow-y-auto no-scrollbar`},
+        React.createElement('div', {className: "w-10 h-1 bg-white/20 rounded-full mx-auto mb-5"}),
+        React.createElement('div', {className: "flex items-center justify-between mb-5"},
+            React.createElement('h3', {className: "text-sm font-black text-white flex items-center gap-2"},
+                React.createElement('span', {className: "w-1 h-4 bg-premium-gold rounded-full"}),
+                "تعديل بيانات القضية"
+            ),
+            React.createElement('button', {onClick: guardedClose, className: "w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-slate-400"}, "✕")
+        ),
+        React.createElement('div', {className: "space-y-4 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start lg:grid-flow-row-dense"},
+
+            // ══════════════ بيانات القيد الرسمي ══════════════
+            React.createElement('div', {className:"pt-1 lg:col-span-2"},
+                React.createElement('p', {className:"text-[10px] font-black text-slate-500 mb-3"}, "— بيانات القيد الرسمي —")
+            ),
+
+            // ١. موضوع الدعوى
+            React.createElement('div', {className:"lg:col-span-2"},
+                React.createElement(Inp, {label:"موضوع الدعوى", value:form.title, onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('title',e.target.value), placeholder:"عنوان القضية", required:true, 'data-testid':'edit-case-title'})
+            ),
+
+            // ٢. المحكمة المختصة
+            // ⚡ FIX (طلب مباشر من جيمي، 22 يوليو 2026): كان مربع اختيار
+            // (Sel) بيجبر اختيار "أخرى" الأول قبل ما تقدر تكتب اسم محكمة
+            // مش موجود في قايمة الدولة — تجربة مزعجة خصوصًا في التعديل.
+            // دلوقتي مربع نص حر دايمًا، مع datalist للاقتراح بس (مش إجبار)
+            // من قايمة محاكم الدولة لو موجودة.
+            React.createElement('div', null,
+                React.createElement('label', {className:"block text-[10px] font-bold text-slate-400 mb-1.5"}, "المحكمة المختصة",React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
+                React.createElement('input', {
+                    value:form.court,
+                    onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('court',e.target.value),
+                    placeholder:"اكتب اسم المحكمة",
+                    className:inputCls, style:inpStyle,
+                    list: (countryCourts && countryCourts.length>0) ? 'edit-case-courts-list' : undefined,
+                    'data-testid':'edit-case-court',
+                }),
+                countryCourts && countryCourts.length>0 && React.createElement('datalist',{id:'edit-case-courts-list'},
+                    countryCourts.map((c: string) => React.createElement('option',{key:c,value:c}))
+                )
+            ),
+
+            // ٣. رقم الدعوى الرسمي + السنة
+            React.createElement('div', null,
+                React.createElement('label', {className:"block text-[10px] font-bold text-slate-400 mb-1.5"}, "رقم الدعوى الرسمي",React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
+                React.createElement('div', {className:"flex gap-2 items-center"},
+                    React.createElement('input', {value:form.caseNum, onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('caseNum',normalizeArabicDigits(e.target.value)), placeholder:"رقم الدعوى", className:"flex-1 p-3 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600 text-center", style:inpStyle,'data-testid':'edit-case-number'}),
+                    React.createElement('span', {className:"text-slate-500 font-black text-sm shrink-0"}, "/"),
+                    React.createElement('input', {value:form.caseYear, onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('caseYear',normalizeArabicDigits(e.target.value)), placeholder:"السنة", maxLength:4, className:"w-24 p-3 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600 text-center", style:inpStyle,'data-testid':'edit-case-year'})
+                )
+            ),
+
+            // ٤. تصنيف الدعوى + رقم الدائرة (نفس السطر)
+            // ⚡ FIX (طلب مباشر من جيمي، 22 يوليو 2026): نفس فيكس "المحكمة
+            // المختصة" فوق بالظبط — نص حر دايمًا، مع datalist للاقتراح بس.
+            React.createElement('div', {className:"grid grid-cols-2 gap-2 lg:col-span-2"},
+                React.createElement('div', null,
+                    React.createElement('label', {className:"block text-[10px] font-bold text-slate-400 mb-1.5"}, "تصنيف الدعوى",React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
+                    React.createElement('input', {
+                        value:form.type,
+                        onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('type',e.target.value),
+                        placeholder:"مدني / تجاري...",
+                        className:inputCls, style:inpStyle,
+                        list: (countryCaseTypes && countryCaseTypes.length>0) ? 'edit-case-types-list' : undefined,
+                        'data-testid':'edit-case-type',
+                    }),
+                    countryCaseTypes && countryCaseTypes.length>0 && React.createElement('datalist',{id:'edit-case-types-list'},
+                        countryCaseTypes.map((t: string) => React.createElement('option',{key:t,value:t}))
+                    )
+                ),
+                React.createElement('div', null,
+                    React.createElement('label', {className:"block text-[10px] font-bold text-slate-400 mb-1.5"}, "رقم الدائرة",React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
+                    React.createElement('input', {value:form.circuit_number, onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('circuit_number',normalizeArabicDigits(e.target.value)), placeholder:"مثال: 12 تجاري", className:inputCls, style:inpStyle,'data-testid':'edit-case-circuit'})
+                )
+            ),
+
+            // ٥. تاريخ الجلسة القادمة + وقت الجلسة (نفس السطر، وقت الجلسة
+            // بيظهر بس بعد ما التاريخ يتحدد — قبل كده بياخد العرض كله لوحده).
+            form.date
+                ? React.createElement('div',{className:"grid grid-cols-2 gap-2 items-start lg:col-span-2"},
+                    React.createElement(DatePicker, {label:"تاريخ الجلسة القادمة", value:form.date, onChange:(v: string) =>s("date",v)}),
+                    React.createElement(Sel,{
+                        label:"وقت الجلسة",
+                        value:form.session_time,
+                        onChange:(e: React.ChangeEvent<HTMLSelectElement>) =>s('session_time',e.target.value),
+                        options:SESSION_TIME_OPTIONS,
+                    })
+                )
+                : React.createElement(DatePicker, {label:"تاريخ الجلسة القادمة", value:form.date, onChange:(v: string) =>s("date",v)}),
+
+            // ٦. درجة التقاضي
+            // ⚡ CHANGED (طلب مباشر — 9 أغسطس 2026): نفس فيكس "المحكمة
+            // المختصة"/"تصنيف الدعوى" فوق بالظبط — نص حر دايمًا، مع
+            // datalist للاقتراح بس (مش إجبار).
+            React.createElement('div', null,
+                React.createElement('label', {className:"block text-[10px] font-bold text-slate-400 mb-1.5"}, "درجة التقاضي",React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
+                React.createElement('input', {
+                    value:form.court_level,
+                    onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('court_level',e.target.value),
+                    placeholder:"اكتب درجة التقاضي",
+                    className:inputCls, style:inpStyle,
+                    list:'edit-case-court-levels-list',
+                    'data-testid':'edit-case-court-level',
+                }),
+                React.createElement('datalist',{id:'edit-case-court-levels-list'},
+                    ['ابتدائي','استئناف','نقض'].map((lvl: string) => React.createElement('option',{key:lvl,value:lvl}))
+                )
+            ),
+
+            // ٧. حالة القضية [فورم التعديل بس — القضية الجديدة بتبدأ "نشطة"
+            // افتراضيًا وملهاش داعي تُسأل عنها وقت التقييد]
+            React.createElement('div', {className:"lg:col-span-2"},
+                React.createElement('label', {className:"block text-[10px] font-bold text-slate-400 mb-1.5"}, "حالة القضية"),
+                React.createElement('div', {className:"grid grid-cols-3 gap-2"},
+                    [
+                        {val:'نشطة',   emoji:'🟢', color:'emerald'},
+                        {val:'مؤجلة',  emoji:'🟡', color:'amber'},
+                        {val:'منتهية', emoji:'✅', color:'emerald'},
+                    ].map(({val,emoji,color})=>
+                        React.createElement('button',{
+                            key:val, type:"button",
+                            onClick:()=>s('status',val),
+                            className:`py-2.5 rounded-xl text-[10px] font-black transition-all active:scale-95 border ${
+                                form.status===val
+                                    ? color==='emerald' ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                                    : color==='amber'   ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                                    :                     'bg-slate-500/20 border-slate-500/50 text-slate-300'
+                                    : 'bg-white/5 border-white/10 text-slate-500'
+                            }`
+                        }, emoji+' '+val)
+                    )
+                )
+            ),
+
+            // ══════════════ أطراف الدعوى ══════════════
+            // ⚡ CHANGED (مرحلة 5.1 — خطة تعدد الأطراف، 22 يوليو 2026): بدل
+            // حقلي "الموكل"/"الخصم" المفردين، PartyFieldsGroup بيدعم عدد بلا
+            // حدود من المدعين والمدعى عليهم — نفس التغيير اللي حصل في
+            // NewCaseModal.tsx (مرحلة 4.1). الطرف المربوط فعليًا بموكل حي
+            // (linkedPartyId فوق) بيتقفل (readOnly) بنفس منطق القفل القديم.
+            // مفيش "ربط بموكل من النظام" هنا (بعكس NewCaseModal) — ربط/فك
+            // ربط القضية بموكل لسه بيتم من تاب بيانات القضية، مش من هنا
+            // (نفس القرار الموثّق في الفورم القديم).
+            React.createElement('div', {className:"lg:col-span-2 space-y-4"},
+                React.createElement('div', {className:"border-t border-white/5 pt-4 mt-2"}),
+                isLinked && React.createElement('div', {className:"flex items-center justify-between"},
+                    React.createElement('p', {className:"text-[9px] text-slate-500"}, "🔗 مربوط بموكل من النظام — بيانات الطرف ده بتتقرا من ملف الموكل"),
+                    React.createElement('div', {className:"flex items-center gap-3 shrink-0"},
+                        onOpenClientProfile && linkedClient && React.createElement('button', {
+                            type:"button", onClick:()=>onOpenClientProfile(linkedClient),
+                            className:"text-[9px] font-black text-premium-gold",
+                            'data-testid':'edit-case-open-client-profile'
+                        }, "✏️ عدّل من ملف الموكل")
+                    )
+                ),
+                // ⚡ NEW (مرحلة 7 — fallback الموكل المحذوف): القضية كانت
+                // مربوطة بموكل اتحذف بعد كده. الحقول تحت رجعت حرة (نفس شكل
+                // قضية مش مربوطة أصلاً) لكن بقيمها الأخيرة المحفوظة في عمود
+                // القضية نفسه (مش فاضية ومفيش كراش). التنبيه ده بيوضح للمستخدم
+                // إن القضية دي *كانت* مربوطة، عشان مايتفاجئش.
+                isOrphaned && React.createElement('div', {className:"bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2", 'data-testid':'edit-case-orphaned-client-warning'},
+                    React.createElement('p', {className:"text-[9px] text-amber-400 font-bold leading-relaxed"},
+                        "⚠️ الموكل محذوف — البيانات دي آخر ما هو معروف عن الموكل، وبقت قابلة للتعديل الحر. تقدر تربط القضية بموكل تاني من تاب البيانات."
+                    )
+                ),
+                React.createElement(PartyFieldsGroup, {controller:partyFields, testIdPrefix:'edit-case', renderPartyReadOnly, renderPartyExtra, getPartyState:(party: PartyFieldValue) => getPartyState(party, domainContext)})
+            ),
+
+            // ══════════════ بيانات إضافية ══════════════
+            React.createElement('div', {className:"border-t border-white/10 pt-4 mt-2 lg:col-span-2"},
+                React.createElement('p', {className:"text-[10px] font-black text-slate-500 mb-3"}, "— بيانات إضافية (غير ضرورية) —")
+            ),
+
+            React.createElement('div', null,
+                React.createElement('label', {className:"block text-[10px] font-bold text-slate-400 mb-1.5"}, "الطابق وقاعة الجلسة"),
+                React.createElement('input', {value:form.session_hall, onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('session_hall',e.target.value), placeholder:"مثال: الدور الأول - قاعة 5", className:inputCls, style:inpStyle})
+            ),
+            React.createElement('div', null,
+                React.createElement('label', {className:"block text-[10px] font-bold text-slate-400 mb-1.5"}, "قاعة سكرتير الجلسة"),
+                React.createElement('input', {value:form.secretary_hall, onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('secretary_hall',e.target.value), placeholder:"رقم أو اسم قاعة السكرتير", className:inputCls, style:inpStyle})
+            ),
+            React.createElement('div', {className:"grid grid-cols-2 gap-2 lg:col-span-2"},
+                React.createElement('div', null,
+                    React.createElement('label', {className:"block text-[10px] font-bold text-slate-400 mb-1.5"}, "اسم سكرتير الجلسة"),
+                    React.createElement('input', {value:form.secretary_name, onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('secretary_name',e.target.value), placeholder:"اسم السكرتير", className:inputCls, style:inpStyle})
+                ),
+                React.createElement('div', null,
+                    React.createElement('label', {className:"block text-[10px] font-bold text-slate-400 mb-1.5"}, "موبايل سكرتير الجلسة"),
+                    React.createElement('input', {value:form.secretary_mobile, onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('secretary_mobile',onlyDigits(e.target.value,11)), placeholder:"رقم الموبايل", inputMode:"numeric", maxLength:11, className:inputCls, style:inpStyle})
+                )
+            ),
+
+            // زر الحفظ
+            React.createElement('button', {
+                disabled: saving,
+                'data-testid': 'edit-case-save',
+                onClick: async () => {
+                    if(saving) return;
+                    if(!form.title.trim()){ toast('يرجى إدخال موضوع ومسمى الدعوى', true); return; }
+                    // ⚡ NEW (طلب مباشر — 12 أغسطس 2026): نفس فحوصات "بيانات القيد
+                    // الرسمي" الإجبارية في NewCaseModal.tsx بالحرف — راجع التعليق هناك.
+                    if(!form.court.trim()){ toast('⚠️ حقل "المحكمة المختصة" مطلوب', true); return; }
+                    if(!form.caseNum.trim()){ toast('⚠️ حقل "رقم الدعوى" مطلوب', true); return; }
+                    if(!form.caseYear.trim()){ toast('⚠️ حقل "السنة" مطلوب', true); return; }
+                    if(!form.type.trim()){ toast('⚠️ حقل "تصنيف الدعوى" مطلوب', true); return; }
+                    if(!form.circuit_number.trim()){ toast('⚠️ حقل "رقم الدائرة" مطلوب', true); return; }
+                    if(!form.court_level.trim()){ toast('⚠️ حقل "درجة التقاضي" مطلوب', true); return; }
+                    // ⚡ CHANGED (مرحلة 5.1 — خطة تعدد الأطراف): فاليديشن
+                    // أطراف الدعوى كلها بقت من casePartiesValidation.ts (نفس
+                    // قواعد NewCaseModal.tsx مرحلة 4.1) بدل الفحوصات المفردة
+                    // القديمة (اسم/صفة الموكل والخصم، الاسم الثلاثي، طول
+                    // الرقم القومي).
+                    if(!partyFields.validation.valid){ toast(partyFields.validation.message || 'يرجى مراجعة بيانات أطراف الدعوى', true); return; }
+                    const number = form.caseNum&&form.caseYear ? form.caseNum+'/'+form.caseYear : form.caseNum||form.caseYear||'';
+                    const finalCourtLevel = form.court_level.trim();
+                    const finalCourt = form.court.trim() || '—';
+                    const finalType  = form.type.trim() || 'عام';
+                    // ⚡ CHANGED (خطة تفكيك legacy columns — Phase F.1، 6 أغسطس
+                    // 2026): نفس تعديل NewCaseModal.tsx بالحرف — وقّفنا إرسال
+                    // نسخة "الطرف الأساسي" للأعمدة القديمة خالص. useCaseActions.ts
+                    // (handleUpdateCase) بقى بيوقّف كتابتها على cases، وكل شاشات
+                    // العرض بتقرا من case_parties (مراحل B.1-B.4). legalTitles لسه
+                    // بتتبعت كمدخل فاليديشن بس (validateParties في syncCaseParties).
+                    const saveData: CaseFormSubmitData = {
+                        ...form,
+                        number,
+                        court: finalCourt,
+                        type: finalType,
+                        court_level: finalCourtLevel,
+                        plaintiff_legal_title: partyFields.legalTitles.plaintiff || undefined,
+                        defendant_legal_title: partyFields.legalTitles.defendant || undefined,
+                        parties: partyFields.parties,
+                        // ⚡ NEW (مرحلة 5.2): ids صفوف case_parties الحقيقية
+                        // اللي كانت موجودة وقت فتح الفورم (existingPartyRows
+                        // في EditCaseModal الخارجي) — useCaseActions.ts
+                        // (handleUpdateCase) بيستخدمها عشان يفرّق تعديل عن
+                        // إضافة جديدة، وعشان يحدد أي صف اتشال فيحذفه.
+                        existingPartyIds: existingPartyRows.map((r) => r.id),
+                        // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4.4، 19
+                        // أغسطس 2026): نفس existingPartyIds فوق بس بالبيانات
+                        // الكاملة — snapshot من case_parties وقت فتح الفورم
+                        // (existingPartyRows)، قبل أي تعديل من المستخدم.
+                        // useCaseActions.ts (handleUpdateCase → buildPartiesDiff)
+                        // بيقارنها بـ parties (الجديد) عشان يبني ديف الأطراف.
+                        // ⚠️ ملاحظة قضايا legacy (existingPartyRows فاضية،
+                        // fallback initialParties بـid ثابت
+                        // 'legacy-plaintiff'/'legacy-defendant'): existingPartyIds
+                        // فاضية أصلاً في الحالة دي، فـbuildPartiesDiff هيتعامل مع
+                        // أي طرف بالـid الثابت ده كـ"جديد" لو المستخدم لمسه —
+                        // سلوك متوقّع ومقصود (مفيش صف حقيقي في case_parties
+                        // أصلاً قبل كده يتقارن بيه).
+                        existingParties: existingPartyRows.map((r) => ({
+                            id: r.id,
+                            side: r.side,
+                            is_client: r.is_client,
+                            name: r.name || '',
+                            capacity: r.capacity || '',
+                            national_id: r.national_id || '',
+                            address: r.address || '',
+                            power_of_attorney: r.power_of_attorney || '',
+                            client_id: r.client_id || null,
+                        })),
+                    };
+                    const result = await onSave(saveData);
+                    // 🔒 FIX (قرارات مفتوحة — خطة حفظ المسودات، 3 أغسطس 2026):
+                    // بننتظر نتيجة onSave (اللي بترجع من CaseDetailView.tsx →
+                    // handleUpdateCase) ونمسح المسودة بس لو نجح فعلاً
+                    // (result !== false)، مش بمجرد الضغط على الزرار زي الأول.
+                    if (result !== false) draft.clearDraft();
+                },
+                className: "w-full py-3.5 bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform mt-2 disabled:opacity-60 lg:col-span-2"
+            }, React.createElement(I.Check), saving ? "⏳ جاري الحفظ..." : "حفظ التعديلات")
+        )
+    ));
+}
+
+export default EditCaseModal;
