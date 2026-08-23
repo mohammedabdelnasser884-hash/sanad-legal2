@@ -17,6 +17,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import LegalDocumentsPage from './LegalDocumentsPage';
 import type { DocumentTemplate } from '../features/documentGeneration/types';
+import type { NavigationState } from '../useNavigation';
 
 // ⚠️ vitest.config.ts فيه globals: false، يعني @testing-library/react مش
 // بيلاقي `afterEach` كـ global عشان يسجّل الـauto-cleanup بتاعه (زي ما
@@ -80,7 +81,22 @@ vi.mock('../features/documentGeneration/hooks/useGenerateDocument', () => ({
   }),
 }));
 
-const navStub = { openModal: vi.fn() } as any;
+// LegalDocumentsPage محتاجة nav: NavigationState كامل، لكن بتستخدم بس
+// openModal فعليًا (في مسار 'preview' مش مغطى هنا). باقي الدوال stubs
+// فاضية عشان الـtype يتحقق بدون any (المشروع بيشغّل eslint بـ
+// --max-warnings=0 فـ@typescript-eslint/no-explicit-any بيوقّف الـbuild).
+const navStub: NavigationState = {
+  tab: 'dashboard',
+  activeModal: null,
+  showExitConfirm: false,
+  confirmExit: vi.fn(),
+  cancelExit: vi.fn(),
+  navigateTo: vi.fn(),
+  openModal: vi.fn(),
+  closeModal: vi.fn(),
+  closeAllModals: vi.fn(),
+  isOpen: vi.fn(() => false),
+};
 
 describe('LegalDocumentsPage — القسم 9.5: تخطي SourceModeSelector لما يكون جاي من قضية', () => {
   it('لازم يقفز لـ DynamicFieldsForm مباشرة بعد اختيار القالب، حتى بعد ما initialCaseId يترجع null من الـparent (زي onInitialCaseConsumed الحقيقي)', () => {
