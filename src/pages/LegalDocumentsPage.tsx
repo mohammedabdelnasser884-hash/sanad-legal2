@@ -43,7 +43,10 @@ interface LegalDocumentsPageProps {
 }
 
 export default function LegalDocumentsPage({ initialCaseId, onInitialCaseConsumed, nav }: LegalDocumentsPageProps) {
-  const hasCaseContext = !!initialCaseId;
+  // مجمّد زي caseId بالظبط — لازم يتحسب مرة واحدة في mount الأول، مش من الـprop
+  // الحي، لأن initialCaseId بيترجع null في الـparent بعد onInitialCaseConsumed
+  // (useEffect تحت) فورًا بعد أول render.
+  const [hasCaseContext] = useState<boolean>(!!initialCaseId);
 
   const [step, setStep] = useState<Step>('templates');
   const [pendingSourceModeOnly, setPendingSourceModeOnly] = useState(false); // مسار زرار "+" — بعد اختيار المصدر لازم نرجع نختار قالب
