@@ -38,7 +38,15 @@ export type KnownServiceKey =
   | 'db_cases_by_id'
   | 'db_case_parties_by_client'
   | 'db_cases_by_client_id'
-  | 'db_case_parties_by_client_ids';
+  | 'db_case_parties_by_client_ids'
+  // ⚡ FIX (23 أغسطس 2026 — أول تشغيل CI حقيقي لميزة توليد المستندات
+  // القانونية اتفشل: انتظار زرار "توليد المستند" علّق 10 ثواني بعد
+  // اختيار القالب، مرتين متتاليتين، من غير أي خطأ واضح). useGenerateDocument.ts
+  // كان الاستثناء الوحيد في المشروع اللي بينادي db.from(...) لتحميل حقول
+  // القالب/بيانات القضية من غير createFetchGuard — نفس فئة باج 9 أغسطس
+  // (docs/fees). لو فيه أي تعليق شبكة حقيقي، الفورم كان هيفضل عالق على
+  // "جارِ تحميل الحقول..." للأبد بدل ما يبين خطأ. مضاف هنا بنفس النمط.
+  | 'db_document_generation';
 
 // أي مفتاح: من القائمة المعروفة فوق، أو أي نص مخصص من أي شاشة في التطبيق
 export type ServiceKey = KnownServiceKey | string;
@@ -89,6 +97,7 @@ const SERVICE_LABELS: Record<KnownServiceKey, string> = {
   db_case_parties_by_client:     'جلب قضايا الموكل',
   db_cases_by_client_id:         'جلب قضايا الموكل',
   db_case_parties_by_client_ids: 'جلب قضايا الموكلين',
+  db_document_generation:        'تحميل قوالب المستندات',
 };
 
 function isKnownKey(key: ServiceKey): key is KnownServiceKey {
@@ -123,6 +132,7 @@ const KNOWN_ERROR_MSGS: Record<KnownServiceKey, string> = {
   db_case_parties_by_client:     'تعذّر تحميل قضايا هذا الموكل. تحقق من الاتصال بالإنترنت.',
   db_cases_by_client_id:         'تعذّر تحميل قضايا هذا الموكل. تحقق من الاتصال بالإنترنت.',
   db_case_parties_by_client_ids: 'تعذّر تحميل عدد قضايا الموكلين. تحقق من الاتصال بالإنترنت.',
+  db_document_generation:        'تعذّر تحميل حقول القالب أو بيانات القضية. تحقق من الاتصال بالإنترنت.',
 };
 
 /** رسالة بسيطة بالعربي يفهمها صاحب المكتب، حتى لو المفتاح غير معروف */
