@@ -138,7 +138,20 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
     // "تصدير PDF" اللي مستحيل يظهر لحد ما generate() ترجع). نفس نمط
     // Promise.race + createFetchGuard المستخدم فوق بالظبط — توقيع
     // generateDocument() مقفول زي ما هو (مفيش abortSignal تمريره ليها مباشرة).
-    const guard = createFetchGuard();
+    //
+    // 🔒 FIX (24 أغسطس 2026): الـ8 ثواني الافتراضية (نفس سقف كل استعلام
+    // مفرد في المشروع) مش كافية هنا — generateDocument() سلسلة متتالية من
+    // حتى 5-6 رحلات شبكة (resolveTemplateVersion لوحدها ممكن تبقى
+    // استعلامين، + template_fields + resolveCaseBindings (حتى استعلامين
+    // تانيين) + loadOfficeSetting + الـinsert النهائي)، مش استعلام واحد
+    // زي باقي أماكن استخدام createFetchGuard() في المشروع. CI run فعلي
+    // (24 أغسطس) فشل بالظبط هنا — الاختبار وقف ينتظر زرار "تصدير PDF"
+    // لحد 15 ثانية وماظهرش، يعني الأرجح إن الـ8 ثواني كانت بتقفل قبل ما
+    // السلسلة الحقيقية تخلص فعليًا (مش هانج حقيقي، تايم آوت مبكر جدًا على
+    // عملية متعددة الخطوات). رفعتها لـ20 ثانية (نفس السقف المستخدم فعليًا
+    // لعملية التصدير المشابهة في e2e/document-generation.spec.ts). الحل
+    // الأصح طويل المدى هو تقليل عدد الرحلات نفسها، مش بند لهذه الجلسة.
+    const guard = createFetchGuard(20_000);
     if (guard.offline) {
       setGenerateError('أنت أوف لاين — تعذّر توليد المستند. تحقق من الاتصال بالإنترنت.');
       setGenerating(false);
