@@ -8,6 +8,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { getPublishedTemplateFields } from '../api/templatesApi';
 import { resolveCaseBindings, validateRequiredFields, generateDocument } from '../api/generationApi';
 import { loadOfficeSetting } from '../../../constants';
+import { createFetchGuard } from '../../../shared/lib/offlineGuard';
+import { recordError, recordSuccess } from '../../../systemHealth';
 import type { TemplateField, ResolvedBindings, SourceMode, GeneratedDocument } from '../types';
 
 interface UseGenerateDocumentParams {
@@ -43,38 +45,73 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
     setLoadingFields(true);
     setLoadError(null);
 
+    // ⚡ FIX (23 أغسطس 2026): زي كل شاشات جلب البيانات التانية في المشروع
+    // (docs/fees/dashboard...) بعد باج الأوفلاين بتاع 9 أغسطس — الفورم ده
+    // كان الاستثناء الوحيد اللي بينادي getPublishedTemplateFields/
+    // resolveCaseBindings/loadOfficeSetting من غير أي guard/timeout، فلو
+    // فيه تعليق شبكة حقيقي كانت شاشة "جارِ تحميل الحقول..." بتفضل معلّقة
+    // للأبد من غير أي خطأ يبان للمستخدم (أول CI run حقيقي للميزة دي وقف
+    // بالظبط على العرض ده). توقيعات getPublishedTemplateFields/
+    // resolveCaseBindings مقفولة (القسم 3.2)، فمفيش تمرير abortSignal ليهم
+    // مباشرة — بدل كده بنستخدم Promise.race مع مهلة createFetchGuard حوالين
+    // النداء كله، بنفس فلسفة الـ8 ثواني المستخدمة في كل مكان تاني.
+    const guard = createFetchGuard();
+    if (guard.offline) {
+      recordError('db_document_generation', 'offline');
+      setLoadError('أنت أوف لاين — تعذّر تحميل حقول القالب. تحقق من الاتصال بالإنترنت.');
+      setLoadingFields(false);
+      return;
+    }
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      guard.controller.signal.addEventListener('abort', () => reject(new Error('timeout')));
+    });
+
     (async () => {
       try {
-        const templateFields = await getPublishedTemplateFields(templateId);
-        if (cancelled) return;
+        const work = (async () => {
+          const templateFields = await getPublishedTemplateFields(templateId);
 
-        let initialValues: ResolvedBindings;
-        if (sourceMode === 'case_bound' && caseId) {
-          initialValues = await resolveCaseBindings(caseId, templateFields);
-        } else {
-          initialValues = {};
-          for (const f of templateFields) initialValues[f.field_key] = null;
-        }
+          let initialValues: ResolvedBindings;
+          if (sourceMode === 'case_bound' && caseId) {
+            initialValues = await resolveCaseBindings(caseId, templateFields);
+          } else {
+            initialValues = {};
+            for (const f of templateFields) initialValues[f.field_key] = null;
+          }
 
-        // office_name: نفس الحالة الخاصة الموثّقة في generationApi.ts —
-        // بتتحل من office_settings دايمًا بغض النظر عن sourceMode، عشان
-        // تظهر معبّأة في الفورم من قبل الضغط على "توليد مستند".
-        const officeNameField = templateFields.find((f) => f.field_key === 'office_name');
-        if (officeNameField && (initialValues['office_name'] === null || initialValues['office_name'] === undefined)) {
-          initialValues['office_name'] = await loadOfficeSetting('name');
-        }
+          // office_name: نفس الحالة الخاصة الموثّقة في generationApi.ts —
+          // بتتحل من office_settings دايمًا بغض النظر عن sourceMode، عشان
+          // تظهر معبّأة في الفورم من قبل الضغط على "توليد مستند".
+          const officeNameField = templateFields.find((f) => f.field_key === 'office_name');
+          if (officeNameField && (initialValues['office_name'] === null || initialValues['office_name'] === undefined)) {
+            initialValues['office_name'] = await loadOfficeSetting('name');
+          }
 
+          return { templateFields, initialValues };
+        })();
+
+        const { templateFields, initialValues } = await Promise.race([work, timeoutPromise]);
         if (cancelled) return;
         setFields(templateFields);
         setValues(initialValues);
+        recordSuccess('db_document_generation');
       } catch (e: unknown) {
-        if (!cancelled) setLoadError(e instanceof Error ? e.message : 'تعذّر تحميل حقول القالب');
+        if (!cancelled) {
+          const timedOut = guard.didTimeOut();
+          const msg = timedOut
+            ? 'انتهت مهلة تحميل حقول القالب. تحقق من الاتصال بالإنترنت وحاول تاني.'
+            : (e instanceof Error ? e.message : 'تعذّر تحميل حقول القالب');
+          setLoadError(msg);
+          recordError('db_document_generation', timedOut ? 'timeout' : msg);
+        }
       } finally {
+        guard.cleanup();
         if (!cancelled) setLoadingFields(false);
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => { cancelled = true; guard.cleanup(); };
   }, [templateId, caseId, sourceMode]);
 
   const setValue = useCallback((fieldKey: string, value: string | number | null) => {
