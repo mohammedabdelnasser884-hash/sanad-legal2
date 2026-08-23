@@ -325,6 +325,20 @@ function fullManualValues(fixture: TemplateFixture, extra: Record<string, string
   return { ...values, ...extra };
 }
 
+/**
+ * زي fullManualValues، لكن لوضع manual (من غير caseId): مفيش أي بيانات
+ * قضية/أطراف تتحل تلقائيًا، فكل حقل is_required — حتى لو binding_source
+ * != null (زي addressee_name/court_name) — لازم قيمة يدوية، مش بس
+ * requiredManualKeys (اللي بتغطي بس binding_source=null).
+ */
+function fullManualValuesForManualMode(fixture: TemplateFixture, extra: Record<string, string> = {}): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const f of fixture.fields) {
+    if (f.is_required) values[f.field_key] = `قيمة تجريبية لـ ${f.field_key}`;
+  }
+  return { ...values, ...extra };
+}
+
 describe.each(Object.entries(TEMPLATES))('generateDocument — قالب %s', (_name, fixture) => {
   it('وضع case_bound: بيانات القضية/الأطراف بتتحل تلقائيًا + الحقول اليدوية عبر manualValues → نجاح', async () => {
     primeTemplateLookup(fixture, false);
@@ -367,7 +381,7 @@ describe.each(Object.entries(TEMPLATES))('generateDocument — قالب %s', (_n
       templateId: fixture.templateId,
       caseId: null,
       sourceMode: 'manual',
-      manualValues: fullManualValues(fixture, { case_number: '20 لسنة 2026', client_name: 'موكل يدوي' }),
+      manualValues: fullManualValuesForManualMode(fixture, { case_number: '20 لسنة 2026', client_name: 'موكل يدوي' }),
     });
 
     expect(result.id).toBe('doc-2');
