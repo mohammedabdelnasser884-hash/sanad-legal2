@@ -13,10 +13,17 @@
 // ══════════════════════════════════════════════════════════════════
 
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import LegalDocumentsPage from './LegalDocumentsPage';
 import type { DocumentTemplate } from '../features/documentGeneration/types';
+
+// ⚠️ vitest.config.ts فيه globals: false، يعني @testing-library/react مش
+// بيلاقي `afterEach` كـ global عشان يسجّل الـauto-cleanup بتاعه (زي ما
+// LoginScreen.test.tsx موثّق). من غير ده، كل تست بيرندر فوق DOM التست
+// اللي قبله في document.body بدل ما يتنضف، فالـqueries بتلاقي عناصر
+// باقية من تستات سابقة. لازم cleanup() يدوي بعد كل تست.
+afterEach(() => { cleanup(); });
 
 // LegalDocumentsPage.tsx بيستورد { I } من ../constants، واللي بدوره بيستورد
 // db من ./supabaseClient — وده بينادي createClient() فعليًا وقت الـimport
