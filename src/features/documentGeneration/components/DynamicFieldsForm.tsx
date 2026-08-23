@@ -1,5 +1,21 @@
 // ══════════════════════════════════════════════════════════════════
 // DynamicFieldsForm.tsx — القسم 9.3
+//
+// 🔒 FIX (24 أغسطس 2026 — التشخيص الحقيقي بعد فحص screenshot/error-context.md
+// الفعليين من CI): فشل e2e/document-generation.spec.ts *مكانش* بسبب تايم
+// آوت في generate() زي ما اتفتُرض في الجلسة اللي فاتت (الفرضية دي كانت
+// غلط — من غير الـscreenshot الفعلي محصلش نتأكد). السبب الحقيقي: حقل
+// textarea (مثال: "موضوع الإنذار" في قالب "إنذار على يد محضر") كان
+// بيتعرض من غير خاصية HTML `required` خالص، بعكس حقلي Inp وDatePicker
+// اللي بيمرروا `required={field.is_required}` بالفعل. نتيجة كده: منطق
+// auto-fill في الاختبار (`input[required], textarea[required]`) مبقاش
+// شايف الحقل ده أصلاً فضل فاضي، وvalidateRequiredFields() (اللي شغالة
+// صح 100%) رفضت التوليد بحق — الزرار فضل disabled ورسالة "تحقق من
+// البيانات المطلوبة: موضوع الإنذار" ظهرت زي ما لازم. الفيكس: إضافة
+// `required={field.is_required}` على الـtextarea بس، عشان تتطابق مع
+// باقي أنواع الحقول ومع افتراض الاختبار. رفع سقف createFetchGuard في
+// useGenerateDocument.ts (فيكس الجلسة اللي فاتت) فضل قائم كتحسين مستقل
+// معقول (السلسلة فعلاً طويلة)، لكنه *مش* كان سبب الفشل ده تحديدًا.
 // ══════════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect } from 'react';
@@ -84,6 +100,7 @@ export default function DynamicFieldsForm({
                   {field.label_ar}{field.is_required && <span className="text-rose-400 mr-1">*</span>}{autoBadge}
                 </label>
                 <textarea
+                  required={field.is_required}
                   data-testid={`doc-gen-field-${field.field_key}`}
                   value={typeof value === 'string' ? value : ''}
                   onChange={(e) => setValue(field.field_key, e.target.value)}
@@ -157,7 +174,7 @@ export default function DynamicFieldsForm({
         </div>
       )}
       {generateError && (
-        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[10px] text-rose-300">
+        <div data-testid="doc-gen-generate-error" className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[10px] text-rose-300">
           {generateError}
         </div>
       )}
