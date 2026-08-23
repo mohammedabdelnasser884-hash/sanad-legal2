@@ -43,7 +43,15 @@ function freshUnpdfState(): UnpdfState {
   };
 }
 let unpdfState: UnpdfState = freshUnpdfState();
-vi.mock('../_shared/unpdfMock', () => ({
+// ⚠️ لازم نعمل vi.mock بنفس الـ specifier اللي index.ts بيكتبه فعليًا
+// ('npm:unpdf')، مش المسار النسبي لملف unpdfMock.ts. الاتنين بيوصلوا
+// لنفس الملف فعليًا (عن طريق alias 'npm:unpdf' في vitest.config.ts)،
+// لكن vi.mock('../_shared/unpdfMock', ...) بيسجّل الموك على specifier
+// مختلف عن اللي index.ts بيستورد بيه فعلاً، فمكانش بيتطبّق خالص —
+// النتيجة: index.ts كان بيحمّل النسخة الحقيقية (الغير معدَّلة) من
+// unpdfMock.ts بحالتها الافتراضية (نص قصير من __state)، وكل تست كان
+// بياخد نفس رسالة الفشل العامة "تعذر استخراج نص" بغض النظر عن unpdfState.
+vi.mock('npm:unpdf', () => ({
   getDocumentProxy: async () => {
     if (unpdfState.proxyShouldThrow) throw new Error(unpdfState.proxyErrorMessage);
     return { __fakePdfProxy: true };
