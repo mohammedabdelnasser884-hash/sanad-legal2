@@ -30,6 +30,14 @@
 - هذا الملف (`CHANGELOG.md`).
 - `npm run build:analyze` — يولّد `dist/stats.html` (خريطة حجم الـbundle
   عبر `rollup-plugin-visualizer`) من غير ما يأثر على `npm run build` العادي.
+- Visual regression حقيقي (`e2e/mobile/visual-regression.spec.ts`، سابقًا
+  `visual-check.spec.ts`) — `toHaveScreenshot()` بدل التقاط PNG يدوي، بعد
+  ما استقر تصميم الديسكتوب/التابلت. `npm run test:visual` /
+  `npm run test:visual:update`.
+
+### تغيير أمني (Security)
+- ترقية `jspdf` من `^2.5.2` لـ`^4.2.1` — فيكس ثغرة critical في `dompurify`
+  (تبعية داخلية). `npm audit --omit=dev` بقى صفر.
 
 ### تغيير تنظيمي (Changed)
 - نُقل 47 ملف Markdown كانوا متناثرين في جذر الريبو إلى `docs/` مقسّمين
