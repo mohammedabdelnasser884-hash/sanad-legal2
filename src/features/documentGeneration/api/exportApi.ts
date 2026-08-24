@@ -14,9 +14,11 @@
 // الخطة نفسها لمكتبة DOCX، اتطبّق هنا على الاتنين بنفس المنطق).
 // ══════════════════════════════════════════════════════════════════
 
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-import { Document as DocxDocument, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel } from 'docx';
+// 🔒 FIX (24 أغسطس 2026 — بند 1 من تقرير الأداء/الأمان): jsPDF/html2canvas/docx
+// كانوا مستوردين static هنا، يعني ~400KB+ بيتحملوا مع الـbundle الرئيسي لكل
+// مستخدم حتى لو محدش فتح شاشة توليد/تصدير مستند خالص. الاستيرادات اتحولت
+// لـimport() ديناميكي جوه exportToPdf/exportToDocx نفسهم — بيتحمّلوا بس أول
+// مرة حد يضغط "تصدير PDF"/"تصدير Word" فعليًا.
 import { db } from '../../../supabaseClient';
 import { getCurrentTenantId, loadOfficeSetting } from '../../../constants';
 import { resolveStorageUrl } from '../../../shared/lib/storage';
@@ -132,6 +134,11 @@ async function markExported(documentId: string): Promise<void> {
 
 /** يحوّل document_content_json + office_settings إلى PDF، يرفعه لـcase_documents، يرجّع storedFileId */
 export async function exportToPdf(documentId: string): Promise<{ storedFileId: string; url: string }> {
+  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+    import('jspdf'),
+    import('html2canvas'),
+  ]);
+
   const ctx = await loadExportContext(documentId);
   const sections = ctx.document.document_content_json;
   const bodyText = sectionsToPlainText(sections);
@@ -201,6 +208,10 @@ export async function exportToPdf(documentId: string): Promise<{ storedFileId: s
 
 /** نفس الشيء لـDOCX */
 export async function exportToDocx(documentId: string): Promise<{ storedFileId: string; url: string }> {
+  const {
+    Document: DocxDocument, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel,
+  } = await import('docx');
+
   const ctx = await loadExportContext(documentId);
   const sections = ctx.document.document_content_json;
   const bodyText = sectionsToPlainText(sections);
