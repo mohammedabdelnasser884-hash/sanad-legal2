@@ -42,7 +42,10 @@ if ('serviceWorker' in navigator) {
             const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
             window.__swRegistration = reg;
             window.__swReady = true;
-            if (import.meta.env.DEV) console.log('[App] Service Worker registered ✓', reg.scope);
+            // 🔒 FIX (24 أغسطس 2026 — بند 6 من تقرير الأمان، تنضيف اختياري):
+            // شيل console.log هنا كان محاط أصلاً بـ if(DEV) وبيتشال تلقائيًا
+            // في build الإنتاج (Vite بيشيل بلوكات import.meta.env.DEV غير
+            // القابلة للتحقق) — شيل السطر بالكامل استجابة لملاحظة التقرير.
 
             reg.addEventListener('updatefound', () => {
                 const newWorker = reg.installing;
