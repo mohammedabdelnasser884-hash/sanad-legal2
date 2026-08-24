@@ -12,7 +12,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "build:analyze": "ANALYZE=true npm run build"
+    "build:analyze": "ANALYZE=true npm run build",
+    "test:visual": "playwright test e2e/mobile/visual-regression.spec.ts --project=mobile",
+    "test:visual:update": "playwright test e2e/mobile/visual-regression.spec.ts --project=mobile --update-snapshots"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
