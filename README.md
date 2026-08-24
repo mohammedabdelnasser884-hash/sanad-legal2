@@ -39,6 +39,7 @@ VITE_SUPABASE_ANON_KEY=...
 | `npm run test:watch` | اختبارات الوحدة في وضع المراقبة |
 | `npm run test:e2e` | اختبارات Playwright الشاملة |
 | `npm run preview` | معاينة نسخة الإنتاج المبنية محليًا |
+| `npm run build:analyze` | بناء الإنتاج + توليد `dist/stats.html` (خريطة حجم الـbundle لكل مكتبة/chunk) |
 
 ## بنية المشروع
 
