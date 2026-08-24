@@ -297,7 +297,6 @@ export function stripOfflineSentinels<T extends Record<string, unknown> | undefi
 // ══════════════════════════════════════════════════════════
 //  Offline Sync Queue — DB Write Wrapper
 // ══════════════════════════════════════════════════════════
-let __syncQueueRunning = false;
 // 🆕 (تقسيم offlineSync.ts — 24 أغسطس 2026، بند 4 من bundle-security-review-
 // verification-v2-2.md): جسم المزامنة الفعلي (~615 سطر: OFFLINE_ACTIVITY_CONFIG
 // + resolveOfflineFkRefs/resolveOfflineSelfId + الحلقة الكاملة) اتنقل لملف
