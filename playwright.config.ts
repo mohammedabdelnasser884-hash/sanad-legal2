@@ -42,6 +42,19 @@ export default defineConfig({
   // مش متضبط (تشغيل محلي عادي)، الـteardown بيتخطى نفسه من غير ما يفشل.
   globalSetup: './e2e/global-setup',
   globalTeardown: './e2e/global-teardown',
+  // 🆕 Visual regression (24 أغسطس 2026 — بند 12 من تقرير الأداء/الأمان):
+  // كان في e2e/mobile/visual-check.spec.ts قرار مقصود إن مفيش toHaveScreenshot()
+  // حقيقي لأن تصميم الديسكتوب/التابلت كان لسه بيتطوّر (Sidebar/Header قديم
+  // وجديد ظاهرين مع بعض مؤقتًا). Gemy أكّد إن المرحلة المؤقتة دي خلصت
+  // واستقرت، فبقى آمن نضيف baseline حقيقي. threshold/maxDiffPixelRatio هنا
+  // متسامحين شوية عمدًا (مش صفر) عشان نمتص فروق antialiasing/فونتات بسيطة
+  // بين بيئات تشغيل مختلفة (محلي vs CI) من غير ما نخفي فرق شكل حقيقي.
+  expect: {
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.02,
+      animations: 'disabled',
+    },
+  },
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'retain-on-failure',
