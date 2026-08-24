@@ -40,6 +40,8 @@ VITE_SUPABASE_ANON_KEY=...
 | `npm run test:e2e` | اختبارات Playwright الشاملة |
 | `npm run preview` | معاينة نسخة الإنتاج المبنية محليًا |
 | `npm run build:analyze` | بناء الإنتاج + توليد `dist/stats.html` (خريطة حجم الـbundle لكل مكتبة/chunk) |
+| `npm run test:visual` | Visual regression (Playwright `toHaveScreenshot()`) — 3 breakpoints × 5 شاشات، مقارنة ضد baseline محفوظة |
+| `npm run test:visual:update` | تحديث baseline اللقطات البصرية (شغّلها بعد أي تغيير تصميم مقصود، وراجع الفروقات بالعين قبل الـcommit) |
 
 ## بنية المشروع
 
