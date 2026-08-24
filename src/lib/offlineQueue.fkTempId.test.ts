@@ -13,9 +13,19 @@ vi.mock('../shared/lib/notifications', () => ({
   showOfflineBanner: vi.fn(), hideOfflineBanner: vi.fn(),
   showSyncIndicator: vi.fn(), hideSyncIndicator: vi.fn(), toast: vi.fn(),
 }));
-vi.mock('../shared/lib/dataAccess', () => ({ logActivity: vi.fn() }));
+// 🆕 (تقسيم offlineSync.ts — 24 أغسطس 2026): أضفنا recalcNextHearing للـ mock
+// هنا (كانت ناقصة، بس متأثرتش قبل كده لأن التست كان بيستورد resolveOfflineFkRefs/
+// resolveOfflineSelfId بس من offlineQueue.ts مباشرة من غير ما يشغّل جسم
+// runOfflineSync نفسه). دلوقتي الاستيراد بيعدي على offlineSync.ts (اللي
+// بيستورد recalcNextHearing فعليًا من dataAccess)، فلازم تتغطى في الـmock
+// حتى لو مش هتتستخدم فعليًا في التستات دي.
+vi.mock('../shared/lib/dataAccess', () => ({ logActivity: vi.fn(), recalcNextHearing: vi.fn() }));
 
-import { resolveOfflineFkRefs, resolveOfflineSelfId, type OfflineFkTempIdRef, type OfflineQueueItem } from './offlineQueue';
+// 🆕 (تقسيم offlineSync.ts — 24 أغسطس 2026): resolveOfflineFkRefs/
+// resolveOfflineSelfId/OfflineFkTempIdRef اتنقلوا لملف offlineSync.ts.
+// OfflineQueueItem لسه في offlineQueue.ts زي ما هي.
+import type { OfflineQueueItem } from './offlineQueue';
+import { resolveOfflineFkRefs, resolveOfflineSelfId, type OfflineFkTempIdRef } from './offlineSync';
 
 // ══════════════════════════════════════════════════════════════════
 // اختبارات المرحلة 1 من "خطة توسيع نظام الأوفلاين" — تغطي بالظبط
