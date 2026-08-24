@@ -11,7 +11,12 @@ vi.mock('../shared/lib/notifications', () => ({
 }));
 vi.mock('../shared/lib/dataAccess', () => ({ logActivity: vi.fn(), recalcNextHearing: vi.fn() }));
 
-import { resolveOfflineFkRefs, resolveOfflineSelfId, type OfflineFkTempIdRef, type OfflineQueueItem } from './offlineQueue';
+// 🆕 (تقسيم offlineSync.ts — 24 أغسطس 2026): resolveOfflineFkRefs/
+// resolveOfflineSelfId/OfflineFkTempIdRef اتنقلوا لملف offlineSync.ts
+// (بيتحمّل lazy في التطبيق نفسه، بس هنا في التستات بنستوردهم مباشرة
+// زي أي موديول عادي). OfflineQueueItem لسه في offlineQueue.ts زي ما هي.
+import type { OfflineQueueItem } from './offlineQueue';
+import { resolveOfflineFkRefs, resolveOfflineSelfId, type OfflineFkTempIdRef } from './offlineSync';
 
 // ══════════════════════════════════════════════════════════════════
 // المرحلة 3-3 من "خطة توسيع نظام الأوفلاين" — اختبار تكامل السلسلة
