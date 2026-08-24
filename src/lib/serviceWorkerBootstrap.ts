@@ -5,6 +5,10 @@
 //  window.__syncOfflineQueue المستخدم هنا في مستمع رسائل الـ SW).
 // ══════════════════════════════════════════════════════════
 
+// لازم export واحد على الأقل عشان تيبسكريبت يعامل الملف كموديول
+// (لا سكريبت عام)، وإلا `declare global` تحت بيبقى غير صالح (TS2669).
+export {};
+
 declare global {
   interface Window {
     __swReady: boolean;
