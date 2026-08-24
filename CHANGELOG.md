@@ -28,6 +28,8 @@
 - `README.md` في الـroot — دليل بدء سريع للمطورين الجدد.
 - `docs/README.md` — فهرس تنظيم التوثيق الداخلي.
 - هذا الملف (`CHANGELOG.md`).
+- `npm run build:analyze` — يولّد `dist/stats.html` (خريطة حجم الـbundle
+  عبر `rollup-plugin-visualizer`) من غير ما يأثر على `npm run build` العادي.
 
 ### تغيير تنظيمي (Changed)
 - نُقل 47 ملف Markdown كانوا متناثرين في جذر الريبو إلى `docs/` مقسّمين
