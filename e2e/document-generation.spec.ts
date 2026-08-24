@@ -25,15 +25,22 @@ test('توليد مستند قانوني من قضية مفتوحة، تصدير
   await firstTemplateCard.click();
 
   // 3) DynamicFieldsForm — تخطي SourceModeSelector تلقائيًا (case_bound
-  // من سياق القضية). لو فيه حقول مطلوبة لسه فاضية (مش متعبّية تلقائيًا
-  // من بيانات القضية)، نعبّيها بقيمة اختبار عامة قبل التوليد.
-  await page.getByTestId('doc-gen-submit-btn').waitFor({ state: 'visible', timeout: 10_000 });
-  const emptyRequiredInputs = page.locator('input[required], textarea[required]').filter({ hasNot: page.locator('[value]:not([value=""])') });
-  const emptyCount = await emptyRequiredInputs.count();
-  for (let i = 0; i < emptyCount; i++) {
-    const el = emptyRequiredInputs.nth(i);
-    if ((await el.inputValue()) === '') await el.fill('بيانات اختبار E2E');
-  }
+  // من سياق القضية).
+  // 🔒 FIX (24 أغسطس 2026 — تشخيص فعلي عبر trace.zip): المنطق القديم هنا
+  // كان بيدوّر ديناميكيًا على `input[required], textarea[required]` فاضية
+  // ويعبّيها. التريس الفعلي أثبت إن الاستعلام ده كان بيتنفذ في سباق حقيقي
+  // مع رندر الفورم — queryCount رجّع صفر عناصر رغم إن `required` موجودة في
+  // الكود فعلاً (submit-btn بيبقى visible قبل ما بيانات الحقول تخلص تحميل
+  // فعليًا)، فالحلقة القديمة كانت بتتخطى كل الحقول من غير أي fill، والضغط
+  // على submit كان بيرتد فورًا (isValid=false) من غير ما ينقل الخطوة أصلاً
+  // — الاختبار كان بيقعد يستنى زرار "تصدير PDF" اللي عمره ما هيظهر.
+  // الفيكس: تعبئة الحقل المعروف ("موضوع الإنذار"، field_key=warning_subject
+  // — الحقل الوحيد غير المربوط تلقائيًا ببيانات القضية في هذا القالب)
+  // بالـtestid الصريح بتاعه مباشرة، بدل الاكتشاف الديناميكي الهش. ده بينتظر
+  // الحقل نفسه (مش زرار submit بس) قبل أي تفاعل، فبيضمن إن الفورم خلص رندر
+  // فعليًا قبل التعبئة.
+  await page.getByTestId('doc-gen-field-warning_subject').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByTestId('doc-gen-field-warning_subject').fill('بيانات اختبار E2E');
   await page.getByTestId('doc-gen-submit-btn').click();
 
   // 4) DocumentPreviewEditor — معاينة المستند المولّد
