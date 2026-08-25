@@ -10,6 +10,17 @@ const config: StorybookConfig = {
     "@storybook/addon-docs",
     "@storybook/addon-mcp"
   ],
-  "framework": "@storybook/react-vite"
+  "framework": {
+    "name": "@storybook/react-vite",
+    "options": {}
+  },
+  "viteFinal": async (viteConfig) => {
+    viteConfig.server = {
+      ...viteConfig.server,
+      hmr: { clientPort: 443 },
+    };
+    return viteConfig;
+  },
 };
+
 export default config;
