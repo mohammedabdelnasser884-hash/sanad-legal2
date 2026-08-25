@@ -14,17 +14,18 @@ interface TemplatePickerProps {
 }
 
 export default function TemplatePicker({ onSelectTemplate }: TemplatePickerProps) {
-  const { filteredTemplates, loading, error, search, setSearch, category, setCategory, reload } = useDocumentTemplates();
+  const { filteredTemplates, loading, error, search, setSearch, category, setCategory, reload, isSearchActive } = useDocumentTemplates();
 
   return (
     <div className="space-y-4">
-      {/* شريط الفلترة */}
+      {/* شريط البحث الموحّد (القسم 5.1): بحث فعّال بيدوّر في كل التصنيفات
+          ويعطّل فلتر التصنيف مؤقتًا — التصنيف يرجع يشتغل تاني أول ما البحث يتمسح */}
       <div className="flex flex-col sm:flex-row gap-2">
         <input
           data-testid="doc-gen-search-input"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="ابحث باسم القالب..."
+          placeholder="ابحث باسم أو وصف أي مستند، من كل التصنيفات..."
           className="w-full p-3 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600 transition-colors"
           style={{ fontFamily: 'Cairo,sans-serif' }}
         />
@@ -34,9 +35,13 @@ export default function TemplatePicker({ onSelectTemplate }: TemplatePickerProps
             value={category}
             onChange={(e) => setCategory(e.target.value as typeof category)}
             options={['الكل', ...DOCUMENT_CATEGORIES]}
+            disabled={isSearchActive}
           />
         </div>
       </div>
+      {isSearchActive && (
+        <p className="text-[10px] text-slate-500 -mt-2">نتايج البحث من كل التصنيفات — امسح البحث للرجوع للتصفح بالتصنيف</p>
+      )}
 
       {/* حالة التحميل */}
       {loading && (
