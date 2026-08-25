@@ -22,6 +22,7 @@ import React, { useState, useEffect } from 'react';
 import { I } from '../../../constants';
 import { Inp } from '@/shared/ui/Inp';
 import DatePicker from '@/shared/ui/DatePicker';
+import VoiceInputField from '@/shared/ui/VoiceInputField';
 import { db } from '../../../supabaseClient';
 import type { TemplateField, ResolvedBindings, SourceMode } from '../types';
 
@@ -99,15 +100,23 @@ export default function DynamicFieldsForm({
                 <label className="block text-[10px] font-bold text-slate-400 mb-1.5">
                   {field.label_ar}{field.is_required && <span className="text-rose-400 mr-1">*</span>}{autoBadge}
                 </label>
-                <textarea
-                  required={field.is_required}
-                  data-testid={`doc-gen-field-${field.field_key}`}
-                  value={typeof value === 'string' ? value : ''}
-                  onChange={(e) => setValue(field.field_key, e.target.value)}
-                  rows={4}
-                  className={`w-full p-3 text-xs rounded-xl border bg-premium-bg text-white placeholder-slate-600 transition-colors ${showError ? 'border-rose-500/60' : 'border-white/10'}`}
-                  style={{ fontFamily: 'Cairo,sans-serif' }}
-                />
+                <VoiceInputField
+                  testId={`doc-gen-field-${field.field_key}-mic`}
+                  onTranscript={(text) => {
+                    const current = typeof value === 'string' ? value : '';
+                    setValue(field.field_key, current ? `${current} ${text}` : text);
+                  }}
+                >
+                  <textarea
+                    required={field.is_required}
+                    data-testid={`doc-gen-field-${field.field_key}`}
+                    value={typeof value === 'string' ? value : ''}
+                    onChange={(e) => setValue(field.field_key, e.target.value)}
+                    rows={4}
+                    className={`w-full p-3 pb-9 text-xs rounded-xl border bg-premium-bg text-white placeholder-slate-600 transition-colors ${showError ? 'border-rose-500/60' : 'border-white/10'}`}
+                    style={{ fontFamily: 'Cairo,sans-serif' }}
+                  />
+                </VoiceInputField>
               </div>
             );
           }
