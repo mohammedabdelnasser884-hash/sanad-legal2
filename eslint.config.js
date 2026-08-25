@@ -1,3 +1,6 @@
+// For more info, see https://github.com/storybookjs/eslint-plugin-storybook#configuration-flat-config-format
+import storybook from "eslint-plugin-storybook";
+
 // ══════════════════════════════════════════════════════════════
 //  إعدادات ESLint — فحص أساسي لأخطاء TypeScript الشائعة + قواعد
 //  React Hooks (rules-of-hooks و exhaustive-deps تحديدًا).
@@ -17,34 +20,31 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
-export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'supabase/functions'] },
-  {
-    extends: [js.configs.recommended, ...tseslint.configs.recommended],
-    files: ['**/*.{ts,tsx}'],
-    languageOptions: {
-      ecmaVersion: 2020,
-      globals: globals.browser,
-    },
-    plugins: {
-      'react-hooks': reactHooks,
-      'react-refresh': reactRefresh,
-    },
-    rules: {
-      ...reactHooks.configs.recommended.rules,
-
-      // ── 'no-explicit-any' بقت 'error' — أي `any`/`as any` جديد هيوقف
-      // الـ lint (وبالتالي الـ build، بعد ربط lint بـ build script في
-      // package.json) بدل ما يفضل مجرد تحذير ممكن يتفوت. ── 15 يوليو 2026
-      '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/no-unused-vars': 'off',
-      '@typescript-eslint/ban-ts-comment': 'off',
-
-      // ── القواعد الأهم فعليًا (تفضل شغالة بكامل قوتها) ──
-      'react-hooks/rules-of-hooks': 'error',   // استخدام غلط للـ hooks (شرط/loop)
-      'react-hooks/exhaustive-deps': 'warn',   // dependency array ناقصة/غلط
-
-      'react-refresh/only-export-components': 'off',
-    },
+export default tseslint.config({ ignores: ['dist', 'node_modules', 'supabase/functions'] }, {
+  extends: [js.configs.recommended, ...tseslint.configs.recommended],
+  files: ['**/*.{ts,tsx}'],
+  languageOptions: {
+    ecmaVersion: 2020,
+    globals: globals.browser,
   },
-);
+  plugins: {
+    'react-hooks': reactHooks,
+    'react-refresh': reactRefresh,
+  },
+  rules: {
+    ...reactHooks.configs.recommended.rules,
+
+    // ── 'no-explicit-any' بقت 'error' — أي `any`/`as any` جديد هيوقف
+    // الـ lint (وبالتالي الـ build، بعد ربط lint بـ build script في
+    // package.json) بدل ما يفضل مجرد تحذير ممكن يتفوت. ── 15 يوليو 2026
+    '@typescript-eslint/no-explicit-any': 'error',
+    '@typescript-eslint/no-unused-vars': 'off',
+    '@typescript-eslint/ban-ts-comment': 'off',
+
+    // ── القواعد الأهم فعليًا (تفضل شغالة بكامل قوتها) ──
+    'react-hooks/rules-of-hooks': 'error',   // استخدام غلط للـ hooks (شرط/loop)
+    'react-hooks/exhaustive-deps': 'warn',   // dependency array ناقصة/غلط
+
+    'react-refresh/only-export-components': 'off',
+  },
+}, storybook.configs["flat/recommended"]);
