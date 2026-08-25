@@ -20,6 +20,8 @@ interface UseDocumentTemplatesResult {
   category: DocumentCategoryFilter;
   setCategory: (v: DocumentCategoryFilter) => void;
   reload: () => void;
+  /** true لما فيه نص بحث فعّال — يعني الفلترة دلوقتي متجاوزة فلتر التصنيف وبتدوّر في كل القوالب */
+  isSearchActive: boolean;
 }
 
 export function useDocumentTemplates(): UseDocumentTemplatesResult {
@@ -47,14 +49,22 @@ export function useDocumentTemplates(): UseDocumentTemplatesResult {
     return () => clearTimeout(t);
   }, [search]);
 
+  // بحث موحّد (القسم 5.1): لو فيه نص بحث، بيدوّر في اسم/وصف كل القوالب مهما
+  // كان تصنيفهم — بيتجاوز فلتر التصنيف مؤقتًا. لو حقل البحث فاضي، بيرجع
+  // يشتغل بفلتر التصنيف العادي زي ما كان.
   const filteredTemplates = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
-    return templates.filter((t) => {
-      const matchesCategory = category === 'الكل' || t.category === category;
-      const matchesSearch = q === '' || t.name_ar.toLowerCase().includes(q);
-      return matchesCategory && matchesSearch;
-    });
+    if (q !== '') {
+      return templates.filter((t) => {
+        const nameMatch = t.name_ar.toLowerCase().includes(q);
+        const descMatch = (t.description ?? '').toLowerCase().includes(q);
+        return nameMatch || descMatch;
+      });
+    }
+    return templates.filter((t) => category === 'الكل' || t.category === category);
   }, [templates, debouncedSearch, category]);
 
-  return { templates, filteredTemplates, loading, error, search, setSearch, category, setCategory, reload: load };
+  const isSearchActive = debouncedSearch.trim() !== '';
+
+  return { templates, filteredTemplates, loading, error, search, setSearch, category, setCategory, reload: load, isSearchActive };
 }
