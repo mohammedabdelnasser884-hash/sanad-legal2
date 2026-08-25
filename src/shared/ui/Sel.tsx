@@ -7,10 +7,10 @@ import React from 'react';
 // كل نداء بيحط label من عمود DB nullable (FeesTab/LegalLibraryModal/NewCaseModal).
 // السماح بـ null/undefined هنا وعرضه كـ '—' وقت العرض بس، من غير أي تغيير
 // في شكل الـ options اللي بيتبعتوا فعليًا من الأماكن التانية.
-export const Sel = ({ label, value, onChange, options, testId, required }: {
+export const Sel = ({ label, value, onChange, options, testId, required, disabled }: {
     label?: string; value: string; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
     options: Array<{ value: string; label: string | null | undefined } | string>;
-    testId?: string; required?: boolean;
+    testId?: string; required?: boolean; disabled?: boolean;
 }) =>
     React.createElement('div', null,
         label && React.createElement('label', { className: "block text-[10px] font-bold text-slate-400 mb-1.5" },
@@ -18,9 +18,9 @@ export const Sel = ({ label, value, onChange, options, testId, required }: {
             required && React.createElement('span', { className: "text-rose-400 mr-1" }, "*")
         ),
         React.createElement('select', {
-            value, onChange,
+            value, onChange, disabled,
             'data-testid': testId,
-            className: "w-full p-3 text-xs rounded-xl border border-white/10 bg-premium-bg text-white transition-colors",
+            className: `w-full p-3 text-xs rounded-xl border border-white/10 bg-premium-bg text-white transition-colors ${disabled ? 'opacity-50' : ''}`,
             style: { fontFamily: 'Cairo,sans-serif' }
         },
             options.map((o) => {
