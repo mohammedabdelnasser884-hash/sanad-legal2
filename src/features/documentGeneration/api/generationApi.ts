@@ -267,6 +267,28 @@ export async function publishTemplateVersion(templateVersionId: string): Promise
 // تعديل صريح للـ signature ده، مش قرار يُتخذ هنا بمعزل.
 // ──────────────────────────────────────────────────────────────────
 
+// ──────────────────────────────────────────────────────────────────
+// 🆕 (بند 4 — الأوفلاين، خطوة 3، القسم 17.6): استبدال placeholders كان
+// جزء مطبوخ جوه generateDocument() مباشرة (خطوة 5 القديمة تحت)، مبني
+// على استعلامات شبكة سابقة عليه (resolveTemplateVersion + template_fields).
+// استخرجناها هنا كدالة pure منفصلة عشان useGenerateDocument.ts يقدر
+// يعيد استخدامها لبناء document_content_json من غير شبكة، لما يكون فيه
+// نسخة قالب + حقول محفوظين في offlineTemplateCache.ts بالفعل. صفر تغيير
+// سلوكي — نفس منطق الاستبدال بالظبط، منقول بس.
+// ──────────────────────────────────────────────────────────────────
+export function renderDocumentContent(
+  bodyTemplate: string,
+  templateFields: TemplateField[],
+  values: ResolvedBindings
+): DocumentContentSection[] {
+  let renderedText = bodyTemplate;
+  for (const field of templateFields) {
+    const value = values[field.field_key];
+    renderedText = renderedText.split(`{{${field.field_key}}}`).join(value !== null && value !== undefined ? String(value) : '');
+  }
+  return [{ type: 'intro', text: renderedText }];
+}
+
 /**
  * الدالة الرئيسية — تبني document_content_json وتحفظ generated_documents
  * بحالة draft، مربوطة بنسخة قالب محددة.
@@ -325,14 +347,9 @@ export async function generateDocument(params: {
     throw new Error(`تعذّر توليد المستند، حقول مطلوبة ناقصة: ${missingLabels.join('، ')}`);
   }
 
-  // 5) استبدال placeholders في نص القالب
-  let renderedText = version.body_template;
-  for (const field of templateFields) {
-    const value = values[field.field_key];
-    renderedText = renderedText.split(`{{${field.field_key}}}`).join(value !== null && value !== undefined ? String(value) : '');
-  }
-
-  const documentContentJson: DocumentContentSection[] = [{ type: 'intro', text: renderedText }];
+  // 5) استبدال placeholders في نص القالب — دلوقتي عبر renderDocumentContent
+  //    (خُلعت pure function فوق، بند 4 — الأوفلاين، صفر تغيير سلوكي)
+  const documentContentJson: DocumentContentSection[] = renderDocumentContent(version.body_template, templateFields, values);
 
   const tenantId = getCurrentTenantId();
   if (!tenantId) {
