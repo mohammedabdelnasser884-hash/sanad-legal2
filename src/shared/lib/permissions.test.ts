@@ -126,7 +126,7 @@ describe('ROLE_DEFAULT_PERMISSIONS — مطابقة مصفوفة قسم 2.1 من
     }
   });
 
-  it('lawyer → true فقط لـcan_add_cases/can_edit_cases/can_add_clients/can_view_reports', () => {
+  it('lawyer → true فقط لـcan_add_cases/can_edit_cases/can_add_clients/can_view_reports/can_generate_documents', () => {
     expect(ROLE_DEFAULT_PERMISSIONS.lawyer).toEqual({
       can_add_cases: true,
       can_edit_cases: true,
@@ -136,6 +136,7 @@ describe('ROLE_DEFAULT_PERMISSIONS — مطابقة مصفوفة قسم 2.1 من
       can_add_clients: true,
       can_view_reports: true,
       can_export_data: false,
+      can_generate_documents: true,
     });
   });
 
@@ -149,6 +150,7 @@ describe('ROLE_DEFAULT_PERMISSIONS — مطابقة مصفوفة قسم 2.1 من
       can_add_clients: false,
       can_view_reports: true,
       can_export_data: false,
+      can_generate_documents: false,
     });
   });
 });
