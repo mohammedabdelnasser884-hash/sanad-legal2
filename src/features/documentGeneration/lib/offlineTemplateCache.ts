@@ -19,6 +19,9 @@ import type { TemplateField, ResolvedBindings, SourceMode } from '../types';
 interface CachedTemplateData {
   templateVersionId: string;
   bodyTemplate: string;
+  // 🆕 [قسم 20.1] صندوق "الموضوع" — undefined لكاش قديم اتخزن قبل هذا
+  // التعديل (JSON.parse هيرجّعه undefined تلقائيًا، معاملة زي null).
+  boxTemplate?: string | null;
   fields: TemplateField[];
   initialValues: ResolvedBindings;
   cachedAt: number;
