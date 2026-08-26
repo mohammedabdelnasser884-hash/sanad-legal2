@@ -276,17 +276,30 @@ export async function publishTemplateVersion(templateVersionId: string): Promise
 // نسخة قالب + حقول محفوظين في offlineTemplateCache.ts بالفعل. صفر تغيير
 // سلوكي — نفس منطق الاستبدال بالظبط، منقول بس.
 // ──────────────────────────────────────────────────────────────────
-export function renderDocumentContent(
-  bodyTemplate: string,
-  templateFields: TemplateField[],
-  values: ResolvedBindings
-): DocumentContentSection[] {
-  let renderedText = bodyTemplate;
+function fillPlaceholders(template: string, templateFields: TemplateField[], values: ResolvedBindings): string {
+  let renderedText = template;
   for (const field of templateFields) {
     const value = values[field.field_key];
     renderedText = renderedText.split(`{{${field.field_key}}}`).join(value !== null && value !== undefined ? String(value) : '');
   }
-  return [{ type: 'intro', text: renderedText }];
+  return renderedText;
+}
+
+export function renderDocumentContent(
+  bodyTemplate: string,
+  templateFields: TemplateField[],
+  values: ResolvedBindings,
+  // 🆕 [قسم 20.1، مرحلة البنية التقنية] اختياري — undefined/null لكل
+  // القوالب القديمة (نفس السلوك الحالي بالحرف: section واحد 'intro').
+  // لو موجود، بيتضاف كـsection أول من النوع 'subject_box' قبل الـintro.
+  boxTemplate?: string | null
+): DocumentContentSection[] {
+  const sections: DocumentContentSection[] = [];
+  if (boxTemplate) {
+    sections.push({ type: 'subject_box', text: fillPlaceholders(boxTemplate, templateFields, values) });
+  }
+  sections.push({ type: 'intro', text: fillPlaceholders(bodyTemplate, templateFields, values) });
+  return sections;
 }
 
 /**
@@ -349,7 +362,7 @@ export async function generateDocument(params: {
 
   // 5) استبدال placeholders في نص القالب — دلوقتي عبر renderDocumentContent
   //    (خُلعت pure function فوق، بند 4 — الأوفلاين، صفر تغيير سلوكي)
-  const documentContentJson: DocumentContentSection[] = renderDocumentContent(version.body_template, templateFields, values);
+  const documentContentJson: DocumentContentSection[] = renderDocumentContent(version.body_template, templateFields, values, version.box_template);
 
   const tenantId = getCurrentTenantId();
   if (!tenantId) {
