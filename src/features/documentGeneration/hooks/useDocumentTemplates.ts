@@ -6,11 +6,11 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { getActiveTemplates } from '../api/templatesApi';
 import type { DocumentTemplate } from '../types';
 
-// 9 تصنيفات (قسم 7 "تعيين التصنيفات" — أولوية 3): الأربعة الأصليين + الخمسة
-// الجداد (إعلانات/أشكال/تظلمات/جنح مباشرة/عقود). الترتيب هنا هو نفس ترتيب
-// جدول قسم 7 بالظبط.
+// 8 تصنيفات (كانت 9 — "توكيلات" اتشالت من الإنتاج، قرار 23.2/23.3 من
+// التقرير: جلسة كود منفصلة، 26 أغسطس 2026). الباقي: الثلاثة الأصليين
+// المتبقيين + الخمسة الجداد (إعلانات/أشكال/تظلمات/جنح مباشرة/عقود).
 export const DOCUMENT_CATEGORIES = [
-  'إنذارات', 'توكيلات', 'عرائض', 'طلبات',
+  'إنذارات', 'عرائض', 'طلبات',
   'إعلانات', 'أشكال', 'تظلمات', 'جنح مباشرة', 'عقود',
 ] as const;
 export type DocumentCategoryFilter = 'الكل' | (typeof DOCUMENT_CATEGORIES)[number];
