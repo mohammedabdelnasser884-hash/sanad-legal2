@@ -6,8 +6,13 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { getActiveTemplates } from '../api/templatesApi';
 import type { DocumentTemplate } from '../types';
 
-// التصنيفات الأربعة الوحيدة (القسم 5) — بدون إضافة أي تصنيف تاني (القسم 9.1)
-export const DOCUMENT_CATEGORIES = ['إنذارات', 'توكيلات', 'عرائض', 'طلبات'] as const;
+// 9 تصنيفات (قسم 7 "تعيين التصنيفات" — أولوية 3): الأربعة الأصليين + الخمسة
+// الجداد (إعلانات/أشكال/تظلمات/جنح مباشرة/عقود). الترتيب هنا هو نفس ترتيب
+// جدول قسم 7 بالظبط.
+export const DOCUMENT_CATEGORIES = [
+  'إنذارات', 'توكيلات', 'عرائض', 'طلبات',
+  'إعلانات', 'أشكال', 'تظلمات', 'جنح مباشرة', 'عقود',
+] as const;
 export type DocumentCategoryFilter = 'الكل' | (typeof DOCUMENT_CATEGORIES)[number];
 
 interface UseDocumentTemplatesResult {
@@ -24,13 +29,25 @@ interface UseDocumentTemplatesResult {
   isSearchActive: boolean;
 }
 
-export function useDocumentTemplates(): UseDocumentTemplatesResult {
+// initialCategory: يُستخدم من TemplatePicker.tsx لما يكون داخل بـlockedCategory
+// (خطوة "المستند" جوه تصنيف مقفول — أولوية 3) عشان يبدأ مفلتر على التصنيف ده
+// مباشرة بدل 'الكل'. اختياري — بدون تمريره، السلوك زي ما كان بالظبط ('الكل').
+//
+// categoryPriority: أولوية 4 (القسم 5.1) — لو موجودة، بترتّب filteredTemplates
+// بحيث القوالب اللي تصنيفها في القايمة ديه تطلع الأول (بنفس ترتيب القايمة)،
+// من غير ما تخفي أي قالب تاني — sort مستقر (stable) بس، مش filter. بتتجاهل
+// تمامًا لو فيه lockedCategory (initialCategory) أو بحث فعّال، لأنهم أصلًا
+// بيحصروا/يرتبوا النتايج بمنطق مختلف مش له علاقة بنوع القضية.
+export function useDocumentTemplates(
+  initialCategory?: DocumentCategoryFilter,
+  categoryPriority?: Exclude<DocumentCategoryFilter, 'الكل'>[],
+): UseDocumentTemplatesResult {
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [category, setCategory] = useState<DocumentCategoryFilter>('الكل');
+  const [category, setCategory] = useState<DocumentCategoryFilter>(initialCategory ?? 'الكل');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -61,8 +78,23 @@ export function useDocumentTemplates(): UseDocumentTemplatesResult {
         return nameMatch || descMatch;
       });
     }
-    return templates.filter((t) => category === 'الكل' || t.category === category);
-  }, [templates, debouncedSearch, category]);
+    const base = templates.filter((t) => category === 'الكل' || t.category === category);
+
+    // أولوية 4: الترتيب حسب نوع القضية بيتطبّق بس لما مفيش تصنيف مقفول
+    // (category === 'الكل') ومفيش initialCategory ثابت جاي من lockedCategory —
+    // يعني بس في مسار hasCaseContext من غير قفل تصنيف (القسم 9 "منطق الدخول").
+    if (category === 'الكل' && !initialCategory && categoryPriority && categoryPriority.length > 0) {
+      const rank = (cat: string) => {
+        const idx = categoryPriority.indexOf(cat as (typeof categoryPriority)[number]);
+        return idx === -1 ? categoryPriority.length : idx;
+      };
+      // Array.prototype.sort مستقر (ES2019+) — القوالب اللي مالهاش أولوية
+      // بتفضل بترتيبها الأصلي بعد اللي ليها أولوية، مش بتتخفي.
+      return [...base].sort((a, b) => rank(a.category) - rank(b.category));
+    }
+
+    return base;
+  }, [templates, debouncedSearch, category, initialCategory, categoryPriority]);
 
   const isSearchActive = debouncedSearch.trim() !== '';
 
