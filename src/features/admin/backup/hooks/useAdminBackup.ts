@@ -171,7 +171,21 @@ export function useAdminBackup(profile?: ProfileRow | null) {
 
     setCreatingBackup(false);
     setBackupProgress('');
-    if (error) { toast('❌ فشل حفظ النسخة الاحتياطية', true); return; }
+    // 🔎 FIX (تشخيص لوجز E2E — 26 أغسطس 2026): هذا الفرع (`error` من
+    // نتيجة insert نفسها، مش استثناء) كان بيعرض توست عام بس من غير أي
+    // تسجيل للسبب الحقيقي (رفض RLS/قيد قاعدة بيانات/إلخ) — يعني أي فشل
+    // فعلي هنا كان عمره ما هيظهر في recordError/systemHealth، فكل تشخيص
+    // مستقبلي كان هيقف عند "فشل" من غير سبب. توحيد مع نفس نمط فرع
+    // catch فوقه (showErrorToast) عشان الخطأ الخام يتسجل فعليًا.
+    if (error) {
+      showErrorToast(
+        'admin_backup_create',
+        error,
+        'تعذّر حفظ النسخة الاحتياطية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.',
+        'إنشاء نسخة احتياطية',
+      );
+      return;
+    }
     toast(incomplete ? '⚠️ تم الحفظ لكن بعض الجداول فشل تصديرها — راجع النسخة' : '✅ تم إنشاء النسخة الاحتياطية بنجاح');
     logActivity(db, 'إنشاء نسخة احتياطية', { entity_type: 'backup', details: `${totalRows} صف — ${sizeKb} KB`, userName: _userName });
     fetchBackups();
