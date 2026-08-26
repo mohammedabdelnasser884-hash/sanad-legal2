@@ -1,15 +1,13 @@
 // ══════════════════════════════════════════════════════════════════
-// LegalDocumentsPage.test.tsx — اختبار ريجريشن للباج:
-//   hasCaseContext كان بيتحسب من initialCaseId (الـprop الحي) بدل ما
-//   يتجمّد زي caseId، فبمجرد ما onInitialCaseConsumed بيرجّع initialCaseId
-//   لـ null في الـparent (بيحصل فورًا بعد أول render)، hasCaseContext كان
-//   بيرجع false ويخلي اختيار قالب يعدّي على SourceModeSelector بدل ما
-//   يقفز مباشرة لـ DynamicFieldsForm (القسم 9.5).
+// LegalDocumentsPage.test.tsx
 //
-// الاختبار ده بيحاكي بالظبط سلوك الـparent الحقيقي: initialCaseId بيترجع
-// null بعد أول render (زي ما App.tsx/onInitialCaseConsumed بيعملوا)،
-// وبعدين بيتحقق إن اختيار قالب لسه بيقفز لـ 'fields' مباشرة، مش
-// 'sourceMode'.
+// ⚡ [قرار جيمي، 26 أغسطس 2026] القسم 9.5 الأصلي (تخطي SourceModeSelector
+// تلقائيًا لما hasCaseContext=true) اتلغى بالكامل — المحامي لازم يشوف
+// اختيار المصدر (من قضية مفتوحة/إدخال يدوي/نموذج فاضي) في كل مرة، حتى
+// لو داخل من قضية مفتوحة بالفعل. القضية المعروفة بتتمرر كـpresetCaseId
+// لـSourceModeSelector بس (تسهيل اختيار "من قضية مفتوحة" لو اختارها من
+// غير بحث تاني) — مش تخطي الشاشة نفسها. التستات القديمة اللي كانت بتتأكد
+// من التخطي التلقائي اتحدّثت/اتشالت هنا لتعكس السلوك الجديد.
 // ══════════════════════════════════════════════════════════════════
 
 import React from 'react';
@@ -24,7 +22,7 @@ import type { NavigationState } from '../useNavigation';
 // LoginScreen.test.tsx موثّق). من غير ده، كل تست بيرندر فوق DOM التست
 // اللي قبله في document.body بدل ما يتنضف، فالـqueries بتلاقي عناصر
 // باقية من تستات سابقة. لازم cleanup() يدوي بعد كل تست.
-afterEach(() => { cleanup(); });
+afterEach(() => { cleanup(); mockGenerate.mockReset(); mockLogActivity.mockReset(); });
 
 // LegalDocumentsPage.tsx بيستورد { I } من ../constants، واللي بدوره بيستورد
 // db من ./supabaseClient — وده بينادي createClient() فعليًا وقت الـimport
@@ -42,29 +40,98 @@ vi.mock('../supabaseClient', () => ({
 const fakeTemplate: DocumentTemplate = {
   id: 'tmpl-1',
   name_ar: 'قالب تجريبي',
+  category: 'عرائض',
 } as DocumentTemplate;
 
 // نموك للأطفال عشان نختبر آلة الحالات في LegalDocumentsPage بمعزل عن
-// تفاصيلهم الداخلية (فلترة، شبكة قوالب، إلخ).
+// تفاصيلهم الداخلية (فلترة، شبكة قوالب، إلخ). بيعرض كمان categoryPriority
+// اللي استلمها (أولوية 4) كـdata attribute عشان نتحقق منه من غير ما نكسر
+// عزل التست عن التفاصيل الداخلية لـuseDocumentTemplates.
 vi.mock('../features/documentGeneration/components/TemplatePicker/TemplatePicker', () => ({
-  default: ({ onSelectTemplate }: { onSelectTemplate: (t: DocumentTemplate) => void }) => (
-    <button data-testid="mock-select-template" onClick={() => onSelectTemplate(fakeTemplate)}>
+  default: ({
+    onSelectTemplate,
+    categoryPriority,
+  }: {
+    onSelectTemplate: (t: DocumentTemplate) => void;
+    categoryPriority?: string[];
+  }) => (
+    <button
+      data-testid="mock-select-template"
+      data-category-priority={categoryPriority ? categoryPriority.join(',') : ''}
+      onClick={() => onSelectTemplate(fakeTemplate)}
+    >
       اختر القالب
     </button>
   ),
 }));
 
+// [أولوية 3] خطوة "① القسم" الجديدة — بنموكها عشان نختبر آلة الحالات
+// بمعزل عن تفاصيل CategoryPicker الداخلية (البحث، شبكة الكاردز، إلخ).
+// الأزرار التلاتة هنا بتحاكي التلات مسارات اللي CategoryPicker بيقدر
+// يودّي لها: اختيار تصنيف (→ templates)، اختيار قالب من نتايج البحث
+// الموحّد مباشرة (→ sourceMode/fields زي أي اختيار قالب تاني)، وفتح
+// حافظة المستندات (→ تاب "المستندات"، القسم 8.2).
+vi.mock('../features/documentGeneration/components/CategoryPicker', () => ({
+  default: ({
+    onSelectCategory,
+    onSelectTemplate,
+    onOpenArchive,
+  }: {
+    onSelectCategory: (category: 'إنذارات') => void;
+    onSelectTemplate: (t: DocumentTemplate) => void;
+    onOpenArchive: () => void;
+  }) => (
+    <div data-testid="mock-category-picker">
+      <button data-testid="mock-select-category" onClick={() => onSelectCategory('إنذارات')}>
+        اختر تصنيف
+      </button>
+      <button data-testid="mock-select-template-from-search" onClick={() => onSelectTemplate(fakeTemplate)}>
+        نتيجة بحث
+      </button>
+      <button data-testid="mock-open-archive" onClick={onOpenArchive}>
+        حافظة مستندات
+      </button>
+    </div>
+  ),
+}));
+
 vi.mock('../features/documentGeneration/components/SourceModeSelector', () => ({
-  default: () => <div data-testid="mock-source-mode-selector">SourceModeSelector</div>,
+  default: ({
+    onSelectMode,
+    presetCaseId,
+  }: {
+    onSelectMode: (mode: 'case_bound' | 'manual' | 'blank', caseId: string | null) => void;
+    presetCaseId?: string | null;
+  }) => (
+    <div data-testid="mock-source-mode-selector" data-preset-case-id={presetCaseId ?? ''}>
+      SourceModeSelector
+      <button data-testid="mock-select-source-case" onClick={() => onSelectMode('case_bound', presetCaseId ?? 'case-search-result')}>
+        من قضية مفتوحة
+      </button>
+      <button data-testid="mock-select-source-manual" onClick={() => onSelectMode('manual', null)}>
+        إدخال يدوي
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('../features/documentGeneration/components/DynamicFieldsForm', () => ({
-  default: () => <div data-testid="mock-dynamic-fields-form">DynamicFieldsForm</div>,
+  default: ({ onSubmit }: { onSubmit: () => void }) => (
+    <div data-testid="mock-dynamic-fields-form">
+      DynamicFieldsForm
+      <button data-testid="mock-submit-generate" onClick={onSubmit}>توليد</button>
+    </div>
+  ),
 }));
 
 vi.mock('../features/documentGeneration/components/DocumentPreviewEditor', () => ({
   default: () => <div data-testid="mock-document-preview-editor">DocumentPreviewEditor</div>,
 }));
+
+// mockGenerate قابلة لإعادة التوجيه لكل تست على حدة (mockResolvedValueOnce)
+// عشان نختبر مسار النجاح (توليد مستند بنجاح → logActivity/sendTelegram).
+// بادئة "mock" مطلوبة عشان vitest يسمح باستخدامها جوه factory معلّق (hoisted).
+const mockGenerate = vi.fn();
 
 vi.mock('../features/documentGeneration/hooks/useGenerateDocument', () => ({
   useGenerateDocument: () => ({
@@ -77,8 +144,16 @@ vi.mock('../features/documentGeneration/hooks/useGenerateDocument', () => ({
     isValid: true,
     generating: false,
     generateError: null,
-    generate: vi.fn(),
+    generate: mockGenerate,
   }),
+}));
+
+// logActivity بتتنادى بعد نجاح التوليد (مراجعة "إيه الناقص في التقرير"،
+// 26 أغسطس 2026) — بنموكها عشان نتحقق من الاستدعاء نفسه (entity_type/
+// entity_id/details)، مش من تأثيرها الحقيقي على قاعدة البيانات.
+const mockLogActivity = vi.fn();
+vi.mock('../shared/lib/dataAccess', () => ({
+  logActivity: (...args: unknown[]) => mockLogActivity(...args),
 }));
 
 // LegalDocumentsPage محتاجة nav: NavigationState كامل، لكن بتستخدم بس
@@ -98,11 +173,8 @@ const navStub: NavigationState = {
   isOpen: vi.fn(() => false),
 };
 
-describe('LegalDocumentsPage — القسم 9.5: تخطي SourceModeSelector لما يكون جاي من قضية', () => {
-  it('لازم يقفز لـ DynamicFieldsForm مباشرة بعد اختيار القالب، حتى بعد ما initialCaseId يترجع null من الـparent (زي onInitialCaseConsumed الحقيقي)', () => {
-    // بنحاكي الـparent الحقيقي (App.tsx/LegalDocumentsPage wrapper):
-    // initialCaseId بيترجع null فورًا بعد أول render لما onInitialCaseConsumed
-    // ينادى — ده لازم ميأثرش على تصرف الصفحة بعد كده.
+describe('LegalDocumentsPage — [قرار جيمي 26 أغسطس 2026] SourceModeSelector واجبة الظهور دايمًا', () => {
+  it('حتى لو جاي من قضية مفتوحة (hasCaseContext=true)، اختيار قالب لازم يعدّي على SourceModeSelector أول، مش يقفز للفورم مباشرة', () => {
     function Wrapper() {
       const [initialCaseId, setInitialCaseId] = React.useState<string | null>('case-123');
       return (
@@ -116,24 +188,41 @@ describe('LegalDocumentsPage — القسم 9.5: تخطي SourceModeSelector ل�
 
     render(<Wrapper />);
 
-    // اختيار قالب من الشبكة
     fireEvent.click(screen.getByTestId('mock-select-template'));
 
-    // المفروض يقفز مباشرة للفورم، وميظهرش SourceModeSelector أبدًا
-    expect(screen.getByTestId('mock-dynamic-fields-form')).toBeTruthy();
-    expect(screen.queryByTestId('mock-source-mode-selector')).toBeNull();
-  });
-
-  it('لما مفيش initialCaseId من الأساس، اختيار قالب لازم يعدّي على SourceModeSelector عادي', () => {
-    render(<LegalDocumentsPage initialCaseId={null} nav={navStub} />);
-
-    fireEvent.click(screen.getByTestId('mock-select-template'));
-
+    // لازم يظهر اختيار المصدر، ومفيش فورم لسه
     expect(screen.getByTestId('mock-source-mode-selector')).toBeTruthy();
     expect(screen.queryByTestId('mock-dynamic-fields-form')).toBeNull();
   });
 
-  it('زرار "+ مستند جديد" لازم يفضل مختفي لما الصفحة جاية من قضية (hasCaseContext=true) حتى بعد استهلاك initialCaseId', () => {
+  it('لما hasCaseContext=true، القضية المعروفة لازم تتمرر لـSourceModeSelector كـpresetCaseId', () => {
+    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
+
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+
+    expect(screen.getByTestId('mock-source-mode-selector').getAttribute('data-preset-case-id')).toBe('case-123');
+  });
+
+  it('لما hasCaseContext=false، مفيش presetCaseId يتمرر لـSourceModeSelector', () => {
+    render(<LegalDocumentsPage initialCaseId={null} nav={navStub} />);
+
+    fireEvent.click(screen.getByTestId('mock-select-category'));
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+
+    expect(screen.getByTestId('mock-source-mode-selector').getAttribute('data-preset-case-id')).toBe('');
+  });
+
+  it('اختيار أي مصدر (من القضية أو يدوي) لازم يودّي لخطوة "البيانات" (فورم)', () => {
+    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
+
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-select-source-manual'));
+
+    expect(screen.getByTestId('mock-dynamic-fields-form')).toBeTruthy();
+    expect(screen.queryByTestId('mock-source-mode-selector')).toBeNull();
+  });
+
+  it('زرار "+ مستند جديد" القديم اتشال بالكامل — مايظهرش في أي مسار (سجل القرارات بند 2)', () => {
     function Wrapper() {
       const [initialCaseId, setInitialCaseId] = React.useState<string | null>('case-123');
       return (
@@ -148,5 +237,134 @@ describe('LegalDocumentsPage — القسم 9.5: تخطي SourceModeSelector ل�
     render(<Wrapper />);
 
     expect(screen.queryByTestId('doc-gen-new-document-btn')).toBeNull();
+  });
+});
+
+describe('LegalDocumentsPage — [أولوية 3] خطوة "القسم" الجديدة (CategoryPicker)', () => {
+  it('لما مفيش initialCaseId، الصفحة لازم تبدأ من CategoryPicker مش TemplatePicker مباشرة', () => {
+    render(<LegalDocumentsPage initialCaseId={null} nav={navStub} />);
+
+    expect(screen.getByTestId('mock-category-picker')).toBeTruthy();
+    expect(screen.queryByTestId('mock-select-template')).toBeNull();
+  });
+
+  it('لما فيه initialCaseId (hasCaseContext=true)، لازم يتخطى خطوة "القسم" بالكامل ويدخل على TemplatePicker مباشرة', () => {
+    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
+
+    expect(screen.queryByTestId('mock-category-picker')).toBeNull();
+    expect(screen.getByTestId('mock-select-template')).toBeTruthy();
+  });
+
+  it('نتيجة بحث موحّد من CategoryPicker لازم تقفز لـSourceModeSelector مباشرة (زي أي اختيار قالب تاني)، من غير المرور بخطوة "المستند"', () => {
+    render(<LegalDocumentsPage initialCaseId={null} nav={navStub} />);
+
+    fireEvent.click(screen.getByTestId('mock-select-template-from-search'));
+
+    expect(screen.getByTestId('mock-source-mode-selector')).toBeTruthy();
+    expect(screen.queryByTestId('mock-select-template')).toBeNull();
+  });
+
+  it('كارت "حافظة مستندات" لازم ينقّل لتاب "المستندات" (nav.navigateTo) — مش توليد مستند (القسم 8.2)', () => {
+    render(<LegalDocumentsPage initialCaseId={null} nav={navStub} />);
+
+    fireEvent.click(screen.getByTestId('mock-open-archive'));
+
+    expect(navStub.navigateTo).toHaveBeenCalledWith('documents');
+  });
+
+  it('زرار "رجوع" من خطوة "المستند" لازم يرجّع لـCategoryPicker', () => {
+    render(<LegalDocumentsPage initialCaseId={null} nav={navStub} />);
+
+    fireEvent.click(screen.getByTestId('mock-select-category'));
+    expect(screen.getByTestId('mock-select-template')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('doc-gen-back-to-categories-btn'));
+
+    expect(screen.getByTestId('mock-category-picker')).toBeTruthy();
+    expect(screen.queryByTestId('mock-select-template')).toBeNull();
+  });
+});
+
+describe('LegalDocumentsPage — سجل النشاط + تيليجرام عند توليد مستند (مراجعة "إيه الناقص في التقرير"، 26 أغسطس 2026)', () => {
+  it('نجاح التوليد لازم يستدعي logActivity بـentity_type: document وentity_id/details صح', async () => {
+    mockGenerate.mockResolvedValueOnce({ id: 'doc-1', case_id: null });
+
+    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-select-source-case')); // ⚡ SourceModeSelector واجبة دلوقتي حتى مع hasCaseContext=true
+    fireEvent.click(screen.getByTestId('mock-submit-generate'));
+
+    await screen.findByTestId('mock-document-preview-editor');
+
+    expect(mockLogActivity).toHaveBeenCalledTimes(1);
+    const [, action, opts] = mockLogActivity.mock.calls[0];
+    expect(action).toBe('توليد مستند قانوني');
+    expect(opts).toMatchObject({ entity_type: 'document', entity_id: 'doc-1' });
+    expect(opts.details).toContain('قالب تجريبي');
+  });
+
+  it('فشل التوليد (generate بيرجّع null) — مفيش logActivity ولا انتقال لخطوة المعاينة', async () => {
+    mockGenerate.mockResolvedValueOnce(null);
+
+    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-select-source-case'));
+    fireEvent.click(screen.getByTestId('mock-submit-generate'));
+
+    await Promise.resolve();
+    expect(mockLogActivity).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('mock-document-preview-editor')).toBeNull();
+  });
+
+  it('sendTelegram اختياري — نجاح التوليد من غيره مايكسرش الصفحة أبدًا', async () => {
+    mockGenerate.mockResolvedValueOnce({ id: 'doc-2', case_id: 'case-123' });
+
+    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-select-source-case'));
+    fireEvent.click(screen.getByTestId('mock-submit-generate'));
+
+    expect(await screen.findByTestId('mock-document-preview-editor')).toBeTruthy();
+  });
+
+  it('لما sendTelegram متمرر، نجاح التوليد لازم يستدعيه برسالة فيها اسم القالب والتصنيف', async () => {
+    mockGenerate.mockResolvedValueOnce({ id: 'doc-3', case_id: 'case-123' });
+    const sendTelegram = vi.fn();
+
+    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} sendTelegram={sendTelegram} />);
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-select-source-case'));
+    fireEvent.click(screen.getByTestId('mock-submit-generate'));
+
+    await screen.findByTestId('mock-document-preview-editor');
+
+    expect(sendTelegram).toHaveBeenCalledTimes(1);
+    const msg = sendTelegram.mock.calls[0][0] as string;
+    expect(msg).toContain('قالب تجريبي');
+    expect(msg).toContain('عرائض');
+  });
+});
+
+describe('LegalDocumentsPage — [أولوية 4] الترتيب حسب نوع القضية', () => {
+  it('hasCaseContext=true مع initialCaseType متطابق مع قاعدة معروفة → categoryPriority بيتوصّل لـTemplatePicker', () => {
+    render(<LegalDocumentsPage initialCaseId="case-123" initialCaseType="نفقة زوجية" nav={navStub} />);
+
+    const el = screen.getByTestId('mock-select-template');
+    expect(el.getAttribute('data-category-priority')).not.toBe('');
+  });
+
+  it('hasCaseContext=true من غير initialCaseType (null) → categoryPriority فاضية، الترتيب الافتراضي زي ما هو', () => {
+    render(<LegalDocumentsPage initialCaseId="case-123" initialCaseType={null} nav={navStub} />);
+
+    const el = screen.getByTestId('mock-select-template');
+    expect(el.getAttribute('data-category-priority')).toBe('');
+  });
+
+  it('hasCaseContext=false (من الصفحة نفسها) → categoryPriority مايتمررش أبدًا حتى لو initialCaseType موجودة بالغلط', () => {
+    render(<LegalDocumentsPage initialCaseId={null} initialCaseType="نفقة زوجية" nav={navStub} />);
+
+    fireEvent.click(screen.getByTestId('mock-select-category'));
+    const el = screen.getByTestId('mock-select-template');
+    expect(el.getAttribute('data-category-priority')).toBe('');
   });
 });
