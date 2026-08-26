@@ -77,6 +77,16 @@ function sectionsToPlainText(sections: DocumentContentSection[]): string {
   return sections.map((s) => s.text).join('\n\n');
 }
 
+// 🆕 [قسم 20.1] صندوق "الموضوع" الجانبي — لو موجود، بيتفصل عن باقي
+// الأقسام (مش بيتحسب جزء من المتن العادي) عشان يترندر بشكله المستقل
+// (بطاقة مبروزة) في كل من PDF وWord. التوافق الرجعي كامل: القوالب
+// القديمة (بدون subject_box) بترجع boxSection = null وbodyText زي ما هو بالظبط.
+function splitBoxSection(sections: DocumentContentSection[]): { boxSection: DocumentContentSection | null; bodyText: string } {
+  const boxSection = sections.find((s) => s.type === 'subject_box') ?? null;
+  const bodySections = sections.filter((s) => s.type !== 'subject_box');
+  return { boxSection, bodyText: sectionsToPlainText(bodySections) };
+}
+
 /** يرفع Blob جاهز لـcase-docs storage + يسجّل صف case_documents، وبيربط
  *  case_document_links لو case_id موجود — نفس نمط useCaseDocuments.ts
  *  بالظبط (bucket 'case-docs'، مسار tenant_id/case_...). */
@@ -141,7 +151,7 @@ export async function exportToPdf(documentId: string): Promise<{ storedFileId: s
 
   const ctx = await loadExportContext(documentId);
   const sections = ctx.document.document_content_json;
-  const bodyText = sectionsToPlainText(sections);
+  const { boxSection, bodyText } = splitBoxSection(sections);
 
   // نفس نمط بناء صفحة الطباعة في useCaseDetailActions.ts (خط Amiri، RTL)،
   // بس هنا بتتولّد جوه <iframe> مخفي بدل نافذة جديدة، عشان html2canvas
@@ -163,6 +173,7 @@ export async function exportToPdf(documentId: string): Promise<{ storedFileId: s
       <div style="font-size:11px;color:#888;margin-top:4px;">${escapeHtml([ctx.officePhone, ctx.officeAddress].filter(Boolean).join(' — '))}</div>
     </div>
     <div style="text-align:center;font-size:16px;font-weight:900;margin-bottom:20px;">${escapeHtml(ctx.templateName)}</div>
+    ${boxSection ? `<div style="border:1.5px solid #1a1a2e;border-radius:4px;padding:10px 14px;margin:0 0 20px auto;width:55%;font-size:12px;line-height:1.9;white-space:pre-wrap;text-align:right;color:#1a1a2e;">${escapeHtml(boxSection.text)}</div><div style="clear:both;"></div>` : ''}
     <div style="font-size:14px;line-height:2;white-space:pre-wrap;color:#1a1a2e;">${escapeHtml(bodyText)}</div>
   `;
   document.body.appendChild(container);
@@ -209,12 +220,12 @@ export async function exportToPdf(documentId: string): Promise<{ storedFileId: s
 /** نفس الشيء لـDOCX */
 export async function exportToDocx(documentId: string): Promise<{ storedFileId: string; url: string }> {
   const {
-    Document: DocxDocument, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel,
+    Document: DocxDocument, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, BorderStyle,
   } = await import('docx');
 
   const ctx = await loadExportContext(documentId);
   const sections = ctx.document.document_content_json;
-  const bodyText = sectionsToPlainText(sections);
+  const { boxSection, bodyText } = splitBoxSection(sections);
 
   const bodyParagraphs = bodyText.split('\n').map((line) =>
     new Paragraph({
@@ -223,6 +234,27 @@ export async function exportToDocx(documentId: string): Promise<{ storedFileId: 
       children: [new TextRun({ text: line, font: 'Amiri', size: 24 })],
     })
   );
+
+  // 🆕 [قسم 20.1] صندوق "الموضوع" — نفس فكرة PDF (بوردر حول فقرات
+  // الصندوق)، هنا كـborder على كل Paragraph لأن docx مفهوش "بطاقة" جاهزة.
+  const boxBorder = { style: BorderStyle.SINGLE, size: 6, color: '1a1a2e' } as const;
+  const boxParagraphs = boxSection
+    ? boxSection.text.split('\n').map((line, i, arr) =>
+        new Paragraph({
+          alignment: AlignmentType.RIGHT,
+          bidirectional: true,
+          indent: { left: 2400 },
+          spacing: { after: i === arr.length - 1 ? 300 : 0 },
+          border: {
+            top: i === 0 ? boxBorder : undefined,
+            bottom: i === arr.length - 1 ? boxBorder : undefined,
+            left: boxBorder,
+            right: boxBorder,
+          },
+          children: [new TextRun({ text: line || ' ', font: 'Amiri', size: 22 })],
+        })
+      )
+    : [];
 
   const docxDocument = new DocxDocument({
     sections: [{
@@ -244,6 +276,7 @@ export async function exportToDocx(documentId: string): Promise<{ storedFileId: 
           children: [new TextRun({ text: ctx.templateName, bold: true, size: 32, font: 'Amiri' })],
         }),
         new Paragraph({ text: '' }),
+        ...boxParagraphs,
         ...bodyParagraphs,
       ],
     }],
