@@ -62,7 +62,19 @@ import { showOfflineBanner, hideOfflineBanner, showSyncIndicator } from '../shar
 // هيتضاف فعليًا وقت تعديل الفورمات (مراحل 4-6). الإضافة هنا دلوقتي بس
 // عشان التوقيع يبقى جاهز، وده مطابق تمامًا لبند "توسيع DbWriteTable"
 // في جدول تتبع المراحل (قسم 11، مرحلة 2).
-export type DbWriteTable = 'clients' | 'cases' | 'case_sessions' | 'reminders' | 'case_fees' | 'fee_payments' | 'case_notes' | 'case_parties';
+//
+// 🆕 بند 4 — الأوفلاين (خطة المستندات القانونية، القسم 17.6، "خيار أ"،
+// 26 أغسطس 2026): 'generated_documents' اتضافت — بعد فحص فعلي (شوف
+// generationApi.ts/useGenerateDocument.ts) تبيّن إن *بناء* المحتوى
+// (resolveTemplateVersion/template_fields/resolveCaseBindings) سلسلة
+// قراءات معقدة زي case_fees، لكن *الإدراج النهائي* نفسه (INSERT وحيد في
+// generated_documents بقيم جاهزة سلفًا) وحيد الخطوة بلا FK متسلسل بعده —
+// نفس نمط case_notes بالظبط. فالقيد هنا مقصور على الإدراج بس (بعد ما
+// المحتوى اتبنى محليًا من كاش offlineTemplateCache.ts)، مش على السلسلة
+// كلها. تصدير PDF/Word نفسه يفضل معطّل أوفلاين (قرار صريح منفصل — راجع
+// useDocumentExport.ts/DocumentPreviewEditor.tsx) لأنه بيعيد قراءة الصف
+// من السيرفر بالـid الحقيقي، مش موجود قبل المزامنة.
+export type DbWriteTable = 'clients' | 'cases' | 'case_sessions' | 'reminders' | 'case_fees' | 'fee_payments' | 'case_notes' | 'case_parties' | 'generated_documents';
 
 // ⚠️ قيد معروف في supabase-js + TypeScript: تسلسل .insert()/.update()/.delete()
 // ثم .select()/.eq() على db.from(table) لما `table` يكون Generic (T extends
