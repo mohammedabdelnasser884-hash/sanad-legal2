@@ -104,7 +104,13 @@ export default function DocumentPreviewEditor({ document: doc, templateName, onB
               contentEditable
               suppressContentEditableWarning
               onBlur={(e) => updateSectionText(i, e.currentTarget.textContent || '')}
-              className="text-sm leading-relaxed outline-none whitespace-pre-wrap"
+              // 🆕 [قسم 20.1] صندوق "الموضوع" — بطاقة مبروزة بحدود واضحة،
+              // محاذية لليمين (RTL)، بدل نص عادي متصل زي باقي الأقسام.
+              className={
+                section.type === 'subject_box'
+                  ? 'text-sm leading-relaxed outline-none whitespace-pre-wrap border border-black/70 rounded px-3 py-2 mr-auto max-w-[70%] text-right'
+                  : 'text-sm leading-relaxed outline-none whitespace-pre-wrap'
+              }
             >
               {section.text}
             </div>
