@@ -172,12 +172,12 @@ describe('useAdminBackup', () => {
       expect(toast).toHaveBeenCalledWith('⚠️ تم الحفظ لكن بعض الجداول فشل تصديرها — راجع النسخة');
     });
 
-    it('فشل حفظ الباك أب نفسه (insert برجّع error) → توست فشل، من غير logActivity ولا fetchBackups', async () => {
+    it('فشل حفظ الباك أب نفسه (insert برجّع error) → توست فشل عبر showErrorToast، من غير logActivity ولا fetchBackups', async () => {
       mockDb.setResult('backups:insert', { error: { message: 'db error' } });
       const { result } = setup();
       await act(async () => { await result.current.handleCreateBackup(); });
 
-      expect(toast).toHaveBeenCalledWith('❌ فشل حفظ النسخة الاحتياطية', true);
+      expect(toast).toHaveBeenCalledWith('❌ تعذّر حفظ النسخة الاحتياطية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', true);
       expect(logActivity).not.toHaveBeenCalled();
       // مفيش select الأعمدة الخفيفة بعد الـ insert الفاشل (fetchBackups ما اتناداش)
       expect(mockDb.selectSpy).not.toHaveBeenCalledWith('backups', 'id,created_at,created_by,created_by_name,tables_count,rows_count,size_kb');
