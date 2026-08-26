@@ -75,6 +75,10 @@ export interface TabletDrawerProps {
     tab: TabName;
     setTab: (tab: TabName) => void;
     isAdmin: boolean;
+    /** ⚡ NEW (سجل قرارات تقرير المستندات القانونية، بند 6 — 26 أغسطس
+     *  2026): نفس canGenerateDocuments الممرّرة لـDesktopSidebar/
+     *  CommandDock — بتتحكم في ظهور عنصر "المستندات القانونية". */
+    canGenerateDocuments: boolean;
     /** نفس handleAIButtonClick الممرّرة لـDesktopSidebar وCommandDock. */
     onAIClick: (v: boolean) => void;
 }
@@ -96,7 +100,7 @@ function TabletDrawerButton({
     );
 }
 
-function TabletDrawer({ tab, setTab, isAdmin, onAIClick }: TabletDrawerProps) {
+function TabletDrawer({ tab, setTab, isAdmin, canGenerateDocuments, onAIClick }: TabletDrawerProps) {
     const [open, setOpen] = useState(false);
 
     const close = useCallback(() => setOpen(false), []);
@@ -111,9 +115,11 @@ function TabletDrawer({ tab, setTab, isAdmin, onAIClick }: TabletDrawerProps) {
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [open, close]);
 
-    const visiblePrimary = primaryNavItems.filter((item) => !item.adminOnly || isAdmin);
-    const visibleMore = moreNavItems.filter((item) => !item.adminOnly || isAdmin);
-    const visibleDesktopOnly = desktopOnlyNavItems.filter((item) => !item.adminOnly || isAdmin);
+    const isVisible = (item: NavItem) =>
+        (!item.adminOnly || isAdmin) && (!item.requiresCanGenerateDocuments || canGenerateDocuments);
+    const visiblePrimary = primaryNavItems.filter(isVisible);
+    const visibleMore = moreNavItems.filter(isVisible);
+    const visibleDesktopOnly = desktopOnlyNavItems.filter(isVisible);
 
     const selectTab = (t: TabName) => {
         setTab(t);
