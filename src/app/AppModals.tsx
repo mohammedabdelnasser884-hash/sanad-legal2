@@ -83,7 +83,7 @@ interface AppModalsProps {
     setTab: (tab: TabName) => void;
     // ⚡ NEW (خطة توليد المستندات القانونية، المرحلة 3): زرار "توليد مستند"
     // جوه تبويب docs بالـCaseDetailView.
-    onGenerateDocument: (caseId: string) => void;
+    onGenerateDocument?: (caseId: string) => void;
     setSelectedCase: (caseOrUpdater: React.SetStateAction<MappedCase | null>, initialTab?: string) => void;
     setSelectedClient: (clientOrNull: MappedClient | null, openInEditMode?: boolean) => void;
     _setDeleteConfirm: React.Dispatch<React.SetStateAction<DeleteConfirmState | null>>;
