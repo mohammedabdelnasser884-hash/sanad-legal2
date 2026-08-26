@@ -8,6 +8,10 @@ interface CommandDockProps {
     showMore: boolean;
     setShowMore: React.Dispatch<React.SetStateAction<boolean>>;
     isAdmin: boolean;
+    /** ⚡ NEW (سجل قرارات تقرير المستندات القانونية، بند 6 — 26 أغسطس
+     *  2026): checkPermission(profile, 'can_generate_documents') —
+     *  بيتحكم في ظهور عنصر "مستندات قانونية" (lawyer/admin بس). */
+    canGenerateDocuments: boolean;
     navRef: (el: HTMLElement | null) => void;
     setShowAI: (v: boolean) => void;
     setSessionsInitialTab: React.Dispatch<React.SetStateAction<'month' | 'calendar' | 'missed' | null>>;
@@ -20,7 +24,7 @@ interface CommandDockProps {
 //  الكود بالظبط، غيّرنا بس الاعتماد من closure لـ props.
 // ─────────────────────────────────────────────────────────
 function CommandDock({
-    tab, setTab, showMore, setShowMore, isAdmin, navRef,
+    tab, setTab, showMore, setShowMore, isAdmin, canGenerateDocuments, navRef,
     setShowAI, setSessionsInitialTab, setRemindersInitialFilter,
 }: CommandDockProps) {
     return React.createElement('div', { className: 'fixed bottom-0 inset-x-0 z-50 flex flex-col items-center pb-3 px-3 pointer-events-none' },
@@ -36,7 +40,12 @@ function CommandDock({
                 ...[
                     { tab: 'clients' as TabName,   icon: I.Person, label: 'الموكلين',    color: 'text-emerald-400', inactiveBg: 'bg-emerald-500/15', inactiveColor: 'text-emerald-300', activeBg: 'bg-emerald-500/25' },
                     { tab: 'documents' as TabName, icon: I.Folder, label: 'المستندات',   color: 'text-purple-400',  inactiveBg: 'bg-purple-500/15',  inactiveColor: 'text-purple-300',  activeBg: 'bg-purple-500/25' },
-                    { tab: 'legalDocs' as TabName, icon: I.Doc,    label: 'مستندات قانونية', color: 'text-sky-400', inactiveBg: 'bg-sky-500/15', inactiveColor: 'text-sky-300', activeBg: 'bg-sky-500/25' },
+                    // ⚡ NEW (سجل قرارات تقرير المستندات القانونية، بند 6 —
+                    // 26 أغسطس 2026): can_generate_documents مقفول لغير
+                    // lawyer/admin بلا استثناء — عنصر "مستندات قانونية" بقى
+                    // مشروط بـcanGenerateDocuments، نفس نمط 'fees'/'admin'
+                    // تحت (spread شرطي بدل عنصر ثابت).
+                    ...(canGenerateDocuments ? [{ tab: 'legalDocs' as TabName, icon: I.Doc, label: 'مستندات قانونية', color: 'text-sky-400', inactiveBg: 'bg-sky-500/15', inactiveColor: 'text-sky-300', activeBg: 'bg-sky-500/25' }] : []),
                     // ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3): can_view_fees
                     // مقفول بلا استثناء لغير admin (قرار 2.1) = نفس isAdmin دايمًا —
                     // بالتالي زرار "الأتعاب" اتلحق بنفس شرط "لوحة الإدارة" تحت.
