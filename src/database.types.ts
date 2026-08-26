@@ -1674,6 +1674,7 @@ export interface Database {
           template_id: string
           version_number: number
           body_template: string
+          box_template: string | null
           status: string
           published_at: string | null
           created_by: string | null
@@ -1684,6 +1685,7 @@ export interface Database {
           template_id: string
           version_number: number
           body_template: string
+          box_template?: string | null
           status?: string
           published_at?: string | null
           created_by?: string | null
@@ -1694,6 +1696,7 @@ export interface Database {
           template_id?: string
           version_number?: number
           body_template?: string
+          box_template?: string | null
           status?: string
           published_at?: string | null
           created_by?: string | null
