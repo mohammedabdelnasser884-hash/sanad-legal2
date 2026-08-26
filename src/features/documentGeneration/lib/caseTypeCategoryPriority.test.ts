@@ -2,8 +2,18 @@
 // caseTypeCategoryPriority.test.ts — أولوية 4
 // ══════════════════════════════════════════════════════════════════
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { getCategoryPriorityForCaseType } from './caseTypeCategoryPriority';
+
+// ⚠️ آخر تست تحت بيعمل dynamic import لـ useDocumentTemplates (عشان
+// DOCUMENT_CATEGORIES الحقيقية)، وده بيجرّ templatesApi.ts اللي بيستورد
+// `db` من supabaseClient.ts — والملف ده بينادي createClient() على مستوى
+// الموديول نفسه، فبيفشل بـ"supabaseUrl is required" في بيئة التست (مفيش
+// VITE_SUPABASE_URL/ANON_KEY متسجلين). التست ده مش محتاج db فعليًا (بس
+// محتاج الثابت DOCUMENT_CATEGORIES)، فبنعمل موك خفيف لمنع نداء createClient
+// الحقيقي — نفس أسلوب باقي التستات اللي بتلمس supabaseClient (راجع
+// generationApi.test.ts).
+vi.mock('../../../supabaseClient', () => ({ db: {} }));
 
 describe('getCategoryPriorityForCaseType', () => {
   it('case_type فاضي أو null → array فاضية (مفيش ترتيب مقترح)', () => {
