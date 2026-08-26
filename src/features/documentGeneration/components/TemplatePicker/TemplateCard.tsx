@@ -6,10 +6,15 @@ import React from 'react';
 import type { DocumentTemplate } from '../../types';
 
 const CATEGORY_BADGE_STYLE: Record<string, string> = {
-  'إنذارات': 'bg-rose-500/15 text-rose-300',
-  'توكيلات': 'bg-blue-500/15 text-blue-300',
-  'عرائض':   'bg-amber-500/15 text-amber-300',
-  'طلبات':   'bg-emerald-500/15 text-emerald-300',
+  'إنذارات':    'bg-rose-500/15 text-rose-300',
+  'توكيلات':    'bg-blue-500/15 text-blue-300',
+  'عرائض':      'bg-amber-500/15 text-amber-300',
+  'طلبات':      'bg-emerald-500/15 text-emerald-300',
+  'إعلانات':    'bg-purple-500/15 text-purple-300',
+  'أشكال':      'bg-cyan-500/15 text-cyan-300',
+  'تظلمات':     'bg-orange-500/15 text-orange-300',
+  'جنح مباشرة': 'bg-red-500/15 text-red-300',
+  'عقود':       'bg-indigo-500/15 text-indigo-300',
 };
 
 interface TemplateCardProps {
