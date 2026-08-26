@@ -281,7 +281,7 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
       guard.cleanup();
       setGenerating(false);
     }
-  }, [templateId, caseId, sourceMode, values, fields]);
+  }, [templateId, caseId, sourceMode, values, fields, missingRequiredFieldLabels, validation.isValid]);
 
   return {
     fields, loadingFields, loadError, values, setValue,
