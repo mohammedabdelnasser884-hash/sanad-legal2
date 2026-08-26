@@ -27,16 +27,23 @@ interface CaseSearchResult {
 interface SourceModeSelectorProps {
   onSelectMode: (mode: SourceMode, caseId: string | null) => void;
   onBack: () => void;
+  /** 🆕 [قرار جيمي، 26 أغسطس 2026] لو الشاشة داخلة من قضية مفتوحة بالفعل
+   * (زرار "توليد مستند" جوه CaseDetailView)، الـid بتاعها بيتمرر هنا —
+   * دوس "من قضية مفتوحة" يستخدمها على طول من غير بحث تاني (القضية أصلاً
+   * معروفة). لسه بتفضل تشوف الاختيار كامل (من القضية/يدوي/فاضي)، مش
+   * تخطي تلقائي زي قبل كده — القرار الجديد اللي ألغى تخطي هذه الشاشة. */
+  presetCaseId?: string | null;
 }
 
-const OPTIONS: Array<{ mode: SourceMode; icon: keyof typeof I; title: string; desc: string; testId: string }> = [
-  { mode: 'case_bound', icon: 'Folder', title: 'من قضية مفتوحة', desc: 'تعبئة تلقائية من بيانات قضية موجودة', testId: 'doc-gen-source-mode-case' },
+const buildOptions = (presetCaseId?: string | null): Array<{ mode: SourceMode; icon: keyof typeof I; title: string; desc: string; testId: string }> => [
+  { mode: 'case_bound', icon: 'Folder', title: 'من قضية مفتوحة', desc: presetCaseId ? 'تعبئة تلقائية من بيانات هذه القضية' : 'تعبئة تلقائية من بيانات قضية موجودة', testId: 'doc-gen-source-mode-case' },
   { mode: 'manual',     icon: 'Edit',   title: 'إدخال يدوي',      desc: 'تعبئة البيانات يدوياً بدون قضية',     testId: 'doc-gen-source-mode-manual' },
   { mode: 'blank',      icon: 'Doc',    title: 'نموذج فاضي',      desc: 'للطباعة والتعبئة بخط اليد',           testId: 'doc-gen-source-mode-blank' },
 ];
 
-export default function SourceModeSelector({ onSelectMode, onBack }: SourceModeSelectorProps) {
+export default function SourceModeSelector({ onSelectMode, onBack, presetCaseId }: SourceModeSelectorProps) {
   const [pickingCase, setPickingCase] = useState(false);
+  const OPTIONS = buildOptions(presetCaseId);
   const [search, setSearch] = useState('');
   const [results, setResults] = useState<CaseSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -63,6 +70,12 @@ export default function SourceModeSelector({ onSelectMode, onBack }: SourceModeS
 
   const handleSelect = (mode: SourceMode) => {
     if (mode === 'case_bound') {
+      if (presetCaseId) {
+        // القضية معروفة بالفعل (جاي من CaseDetailView) — استخدمها على طول
+        // من غير ما نطلب من المستخدم يدور عليها تاني.
+        onSelectMode('case_bound', presetCaseId);
+        return;
+      }
       setPickingCase(true);
       return;
     }
