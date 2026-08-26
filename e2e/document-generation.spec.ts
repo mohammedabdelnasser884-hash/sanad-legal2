@@ -18,11 +18,19 @@ test('توليد مستند قانوني من قضية مفتوحة، تصدير
   await page.getByTestId('case-tab-docs').click();
   await page.getByTestId('case-detail-generate-document-btn').click();
 
-  // 2) TemplatePicker — case_bound بالفعل، فأول قالب من الشبكة كافي
+  // 2) TemplatePicker — ⚡ FIX (تشخيص لوجز E2E جديدة — 26 أغسطس 2026):
+  // "أول كارت في الشبكة" مش تحديد ثابت — أولوية 4 (getCategoryPriorityForCaseType)
+  // بترتّب القوالب حسب نوع القضية (هنا 'مدني' → عرائض أول التصنيفات)، فأول
+  // كارت فعليًا بيتغيّر لو نوع القضية أو ترتيب الأولوية اتغيّر مستقبلاً —
+  // وده اللي حصل بالظبط (كان بيرجّع "إنذار على يد محضر"، بقى يرجّع "صحيفة
+  // دعوى مبسطة" اللي حقولها مختلفة تمامًا ومفيهاش warning_subject أصلاً).
+  // الفيكس الصحيح: نستهدف القالب المطلوب فعليًا بالاسم عبر شريط البحث
+  // الموحّد (نتيجة وحيدة مضمونة، بغض النظر عن ترتيب الشبكة).
   await page.getByTestId('doc-gen-search-input').waitFor({ state: 'visible', timeout: 10_000 });
-  const firstTemplateCard = page.locator('[data-testid^="doc-gen-template-card-"]').first();
-  await firstTemplateCard.waitFor({ state: 'visible', timeout: 10_000 });
-  await firstTemplateCard.click();
+  await page.getByTestId('doc-gen-search-input').fill('إنذار');
+  const warningTemplateCard = page.locator('[data-testid^="doc-gen-template-card-"]').first();
+  await warningTemplateCard.waitFor({ state: 'visible', timeout: 10_000 });
+  await warningTemplateCard.click();
 
   // 3) SourceModeSelector — ⚡ [قرار جيمي، 26 أغسطس 2026] الشاشة دي بقت
   // واجبة دايمًا حتى مع case_bound context (اتلغى التخطي التلقائي القديم؛
