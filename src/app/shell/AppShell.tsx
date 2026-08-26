@@ -73,6 +73,13 @@ export interface AppShellProps {
     tab?: TabName;
     setTab?: (tab: TabName) => void;
     isAdmin?: boolean;
+    /** ⚡ NEW (سجل قرارات تقرير المستندات القانونية، بند 6 — 26 أغسطس
+     *  2026): checkPermission(profile, 'can_generate_documents') من
+     *  App.tsx — بتتمرر لـDesktopSidebar/TabletDrawer نفس تمرير isAdmin،
+     *  عشان يقدروا يفلتروا عنصر "المستندات القانونية". اختياري زي باقي
+     *  props التنقل هنا — لو مش متبعت، السايدبار/الدرج ببساطة مايعرضوش
+     *  العنصر ده (نفس فلسفة `!!isAdmin` تحت). */
+    canGenerateDocuments?: boolean;
     /** نفس handleAIButtonClick بتاعة App.tsx — بتتمرر لـDesktopSidebar
      *  زي ما هي من غير أي تعديل على منطق قفل قسم الـAI. */
     onAIClick?: (v: boolean) => void;
@@ -89,7 +96,7 @@ export interface AppShellProps {
 }
 
 function AppShell({
-    children, className, tab, setTab, isAdmin, onAIClick,
+    children, className, tab, setTab, isAdmin, canGenerateDocuments, onAIClick,
     profile, setShowMenu, setShowSearch, fetchCases, casesFilter, loadingCases,
 }: AppShellProps) {
     // ⚠️ نفس className ونفس data-testid الموجودين بالظبط حاليًا في
@@ -124,12 +131,14 @@ function AppShell({
             tab: tab as TabName,
             setTab: setTab as (tab: TabName) => void,
             isAdmin: !!isAdmin,
+            canGenerateDocuments: !!canGenerateDocuments,
             onAIClick: onAIClick as (v: boolean) => void,
         }),
         canShowTabletDrawer && React.createElement(TabletDrawer, {
             tab: tab as TabName,
             setTab: setTab as (tab: TabName) => void,
             isAdmin: !!isAdmin,
+            canGenerateDocuments: !!canGenerateDocuments,
             onAIClick: onAIClick as (v: boolean) => void,
         })
     );
