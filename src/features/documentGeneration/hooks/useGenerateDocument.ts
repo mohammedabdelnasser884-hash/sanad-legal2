@@ -4,12 +4,13 @@
 // + generateDocument (كلها من المرحلتين 1/2، بدون أي تعديل عليهم).
 // ══════════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getPublishedTemplateFields } from '../api/templatesApi';
-import { resolveCaseBindings, validateRequiredFields, generateDocument } from '../api/generationApi';
-import { loadOfficeSetting } from '../../../constants';
+import { resolveCaseBindings, validateRequiredFields, generateDocument, resolveTemplateVersion, renderDocumentContent } from '../api/generationApi';
+import { loadOfficeSetting, getCurrentTenantId } from '../../../constants';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
 import { recordError, recordSuccess } from '../../../systemHealth';
+import { saveOfflineTemplateCache, loadOfflineTemplateCache, makeOfflineGeneratedDocId } from '../lib/offlineTemplateCache';
 import type { TemplateField, ResolvedBindings, SourceMode, GeneratedDocument } from '../types';
 
 interface UseGenerateDocumentParams {
@@ -29,6 +30,10 @@ interface UseGenerateDocumentResult {
   generating: boolean;
   generateError: string | null;
   generate: () => Promise<GeneratedDocument | null>;
+  /** 🆕 بند 4 (الأوفلاين): true لو الحقول المعروضة جايه من كاش محلي
+   * (offlineTemplateCache.ts) مش من السيرفر — تُستخدم لعرض تنبيه واضح
+   * للمستخدم إن البيانات دي مش أحدث نسخة (القسم 17.6، خطوة 2). */
+  usingOfflineCache: boolean;
 }
 
 export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGenerateDocumentParams): UseGenerateDocumentResult {
@@ -38,6 +43,12 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
   const [values, setValues] = useState<ResolvedBindings>({});
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [usingOfflineCache, setUsingOfflineCache] = useState(false);
+  // 🆕 بند 4 (الأوفلاين): نسخة القالب (id + body_template) اللازمة لبناء
+  // document_content_json محليًا لو التوليد نفسه حصل أوفلاين — بتتحدّث مع
+  // كل تحميل ناجح للحقول (أونلاين من resolveTemplateVersion، أو أوفلاين
+  // من الكاش المحفوظ مسبقًا). ref مش state لأنها مش محتاجة تعيد render.
+  const templateVersionRef = useRef<{ id: string; bodyTemplate: string } | null>(null);
 
   useEffect(() => {
     if (!templateId || !sourceMode) return;
@@ -57,11 +68,26 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
     // النداء كله، بنفس فلسفة الـ8 ثواني المستخدمة في كل مكان تاني.
     const guard = createFetchGuard();
     if (guard.offline) {
+      // 🆕 بند 4 (الأوفلاين، القسم 17.6، "خيار أ"): قبل كده كنا برفض التحميل
+      // فورًا هنا. دلوقتي: نجرّب الكاش المحلي (اتحفظ آخر مرة الشاشة دي
+      // اتفتحت وهي أونلاين) قبل ما نستسلم — لو موجود، نعرض الفورم من
+      // بياناته (مع تنبيه واضح إنها بيانات محفوظة محليًا، مش أحدث نسخة).
+      const cached = loadOfflineTemplateCache(templateId, caseId, sourceMode);
+      if (cached) {
+        templateVersionRef.current = { id: cached.templateVersionId, bodyTemplate: cached.bodyTemplate };
+        setFields(cached.fields);
+        setValues(cached.initialValues);
+        setUsingOfflineCache(true);
+        setLoadError(null);
+        setLoadingFields(false);
+        return;
+      }
       recordError('db_document_generation', 'offline');
       setLoadError('أنت أوف لاين — تعذّر تحميل حقول القالب. تحقق من الاتصال بالإنترنت.');
       setLoadingFields(false);
       return;
     }
+    setUsingOfflineCache(false);
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       guard.controller.signal.addEventListener('abort', () => reject(new Error('timeout')));
@@ -88,13 +114,25 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
             initialValues['office_name'] = await loadOfficeSetting('name');
           }
 
-          return { templateFields, initialValues };
+          // 🆕 بند 4 (الأوفلاين): نجيب نسخة القالب المنشورة (id + body_template)
+          // كمان هنا — مش محتاجينها لعرض الفورم نفسه، بس لازمة نخزّنها في
+          // الكاش عشان تبقى متاحة لو المستخدم رجع لنفس الشاشة وهو أوفلاين.
+          const templateVersion = await resolveTemplateVersion(templateId);
+
+          return { templateFields, initialValues, templateVersion };
         })();
 
-        const { templateFields, initialValues } = await Promise.race([work, timeoutPromise]);
+        const { templateFields, initialValues, templateVersion } = await Promise.race([work, timeoutPromise]);
         if (cancelled) return;
         setFields(templateFields);
         setValues(initialValues);
+        templateVersionRef.current = { id: templateVersion.id, bodyTemplate: templateVersion.body_template };
+        saveOfflineTemplateCache(templateId, caseId, sourceMode, {
+          templateVersionId: templateVersion.id,
+          bodyTemplate: templateVersion.body_template,
+          fields: templateFields,
+          initialValues,
+        });
         recordSuccess('db_document_generation');
       } catch (e: unknown) {
         if (!cancelled) {
@@ -153,9 +191,67 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
     // الأصح طويل المدى هو تقليل عدد الرحلات نفسها، مش بند لهذه الجلسة.
     const guard = createFetchGuard(20_000);
     if (guard.offline) {
-      setGenerateError('أنت أوف لاين — تعذّر توليد المستند. تحقق من الاتصال بالإنترنت.');
-      setGenerating(false);
-      return null;
+      // 🆕 بند 4 (الأوفلاين، القسم 17.6، "خيار أ"، خطوة 3): بدل الرفض
+      // الفوري، نبني المستند محليًا لو عندنا نسخة قالب محفوظة (من تحميل
+      // أونلاين سابق لنفس الشاشة، أو من الكاش لو الفورم نفسه اتحمّل
+      // أوفلاين فوق) ونقيّد الإدراج في طابور الأوفلاين (__dbWrite) —
+      // بدل ما نستدعي generateDocument() اللي سلسلة قراءات شبكة مقفولة.
+      const version = templateVersionRef.current;
+      if (!version) {
+        setGenerateError('أنت أوف لاين ومفيش بيانات محفوظة محليًا لهذا القالب — افتح الشاشة وإنت متصل بالإنترنت مرة واحدة على الأقل قبل استخدامها أوفلاين.');
+        setGenerating(false);
+        return null;
+      }
+      if (!validation.isValid) {
+        setGenerateError('تعذّر توليد المستند، حقول مطلوبة ناقصة: ' + missingRequiredFieldLabels.join('، '));
+        setGenerating(false);
+        return null;
+      }
+      const tenantId = getCurrentTenantId();
+      if (!tenantId) {
+        setGenerateError('لا يوجد tenant_id حالي — تأكد من تسجيل الدخول قبل توليد المستند');
+        setGenerating(false);
+        return null;
+      }
+      try {
+        const documentContentJson = renderDocumentContent(version.bodyTemplate, fields, values);
+        const localId = makeOfflineGeneratedDocId();
+        const nowIso = new Date().toISOString();
+        const insertData = {
+          tenant_id: tenantId,
+          template_id: templateId,
+          template_version_id: version.id,
+          case_id: caseId,
+          source_mode: sourceMode,
+          field_values_json: values,
+          document_content_json: documentContentJson,
+          rendered_html: null,
+          status: 'draft',
+          created_by: null,
+        };
+        await window.__dbWrite({ type: 'INSERT', table: 'generated_documents', data: insertData });
+        const localDoc: GeneratedDocument = {
+          id: localId,
+          tenant_id: tenantId,
+          template_id: templateId,
+          template_version_id: version.id,
+          case_id: caseId,
+          source_mode: sourceMode,
+          field_values_json: values,
+          document_content_json: documentContentJson,
+          rendered_html: null,
+          status: 'draft',
+          created_by: null,
+          created_at: nowIso,
+          updated_at: nowIso,
+        };
+        setGenerating(false);
+        return localDoc;
+      } catch (e: unknown) {
+        setGenerateError(e instanceof Error ? e.message : 'تعذّر حفظ المستند محليًا');
+        setGenerating(false);
+        return null;
+      }
     }
     const timeoutPromise = new Promise<never>((_, reject) => {
       guard.controller.signal.addEventListener('abort', () => reject(new Error('timeout')));
@@ -185,11 +281,11 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
       guard.cleanup();
       setGenerating(false);
     }
-  }, [templateId, caseId, sourceMode, values]);
+  }, [templateId, caseId, sourceMode, values, fields]);
 
   return {
     fields, loadingFields, loadError, values, setValue,
     missingRequiredFieldLabels, isValid: validation.isValid,
-    generating, generateError, generate,
+    generating, generateError, generate, usingOfflineCache,
   };
 }
