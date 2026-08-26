@@ -4,9 +4,9 @@ import { login, createAndOpenCase, expectToast } from './utils';
 // المرحلة 4 (خطة توليد المستندات القانونية) — بند 4: e2e كامل للرحلة
 // "توليد → معاينة → تصدير PDF → التأكد إنه ظاهر في DocsSection.tsx
 // الموجود بالفعل". المسار المستخدم هنا هو زرار "توليد مستند" جوه
-// CaseDetailView (تبويب docs) — بيبدأ case_bound تلقائيًا، فبيتخطى
-// SourceModeSelector بالكامل (القسم 9.5)، وده أقصر مسار حقيقي للرحلة
-// الكاملة يعدّي على كل الخطوات المطلوب اختبارها.
+// CaseDetailView (تبويب docs) — بيبدأ case_bound، ⚡ [قرار جيمي، 26
+// أغسطس 2026] لكن SourceModeSelector بقت واجبة الظهور حتى في المسار
+// ده (اتلغى التخطي التلقائي القديم) — راجع الخطوة 3 تحت.
 
 test('توليد مستند قانوني من قضية مفتوحة، تصديره PDF، والتأكد من ظهوره في مستندات القضية', async ({ page }) => {
   await login(page);
@@ -24,8 +24,15 @@ test('توليد مستند قانوني من قضية مفتوحة، تصدير
   await firstTemplateCard.waitFor({ state: 'visible', timeout: 10_000 });
   await firstTemplateCard.click();
 
-  // 3) DynamicFieldsForm — تخطي SourceModeSelector تلقائيًا (case_bound
-  // من سياق القضية).
+  // 3) SourceModeSelector — ⚡ [قرار جيمي، 26 أغسطس 2026] الشاشة دي بقت
+  // واجبة دايمًا حتى مع case_bound context (اتلغى التخطي التلقائي القديم؛
+  // راجع LegalDocumentsPage.tsx). القضية معروفة بالفعل (مررة كـpresetCaseId)
+  // فاختيار "من قضية مفتوحة" بيستخدمها على طول من غير بحث تاني.
+  await page.getByTestId('doc-gen-source-mode-case').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByTestId('doc-gen-source-mode-case').click();
+
+  // 4) DynamicFieldsForm — تعبئة الحقل الوحيد غير المربوط تلقائيًا ببيانات
+  // القضية في هذا القالب.
   // 🔒 FIX (24 أغسطس 2026 — تشخيص فعلي عبر trace.zip): المنطق القديم هنا
   // كان بيدوّر ديناميكيًا على `input[required], textarea[required]` فاضية
   // ويعبّيها. التريس الفعلي أثبت إن الاستعلام ده كان بيتنفذ في سباق حقيقي
@@ -43,7 +50,7 @@ test('توليد مستند قانوني من قضية مفتوحة، تصدير
   await page.getByTestId('doc-gen-field-warning_subject').fill('بيانات اختبار E2E');
   await page.getByTestId('doc-gen-submit-btn').click();
 
-  // 4) DocumentPreviewEditor — معاينة المستند المولّد
+  // 5) DocumentPreviewEditor — معاينة المستند المولّد
   // ⚡ FIX (24 أغسطس 2026): generate() دلوقتي بسقف داخلي 20 ثانية (بدل
   // 8) — راجع useGenerateDocument.ts. الـ15 ثانية القديمة هنا كانت أقل
   // من السقف الداخلي نفسه، يعني الاختبار كان مضمون يفشل حتى لو العملية
@@ -52,13 +59,13 @@ test('توليد مستند قانوني من قضية مفتوحة، تصدير
   await page.getByTestId('doc-gen-export-pdf-btn').waitFor({ state: 'visible', timeout: 25_000 });
   await expect(page.locator('[data-testid^="doc-gen-preview-section-"]').first()).toBeVisible();
 
-  // 5) تصدير PDF
+  // 6) تصدير PDF
   await page.getByTestId('doc-gen-export-pdf-btn').click();
   await expectToast(page, 'تم التصدير بنجاح', 20_000);
 
-  // 6) الرجوع لتبويب مستندات القضية، والتأكد إن الملف الناتج ظاهر فعليًا
+  // 7) الرجوع لتبويب مستندات القضية، والتأكد إن الملف الناتج ظاهر فعليًا
   // — بدون أي تعديل على DocsSection.tsx نفسه (معيار القبول)
-  // 6) الرجوع للقضية (زرار "توليد مستند" نقل التاب بالكامل لـ
+  // الرجوع للقضية (زرار "توليد مستند" نقل التاب بالكامل لـ
   // legalDocs، فمفيش مسار داخلي يرجّع لـCaseDetailView مباشرة — نفتح
   // القضية تاني من تبويب القضايا) والتأكد إن الملف الناتج ظاهر فعليًا
   // في مستنداتها — بدون أي تعديل على DocsSection.tsx نفسه (معيار القبول)
