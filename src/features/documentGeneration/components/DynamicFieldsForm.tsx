@@ -43,12 +43,15 @@ interface DynamicFieldsFormProps {
   caseId: string | null;
   onSubmit: () => void;
   onBack: () => void;
+  /** 🆕 بند 4 (الأوفلاين، القسم 17.6، خطوة 2): true لو البيانات المعروضة
+   * جايه من كاش محلي (مش أحدث نسخة من السيرفر) — بيعرض تنبيه واضح. */
+  usingOfflineCache?: boolean;
 }
 
 export default function DynamicFieldsForm({
   templateName, fields, values, setValue, loadingFields, loadError,
   missingRequiredFieldLabels, isValid, generating, generateError,
-  sourceMode, caseId, onSubmit, onBack,
+  sourceMode, caseId, onSubmit, onBack, usingOfflineCache,
 }: DynamicFieldsFormProps) {
   const [touched, setTouched] = useState(false);
   const [partyOptions, setPartyOptions] = useState<PartyOption[]>([]);
@@ -83,6 +86,14 @@ export default function DynamicFieldsForm({
         <h3 className="text-sm font-black text-white">{templateName}</h3>
         <p className="text-[10px] text-slate-500 mt-1">الخطوة 2 من 3</p>
       </div>
+
+      {usingOfflineCache && (
+        <div data-testid="doc-gen-offline-cache-banner" className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-300 font-bold">
+          ⚠️ أنت أوف لاين — البيانات المعروضة محفوظة محليًا من آخر مرة فتحت فيها
+          الشاشة دي وإنت متصل بالإنترنت، مش أحدث نسخة من السيرفر. المستند هيتحفظ
+          محليًا ويتزامن تلقائيًا، لكن تصدير PDF/Word هيحتاج اتصال بالإنترنت.
+        </div>
+      )}
 
       <div className="space-y-3">
         {[...fields].sort((a, b) => a.sort_order - b.sort_order).map((field) => {
