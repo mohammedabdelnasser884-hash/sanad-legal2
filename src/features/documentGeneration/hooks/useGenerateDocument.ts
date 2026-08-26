@@ -48,7 +48,7 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
   // document_content_json محليًا لو التوليد نفسه حصل أوفلاين — بتتحدّث مع
   // كل تحميل ناجح للحقول (أونلاين من resolveTemplateVersion، أو أوفلاين
   // من الكاش المحفوظ مسبقًا). ref مش state لأنها مش محتاجة تعيد render.
-  const templateVersionRef = useRef<{ id: string; bodyTemplate: string } | null>(null);
+  const templateVersionRef = useRef<{ id: string; bodyTemplate: string; boxTemplate: string | null } | null>(null);
 
   useEffect(() => {
     if (!templateId || !sourceMode) return;
@@ -74,7 +74,7 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
       // بياناته (مع تنبيه واضح إنها بيانات محفوظة محليًا، مش أحدث نسخة).
       const cached = loadOfflineTemplateCache(templateId, caseId, sourceMode);
       if (cached) {
-        templateVersionRef.current = { id: cached.templateVersionId, bodyTemplate: cached.bodyTemplate };
+        templateVersionRef.current = { id: cached.templateVersionId, bodyTemplate: cached.bodyTemplate, boxTemplate: cached.boxTemplate ?? null };
         setFields(cached.fields);
         setValues(cached.initialValues);
         setUsingOfflineCache(true);
@@ -126,10 +126,11 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
         if (cancelled) return;
         setFields(templateFields);
         setValues(initialValues);
-        templateVersionRef.current = { id: templateVersion.id, bodyTemplate: templateVersion.body_template };
+        templateVersionRef.current = { id: templateVersion.id, bodyTemplate: templateVersion.body_template, boxTemplate: templateVersion.box_template };
         saveOfflineTemplateCache(templateId, caseId, sourceMode, {
           templateVersionId: templateVersion.id,
           bodyTemplate: templateVersion.body_template,
+          boxTemplate: templateVersion.box_template,
           fields: templateFields,
           initialValues,
         });
@@ -214,7 +215,7 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
         return null;
       }
       try {
-        const documentContentJson = renderDocumentContent(version.bodyTemplate, fields, values);
+        const documentContentJson = renderDocumentContent(version.bodyTemplate, fields, values, version.boxTemplate);
         const localId = makeOfflineGeneratedDocId();
         const nowIso = new Date().toISOString();
         const insertData = {
