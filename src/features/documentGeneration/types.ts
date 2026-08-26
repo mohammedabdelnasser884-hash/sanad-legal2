@@ -32,6 +32,10 @@ export interface TemplateVersion {
   template_id: string;
   version_number: number; // يبدأ من 1، يزيد تلقائياً مع كل نسخة جديدة لنفس template_id
   body_template: string;
+  // 🆕 [قسم 20.1] صندوق "الموضوع" الجانبي — اختياري (null لكل القوالب
+  // القديمة الأربعة، فتفضل بتترندر بشكلها الحالي بدون تغيير). لما يكون
+  // موجود، بيترندر كـsection من النوع 'subject_box' قبل باقي المتن.
+  box_template: string | null;
   status: TemplateVersionStatus;
   published_at: string | null;
   created_by: string | null;
@@ -67,7 +71,10 @@ export interface GeneratedDocument {
 
 // نموذج المحتوى المبسّط (بدون AST كامل) — مصفوفة أقسام بترتيب ثابت
 export interface DocumentContentSection {
-  type: 'header' | 'title' | 'intro' | 'facts' | 'legal_grounds' | 'requests' | 'signature';
+  // 🆕 [قسم 20.1] 'subject_box' — صندوق "الموضوع" الجانبي الثابت (إعلانات/
+  // عرائض/إنذارات/جنح مباشرة). بيظهر أول عنصر في المصفوفة لو القالب عنده
+  // box_template، وبيترندر بشكل بصري مختلف (بوردر/بطاقة) مش نص عادي.
+  type: 'header' | 'title' | 'intro' | 'facts' | 'legal_grounds' | 'requests' | 'signature' | 'subject_box';
   text: string; // نص جاهز بعد استبدال placeholders، HTML-safe
 }
 
