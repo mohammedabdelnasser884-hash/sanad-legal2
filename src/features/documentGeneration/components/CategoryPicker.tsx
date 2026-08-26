@@ -28,7 +28,6 @@ import type { DocumentTemplate } from '../types';
 // TemplateCard.tsx) من غير ما يكسر أي حاجة.
 const CATEGORY_CARD_STYLE: Record<string, string> = {
   'إنذارات':     'bg-rose-500/10 text-rose-300 border-rose-500/20',
-  'توكيلات':     'bg-blue-500/10 text-blue-300 border-blue-500/20',
   'عرائض':       'bg-amber-500/10 text-amber-300 border-amber-500/20',
   'طلبات':       'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
   'إعلانات':     'bg-purple-500/10 text-purple-300 border-purple-500/20',
