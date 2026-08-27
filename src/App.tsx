@@ -436,7 +436,20 @@ function App() {
     // استثناء (نفس فلسفة canViewFees فوق — checkPermission() صراحةً
     // بدل تكرار شرط الدور هنا، عشان يفضل متوافق تلقائيًا مع
     // has_permission() على القاعدة لو القرار اتغيّر يومًا ما).
-    const canGenerateDocuments = checkPermission(profile, 'can_generate_documents');
+    //
+    // ⚡ NEW (طلب جيمي، 26 أغسطس 2026 — إخفاء قسم المستندات القانونية):
+    // فوق شرط الدور، القسم كله بقى مقصور على حساب السوبر أدمن الوحيد
+    // بس (نفس isAISuperAdmin فوق — m.gemy4231@gmail.com؛ نفس الإيميل
+    // بالظبط اللي بيتحكم في قسم AI، فمفيش داعي لتكرار الثابت تاني).
+    // محدش تاني هيشوف تاب "المستندات القانونية" ولا زرار "توليد
+    // مستند" ولا هيقدر يوصله حتى برابط مباشر (deep link)، حتى لو دوره
+    // lawyer/admin وعنده can_generate_documents=true فعليًا على قاعدة
+    // البيانات — canGenerateDocuments هي المصدر الوحيد المستخدم في كل
+    // نقاط التحكم دي (CommandDock، DesktopSidebar/TabletDrawer عبر
+    // requiresCanGenerateDocuments، تاب legalDocs جوه App.tsx، وزرار
+    // "توليد مستند" في AppModals) فتقييدها هنا كافٍ يغطيهم كلهم من
+    // مصدر واحد بلا تكرار.
+    const canGenerateDocuments = checkPermission(profile, 'can_generate_documents') && isAISuperAdmin;
 
     // ── Initial data fetch + إعادة تحميل بعد المزامنة الأوفلاين ──
     useInitialDataSync({
