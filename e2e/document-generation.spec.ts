@@ -7,8 +7,20 @@ import { login, createAndOpenCase, expectToast } from './utils';
 // CaseDetailView (تبويب docs) — بيبدأ case_bound، ⚡ [قرار جيمي، 26
 // أغسطس 2026] لكن SourceModeSelector بقت واجبة الظهور حتى في المسار
 // ده (اتلغى التخطي التلقائي القديم) — راجع الخطوة 3 تحت.
+//
+// ⚡ NEW (طلب جيمي، 26 أغسطس 2026 — إخفاء قسم المستندات القانونية):
+// canGenerateDocuments (App.tsx) بقى مقصور على حساب السوبر أدمن
+// الوحيد بس (isAISuperAdmin — m.gemy4231@gmail.com)، مش أي lawyer/admin
+// عادي. حساب E2E_TEST_EMAIL المستخدم في login() مش السوبر أدمن (نفس
+// ملحوظة admin-legal-library.spec.ts بالظبط) — يعني زرار
+// "case-detail-generate-document-btn" ماعادش بيظهر ليه، فالرحلة دي
+// (توليد فعلي → PDF → ظهور في المستندات) بقت غير قابلة للتشغيل
+// بحساب E2E العادي. اتحولت لـtest.skip بدل ما تتمسح (نفس نمط
+// ai-assistant.spec.ts بالظبط) — الكود فاضل كمرجع لو السوبر أدمن
+// نفسه احتاج يشغّلها يدويًا بحساب حقيقي يوم ما. التست الجديد تحت
+// بيتأكد بدل منها إن القسم مختفي فعليًا لحساب عادي.
 
-test('توليد مستند قانوني من قضية مفتوحة، تصديره PDF، والتأكد من ظهوره في مستندات القضية', async ({ page }) => {
+test.skip('توليد مستند قانوني من قضية مفتوحة، تصديره PDF، والتأكد من ظهوره في مستندات القضية', async ({ page }) => {
   await login(page);
 
   const caseTitle = `اختبار توليد مستندات E2E - ${Date.now()}`;
@@ -83,4 +95,22 @@ test('توليد مستند قانوني من قضية مفتوحة، تصدير
   await page.getByTestId('case-detail-view').waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByTestId('case-tab-docs').click();
   await expect(page.getByTestId('doc-card').filter({ hasText: '.pdf' }).first()).toBeVisible({ timeout: 15_000 });
+});
+
+// ⚡ NEW (طلب جيمي، 26 أغسطس 2026 — إخفاء قسم المستندات القانونية):
+// نفس نمط admin-legal-library.spec.ts بالظبط — بدل ما نتأكد من رفض
+// RLS بعد محاولة فتح القسم، بنتأكد إنه أصلاً مش بيتعمله render خالص
+// لحساب مش سوبر أدمن، لا في تاب المزيد (موبايل) ولا زرار "توليد
+// مستند" جوه تبويب مستندات القضية.
+test('حساب مكتب عادي (مش سوبر أدمن) → قسم "المستندات القانونية" مش ظاهر خالص', async ({ page }) => {
+  await login(page);
+
+  const caseTitle = `اختبار إخفاء المستندات القانونية E2E - ${Date.now()}`;
+  await createAndOpenCase(page, caseTitle);
+
+  await page.getByTestId('case-tab-docs').click();
+  await expect(page.getByTestId('case-detail-generate-document-btn')).toHaveCount(0);
+
+  await page.getByTestId('desktop-nav-cases').click();
+  await expect(page.getByTestId('desktop-nav-legalDocs')).toHaveCount(0);
 });
