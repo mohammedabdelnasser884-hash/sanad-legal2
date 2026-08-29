@@ -417,16 +417,53 @@ describe('printAllPayments', () => {
     expect(fakeWindow.document.write).not.toHaveBeenCalled();
   });
 
-  it('كل دفعة بتاخد رقم فاتورة تسلسلي INV-{السنة}-{الترتيب مبطن 4 أرقام}', async () => {
+  it('كل دفعة بتاخد رقم فاتورتها الحقيقي (getOrCreateInvoice — نفس رقم الفاتورة الفردية)', async () => {
+    // 🔴 FIX (29 أغسطس 2026 — باج #3): كشف كل الدفعات بقى بيستخدم
+    // getOrCreateInvoice نفسها المستخدمة في طباعة الفاتورة الفردية (idempotent،
+    // رقم حقيقي من generate_invoice_number/جدول invoices) بدل ترقيم محلي
+    // وهمي (INV-<سنة>-<ترتيب في القايمة>) كان بيتصفّر مع كل دفعة وميطابقش
+    // رقم نفس الدفعة لو طُبعت فاتورتها الفردية. التست بقى بيتأكد إن كل
+    // دفعة بتاخد الرقم الراجع فعليًا من الـRPC/جدول invoices، مش ترتيبها
+    // في القايمة.
+    maybeSingle.mockResolvedValue({ data: null, error: null }); // مفيش فاتورة سابقة لأي دفعة من التلاتة
+    getCurrentTenantId.mockReturnValue('tenant-1');
+    rpc
+      .mockResolvedValueOnce({ data: 'INV-2026-0011', error: null })
+      .mockResolvedValueOnce({ data: 'INV-2026-0012', error: null })
+      .mockResolvedValueOnce({ data: 'INV-2026-0013', error: null });
+    single
+      .mockResolvedValueOnce({ data: { invoice_number: 'INV-2026-0011', issued_at: '2026-07-01T09:00:00.000Z' }, error: null })
+      .mockResolvedValueOnce({ data: { invoice_number: 'INV-2026-0012', issued_at: '2026-07-01T09:00:00.000Z' }, error: null })
+      .mockResolvedValueOnce({ data: { invoice_number: 'INV-2026-0013', issued_at: '2026-07-01T09:00:00.000Z' }, error: null });
+
     const payments = [makePayment({ id: 'p1' }), makePayment({ id: 'p2' }), makePayment({ id: 'p3' })];
     const { printAllPayments } = useInvoicePrinting(cases, clients, { id: 'lawyer-1' } as never, 'جنيه مصري');
     await printAllPayments(makeFee(), payments, 'قضية عمالية', 'أحمد محمد');
 
     const html = fakeWindow.document.write.mock.calls[0][0] as string;
-    const year = new Date().getFullYear();
-    expect(html).toContain(`INV-${year}-0001`);
-    expect(html).toContain(`INV-${year}-0002`);
-    expect(html).toContain(`INV-${year}-0003`);
+    expect(html).toContain('INV-2026-0011');
+    expect(html).toContain('INV-2026-0012');
+    expect(html).toContain('INV-2026-0013');
+  });
+
+  it('فاتورة دفعة فشل إصدارها (getOrCreateInvoice رمت استثناء) → "—" لصفها بس، من غير ما يوقف طباعة باقي الكشف', async () => {
+    maybeSingle.mockResolvedValue({ data: null, error: null });
+    getCurrentTenantId.mockReturnValue('tenant-1');
+    rpc
+      .mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } }) // الدفعة الأولى فاشلة
+      .mockResolvedValueOnce({ data: 'INV-2026-0021', error: null });
+    single.mockResolvedValueOnce({ data: { invoice_number: 'INV-2026-0021', issued_at: '2026-07-01T09:00:00.000Z' }, error: null });
+
+    const payments = [makePayment({ id: 'p1' }), makePayment({ id: 'p2' })];
+    const { printAllPayments } = useInvoicePrinting(cases, clients, { id: 'lawyer-1' } as never, 'جنيه مصري');
+    await printAllPayments(makeFee(), payments, 'قضية عمالية', 'أحمد محمد');
+
+    const html = fakeWindow.document.write.mock.calls[0][0] as string;
+    expect(html).toContain('<td>—</td>');
+    expect(html).toContain('INV-2026-0021');
+    // برضو الكشف كامل اتكتب وطُبع رغم فشل فاتورة واحدة (مفيش استثناء غير ممسوك يوقف الدالة)
+    expect(fakeWindow.document.write).toHaveBeenCalledTimes(1);
+    expect(fakeWindow.document.close).toHaveBeenCalledTimes(1);
   });
 
   it('مبلغ كل دفعة بيظهر منسّق بالتنسيق العربي، وصف الإجمالي بيعكس fee.paid_fees مش مجموع الدفعات', async () => {
