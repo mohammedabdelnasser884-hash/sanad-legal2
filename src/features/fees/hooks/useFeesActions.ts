@@ -128,7 +128,13 @@ export interface FeeFormState {
     notes: string;
 }
 
-export function useFeesActions(cases: MappedCase[], clients: ClientRow[], country?: string, profile?: ProfileRow | null, externalRefreshSignal?: number) {
+// ⚡ NEW (تاب "الأتعاب" جوه تفاصيل القضية — 29 أغسطس 2026): caseScopeId
+// اختياري — لو معدّى، الـhook بيشتغل في "وضع قضية واحدة" بدل الوضع
+// العام (تصفّح/فلترة/بحث/pagination عبر كل أتعاب المكتب). في الوضعين،
+// القراءة والكتابة بتحصل على *نفس* جدول case_fees/fee_payments في
+// الداتابيز — مفيش نسخة بيانات منفصلة ولا تكرار تخزين، فأي إضافة/تعديل
+// من هنا يظهر فورًا في تاب "الأتعاب" العام (والعكس) في أول فتح/تحديث ليه.
+export function useFeesActions(cases: MappedCase[], clients: ClientRow[], country?: string, profile?: ProfileRow | null, externalRefreshSignal?: number, caseScopeId?: string) {
     const [fees, setFees] = useState<CaseFeeRow[]>([]);
     const [payments, setPayments] = useState<PaymentsByFeeId>({}); // keyed by fee_id
     const [expandedPayments, setExpandedPayments] = useState<Record<string, boolean>>({});
@@ -377,7 +383,69 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         }
     }, [profile, feesFilter, feesSearch]);
 
-    useEffect(() => { fetchFees(0, feesFilter, feesSearch, false); }, [fetchFees, feesFilter, feesSearch]);
+    // ── جلب كل سجلات الأتعاب الخاصة بقضية واحدة بس (وضع caseScopeId) ──
+    // مفيش pagination ولا فلتر حالة (pending/collected) ولا بحث هنا —
+    // قضية واحدة عادةً معاها سجل أتعاب واحد أو اتنين، فمفيش داعي لتعقيد
+    // الاستعلام العام. نفس جدولي case_fees/fee_payments بالظبط.
+    const fetchFeesForCase = useCallback(async (caseId: string) => {
+        if (!profile || !caseId) return;
+        setLoading(true);
+        const guard = createFetchGuard();
+        if (guard.offline) {
+            recordError('db_fees', 'offline');
+            setLoading(false);
+            return;
+        }
+        try {
+            const { data, error } = await db.from('case_fees')
+                .select('*')
+                .eq('case_id', caseId)
+                .is('deleted_at', null)
+                .order('created_at', { ascending: false })
+                .abortSignal(guard.controller.signal);
+            if (error) throw error;
+            const list = data || [];
+            const feeIds = list.map((f) => f.id);
+            const grouped: PaymentsByFeeId = {};
+            if (feeIds.length > 0) {
+                const { data: pays, error: paysErr } = await db.from('fee_payments')
+                    .select('*')
+                    .in('fee_id', feeIds)
+                    .order('payment_date', { ascending: false })
+                    .abortSignal(guard.controller.signal);
+                if (paysErr) throw paysErr;
+                (pays || []).forEach((p) => {
+                    const key = p.fee_id as string;
+                    if (!grouped[key]) grouped[key] = [];
+                    grouped[key].push(p);
+                });
+            }
+            setFees(list);
+            setPayments(grouped);
+            setFeesTotal(list.length);
+            setFeesPage(0);
+            setFeesMore(false);
+            recordSuccess('db_fees');
+        } catch (err) {
+            const msg = guard.didTimeOut() ? 'timeout' : (err as { message?: string })?.message || 'fetch failed';
+            recordError('db_fees', msg);
+        } finally {
+            guard.cleanup();
+            setLoading(false);
+        }
+    }, [profile]);
+
+    // ── إعادة الجلب بعد أي كتابة (حفظ/دفعة/حذف...) — بترجع لنفس مصدر
+    // البيانات المناسب حسب الوضع (قضية واحدة أو القائمة العامة). ──
+    const refetchFees = useCallback(() => {
+        if (caseScopeId) fetchFeesForCase(caseScopeId);
+        else fetchFees(0, feesFilter, feesSearch, false);
+    }, [caseScopeId, fetchFeesForCase, fetchFees, feesFilter, feesSearch]);
+
+    useEffect(() => {
+        if (caseScopeId) fetchFeesForCase(caseScopeId);
+        else fetchFees(0, feesFilter, feesSearch, false);
+    }, [caseScopeId, fetchFeesForCase, fetchFees, feesFilter, feesSearch]);
 
     // 🔧 FIX (20 أغسطس 2026): زرار الريفرش في الهيدر كان بيحدّث القضايا
     // بس (fetchCases)، وتاب الأتعاب عنده بياناته الخاصة (fetchFees/
@@ -391,7 +459,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
     useEffect(() => {
         if (!skippedFirstRun.current) { skippedFirstRun.current = true; return; }
         if (externalRefreshSignal === undefined) return;
-        fetchFees(0, feesFilter, feesSearch, false);
+        refetchFees();
         fetchGrandSummary();
         fetchStatusCounts();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -536,7 +604,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         }
         setSaving(false);
         setShowForm(false); setForm({case_id:'',client_id:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); setEditId(null);
-        fetchFees(0, feesFilter, feesSearch, false);
+        refetchFees();
         fetchGrandSummary();
         fetchStatusCounts();
     };
@@ -647,7 +715,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             data: {paid_fees: realPaid, status: newStatus},
             id: fee.id,
         });
-        if(updateError){ toast('⚠️ تم حذف الدفعة لكن فشل تحديث إجمالي المدفوع، يرجى تحديث الصفحة', true); fetchFees(0, feesFilter, feesSearch, false); fetchGrandSummary(); return; }
+        if(updateError){ toast('⚠️ تم حذف الدفعة لكن فشل تحديث إجمالي المدفوع، يرجى تحديث الصفحة', true); refetchFees(); fetchGrandSummary(); return; }
         toast('🗑 تم حذف الدفعة');
         logActivity(db, 'حذف دفعة', {
             entity_type: 'fee', entity_id: fee.id, details: fee.client_name || null,
@@ -682,7 +750,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             case_name: cases.find((c) => c.id === targetFee?.case_id)?.title || null,
             case_type: cases.find((c) => c.id === targetFee?.case_id)?.type || null,
         });
-        fetchFees(0, feesFilter, feesSearch, false);
+        refetchFees();
         fetchGrandSummary();
         fetchStatusCounts();
     };
@@ -702,7 +770,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             case_name: cases.find((c) => c.id === targetFee?.case_id)?.title || null,
             case_type: cases.find((c) => c.id === targetFee?.case_id)?.type || null,
         });
-        fetchFees(0, feesFilter, feesSearch, false);
+        refetchFees();
         fetchGrandSummary();
         fetchStatusCounts();
     };
@@ -714,7 +782,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         if (error) { toast('❌ فشل استرجاع الأتعاب — تحقق من الاتصال وأعد المحاولة', true); return; }
         toast('✅ تم استرجاع الأتعاب');
         logActivity(db, 'استرجاع أتعاب من الأرشيف', { entity_type: 'fee', entity_id: id });
-        fetchFees(0, feesFilter, feesSearch, false);
+        refetchFees();
         fetchGrandSummary();
         fetchStatusCounts();
     };
@@ -779,7 +847,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
 
     // pagination
     feesPage, feesTotal, feesMore,
-    fetchFees, handleFilterChange, handleSearch,
+    fetchFees, fetchFeesForCase, handleFilterChange, handleSearch,
 
     handleSave, handleAddPayment, handleDeletePayment, handleDelete, handlePermanentDeleteFee, handleRestoreFee,
 
