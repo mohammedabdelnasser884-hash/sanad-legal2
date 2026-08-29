@@ -313,7 +313,13 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                             )
                         )
                     ),
-                    React.createElement(Inp,{label:"المستلم من المكتب",required:true,value:form.receiver,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,receiver:e.target.value})),placeholder:"اسم المحامي أو الموظف المستلم"}),
+                    // 🆕 (إصلاح CI بعد تشغيل فعلي — 29 أغسطس 2026): "المستلم من
+                    // المكتب" و"تاريخ الدفعة" حقلين إجباريين فعليًا في handleSave
+                    // من زمان (راجع التعليق فوق useFeesActions.ts:~389) لكن مكانش
+                    // عندهم data-testid خالص — كان مستحيل تقنيًا لأي تست e2e إنه
+                    // يستهدفهم. اتضافلهم 'fee-receiver' و'fee-payment-date' بس،
+                    // صفر تغيير في الشكل/السلوك.
+                    React.createElement(Inp,{label:"المستلم من المكتب",required:true,value:form.receiver,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,receiver:e.target.value})),placeholder:"اسم المحامي أو الموظف المستلم",'data-testid':'fee-receiver'}),
                     React.createElement(Inp,{label:"إجمالي الأتعاب",required:true,type:"number",value:form.total,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,total:e.target.value})),placeholder:"0",'data-testid':'fee-total'}),
                     // 🔴 FIX (29 أغسطس 2026 — باج #2): حقل "المبلغ المدفوع" في فورم
                     // التعديل كان بيقبل كتابة لكن handleSave (مسار editId) كان
@@ -338,7 +344,8 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         React.createElement('input',{
                             type:"date",value:form.payment_date,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,payment_date:e.target.value})),
                             className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-black/30 text-white",
-                            style:{fontFamily:'Cairo,sans-serif',colorScheme:'dark'}
+                            style:{fontFamily:'Cairo,sans-serif',colorScheme:'dark'},
+                            'data-testid':'fee-payment-date'
                         })
                     ),
                     React.createElement(Inp,{label:"ملاحظات",value:form.notes,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,notes:e.target.value})),placeholder:"أي ملاحظات..."}),
