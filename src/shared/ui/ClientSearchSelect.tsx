@@ -43,10 +43,11 @@ interface ClientSearchSelectProps {
     isManualSelected?: boolean;
     placeholder?: string;
     testId?: string;
+    required?: boolean;
 }
 
 export function ClientSearchSelect({
-    label, selectedLabel, onSelect, manualOption, onManualSelect, isManualSelected, placeholder, testId,
+    label, selectedLabel, onSelect, manualOption, onManualSelect, isManualSelected, placeholder, testId, required,
 }: ClientSearchSelectProps) {
     const [open, setOpen] = useState(false);
     const [term, setTerm] = useState('');
@@ -111,7 +112,10 @@ export function ClientSearchSelect({
     const displayValue = open ? term : (isManualSelected ? (manualOption?.label || '') : selectedLabel);
 
     return React.createElement('div', { className: 'relative', ref: rootRef },
-        label && React.createElement('label', { className: 'block text-[10px] font-bold text-slate-400 mb-1.5' }, label),
+        label && React.createElement('label', { className: 'block text-[10px] font-bold text-slate-400 mb-1.5' },
+            label,
+            required && React.createElement('span', { className: 'text-rose-400 mr-1' }, '*')
+        ),
         React.createElement('input', {
             type: 'text',
             value: displayValue,
