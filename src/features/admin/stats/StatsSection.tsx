@@ -93,7 +93,7 @@ function HeroCountCard({
     ),
     React.createElement('p', {
       className: 'font-black',
-      style: { color: '#f1f5f9', fontSize: VALUE_PRIMARY, lineHeight: 1, marginTop: '14px', direction: 'ltr', textAlign: 'right' },
+      style: { color: 'var(--text-primary)', fontSize: VALUE_PRIMARY, lineHeight: 1, marginTop: '14px', direction: 'ltr', textAlign: 'right' },
     }, fmt(value))
   );
 }
@@ -277,7 +277,7 @@ function StatsSection({
                 isStale ? `⚠️ بيانات محفوظة — ${formatArTime(lastUpdatedAt)}` : `آخر تحديث ${formatArTime(lastUpdatedAt)}`)
         ),
         React.createElement('p', {
-          className: 'font-black', style: { color: '#f1f5f9', fontSize: VALUE_PRIMARY, lineHeight: 1, marginTop: '8px', direction: 'ltr', textAlign: 'right' },
+          className: 'font-black', style: { color: 'var(--text-primary)', fontSize: VALUE_PRIMARY, lineHeight: 1, marginTop: '8px', direction: 'ltr', textAlign: 'right' },
         }, `${fmt(grandTotal)} ${currency}`),
 
         // شريط التحصيل
