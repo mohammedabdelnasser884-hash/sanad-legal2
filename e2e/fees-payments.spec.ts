@@ -25,13 +25,16 @@ import { login, createCaseWithClient, selectCaseFromSearch, expectToast, todayIs
 // بأرقام جديدة تحافظ على نفس *نية* التست الأصلية (نفس السيناريو المنطقي)
 // مع تعليق بالحساب الجديد جنب كل واحدة.
 //
-// ⚠️ ملحوظة تاريخ مهمة: الدفعة المقدّمة بتتسجل بتاريخ ثابت في الماضي
-// (ADVANCE_PAYMENT_DATE، من utils.ts) بدل تاريخ النهاردة، وأي دفعة إضافية
-// بتتسجل بتاريخ النهاردة (fillPaymentForm's default). ده مقصود: سجل
-// الدفعات مرتب `payment_date` تنازليًا (fetchFees في useFeesActions.ts)،
-// فلو الاتنين بنفس تاريخ اليوم الترتيب بينهم غير مضمون. بالفرق ده، أي
-// دفعة "إضافية" مسجّلة في التست دايمًا هتبقى أول عنصر (.first()) في
-// القايمة بشكل موثوق — مهم لتست 6 اللي بيحذف دفعة بعينها.
+// ⚠️ ملحوظة تاريخ (مُحدَّثة بعد إصلاح CI ثانٍ — راجع الملحوظة الأحدث جنب
+// تست 6): الدفعة المقدّمة بتتسجل بتاريخ ثابت في الماضي (ADVANCE_PAYMENT_DATE،
+// من utils.ts) بدل تاريخ النهاردة، وأي دفعة إضافية بتتسجل بتاريخ النهاردة
+// (fillPaymentForm's default). الفرق ده لسه مفيد لتمييز الصفين بصريًا في
+// أي لقطة شاشة/تريس تصحيح، لكنه *مش* الضمان الفعلي لتحديد أي صف هو
+// الإضافي في التستات تحت — ده بقى بمطابقة المحتوى (المبلغ) مباشرة، مش
+// بترتيب الصفوف. السبب: `setPayments` (تحديث قايمة الدفعات محليًا بعد
+// نجاح التسجيل، useFeesActions.ts) عملية async منفصلة بتحصل *بعد* توست
+// النجاح، فالاعتماد على ترتيب "أول عنصر" فور ظهور التوست مش موثوق 100%
+// تحت حِمل CI حتى لو الترتيب النهائي (بعد اكتمال التحديث) صحيح فعلًا.
 
 function arNum(n: number): string {
   return n.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
@@ -143,7 +146,19 @@ test('3) دفعة أكبر من المتبقي — تحذير بس مش رفض (
   await expect(page.locator('#toast')).toContainText('يتجاوز المتبقي');
   await expectToast(page, '✅ تم تسجيل الدفعة');
   await page.getByTestId('payments-history-toggle').click();
-  await expect(page.getByTestId('payment-row-amount').first()).toContainText(arNum(1500));
+  // 🔴 CHANGED (إصلاح CI بعد تشغيل فعلي — 29 أغسطس 2026): كان `.first()`
+  // على `payment-row-amount` — بيفترض إن الدفعة الإضافية (اللي لسه اتسجلت)
+  // هي أول عنصر في القائمة. لكن `setPayments` (تحديث state الدفعات بعد
+  // نجاح تسجيل دفعة — useFeesActions.ts:handleAddPayment) عملية async
+  // منفصلة بتحصل *بعد* toast النجاح، مش قبله — يعني ممكن (خصوصًا تحت حمل
+  // CI) نوصل هنا وقايمة الدفعات لسه القديمة (صف واحد بس، المقدّمة). بدل
+  // الاعتماد على ترتيب مؤقت هش، بنستنى عدد الصفوف يوصل 2 فعليًا الأول
+  // (تأكيد إن التحديث اكتمل)، وبعدين بندوّر على الصف بمحتواه مباشرة (مش
+  // بترتيبه) — طريقة مضمونة بصرف النظر عن أي ترتيب.
+  await expect(page.getByTestId('payment-row')).toHaveCount(2);
+  await expect(
+    page.getByTestId('payment-row').filter({ hasText: arNum(1500) })
+  ).toHaveCount(1);
 });
 
 // 🔴 CHANGED (إصلاح CI): إجمالي 2000، دفعة مقدّمة إجبارية 500 → المتبقي
@@ -187,7 +202,15 @@ test('5) معاينة فاتورة دفعة مسجّلة', async ({ page }) => {
   await expectToast(page, '✅ تم تسجيل الدفعة');
 
   await page.getByTestId('payments-history-toggle').click();
-  await page.getByTestId('payment-invoice-trigger').first().click();
+  // 🔴 CHANGED (إصلاح CI بعد تشغيل فعلي — 29 أغسطس 2026): نفس ملحوظة تست 3
+  // — `.first()` مش مضمون هنا لأن `setPayments` (تحديث قايمة الدفعات بعد
+  // نجاح التسجيل) عملية async منفصلة بتحصل *بعد* توست النجاح، فممكن نوصل
+  // هنا وقايمة الدفعات لسه القديمة (صف واحد بس). بنستنى عدد الصفوف = 2
+  // فعليًا الأول، وبعدين بندوّر على الصف الصحيح بمحتواه (مبلغ 2000) مباشرة
+  // بدل الاعتماد على ترتيبه في القائمة.
+  await expect(page.getByTestId('payment-row')).toHaveCount(2);
+  const targetRow = page.getByTestId('payment-row').filter({ hasText: arNum(2000) });
+  await targetRow.getByTestId('payment-invoice-trigger').click();
   await page.getByTestId('invoice-modal').waitFor({ state: 'visible', timeout: 10_000 });
   await expect(page.getByTestId('invoice-amount')).toContainText(arNum(2000));
   await page.getByTestId('invoice-modal-close').click();
@@ -195,11 +218,7 @@ test('5) معاينة فاتورة دفعة مسجّلة', async ({ page }) => {
 });
 
 // 🔴 CHANGED (إصلاح CI): إجمالي 4000، دفعة مقدّمة إجبارية 100 (بتاريخ
-// ADVANCE_PAYMENT_DATE، في الماضي). دفعة إضافية 1000 بتاريخ النهاردة —
-// بما إن سجل الدفعات مرتب تنازليًا بالتاريخ، الدفعة الإضافية (تاريخ
-// أحدث) دايمًا أول عنصر (.first())، فحذفها بالـ.first() آمن ومضمون —
-// مش هيمسح الدفعة المقدّمة بالغلط. المتبقي بعد الحذف بيرجع لـ3900 (4000
-// - 100 الدفعة المقدّمة الباقية)، مش 4000 زي قبل.
+// ADVANCE_PAYMENT_DATE، في الماضي). دفعة إضافية 1000 بتاريخ النهاردة.
 test('6) حذف دفعة وإعادة حساب المتبقي', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - حذف دفعة - ${Date.now()}`;
@@ -214,10 +233,21 @@ test('6) حذف دفعة وإعادة حساب المتبقي', async ({ page })
   await expect(page.getByTestId('fee-remaining-value')).toContainText(arNum(2900));
 
   await page.getByTestId('payments-history-toggle').click();
-  // .first() = الدفعة الأحدث تاريخًا (النهاردة) = الدفعة الإضافية اللي
-  // اتسجلت فوق، مش الدفعة المقدّمة (تاريخها في الماضي — راجع الملحوظة
-  // فوق التست).
-  await page.getByTestId('payment-delete-trigger').first().click();
+  // 🔴 CHANGED (إصلاح CI بعد تشغيل فعلي — 29 أغسطس 2026): التشغيل الفعلي
+  // كشف إن الافتراض الأصلي هنا (`.first()` = الدفعة الأحدث تاريخًا، بما إن
+  // سجل الدفعات مرتب `payment_date` تنازليًا) مش موثوق عمليًا رغم إن كود
+  // useFeesActions.ts فعلًا بيرتب كده — لأن `setPayments` (تحديث قايمة
+  // الدفعات محليًا بعد نجاح التسجيل) عملية async منفصلة بتحصل *بعد* توست
+  // "✅ تم تسجيل الدفعة" مباشرة (مش قبله)، فتحت حمل CI ممكن الكليك يوصل
+  // والقايمة لسه بالصف القديم بس (المقدّمة فقط) — فـ`.first()` كان بيمسك
+  // الصف الغلط (المقدّمة 100 بدل الإضافية 1000)، وده بالظبط اللي ظهر في
+  // اللوج الفعلي (المتبقي النهائي طلع 3000 مش 3900 — يعني اللي اتمسح كان
+  // الـ100 مش الـ1000). الإصلاح: بنستنى عدد الصفوف = 2 فعليًا الأول (تأكيد
+  // اكتمال التحديث)، وبعدين بندوّر على الصف الصح بمحتواه (مبلغ 1000)
+  // مباشرة — مش بترتيبه في القائمة، بصرف النظر عن أي تأخير أو ترتيب.
+  await expect(page.getByTestId('payment-row')).toHaveCount(2);
+  const targetRow = page.getByTestId('payment-row').filter({ hasText: arNum(1000) });
+  await targetRow.getByTestId('payment-delete-trigger').click();
   // بيانات نص التأكيد (fmt/fmtDate) بيتقروا من نفس المودال — نص مُنسّق
   // بأرقام عربية شرقية وصعب نعيد بناءه يدويًا، فبنقرأه من الشاشة نفسها.
   const exactText = await page.getByTestId('delete-confirm-item-name').innerText();
