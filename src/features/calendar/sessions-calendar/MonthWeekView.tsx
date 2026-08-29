@@ -88,11 +88,15 @@ function MonthWeekView({ weeks, sessionsMap, tasksMap, cases, clients, onOpenCas
                 const isFriday = new Date(dateStr + 'T00:00:00').getDay() === 5;
                 const total    = daySess.length;
 
-                return React.createElement('div', { key: dateStr },
-                    // فاصل اليوم
+                return React.createElement('div', { key: dateStr, className: "pt-3 first:pt-0" },
+                    // فاصل اليوم — خلفية خفيفة + خط سفلي أوضح، عشان يبقى
+                    // فاصل بصري حقيقي بين يوم والتاني (مش مجرد خط بالكاد بيتحس)
                     React.createElement('div', {
-                        className: "flex items-center gap-2 py-2 px-1",
-                        style: { borderBottom: '1px solid rgba(255,255,255,0.04)' }
+                        className: "flex items-center gap-2 py-2.5 px-2.5 rounded-lg",
+                        style: {
+                            background: isToday ? 'rgba(212,175,55,0.06)' : 'rgba(255,255,255,0.025)',
+                            borderBottom: isToday ? '1px solid rgba(212,175,55,0.25)' : '1px solid rgba(255,255,255,0.09)'
+                        }
                     },
                         React.createElement('div', {
                             className: "flex items-center gap-1.5 flex-1 min-w-0"
