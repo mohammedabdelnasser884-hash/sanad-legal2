@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, createCase, expectToast, uniquePoa } from './utils';
+import { login, createCaseWithClient, selectCaseFromSearch, expectToast, uniquePoa } from './utils';
 
 // خطوة 6 من مرحلة 7 (E2E) — فاليديشن الحقول المطلوبة (دفعة الباگات
 // الخمسة اللي اتصلحت في 17/7: عنوان قضية فاضي، أتعاب من غير قضية،
@@ -24,35 +24,47 @@ test.describe('فاليديشن الحقول المطلوبة', () => {
     await expect(page.getByTestId('new-case-save')).toBeVisible();
   });
 
-  test('أتعاب من غير اختيار قضية → رسالة "القضية مطلوب"، ومفيش حفظ', async ({ page }) => {
+  // 🔴 CHANGED (إصلاح CI بعد تشغيل فعلي — 29 أغسطس 2026): قبل قرار قفل حقل
+  // الموكل (المرحلة 3)، كان زرار الحفظ فعّال دايمًا وأول فاليديشن تتفحص
+  // جوه handleSave هي "القضية مطلوب" (توست بعد الضغط). دلوقتي save-fee-button
+  // نفسه بقى disabled من الأساس لغاية ما يبقى فيه موكل محلول (resolvedFormClient)
+  // — وده بيتطلب قضية مختارة أصلًا. يعني بدون اختيار قضية، الزرار مستحيل
+  // يتدوس عليه خالص (التشغيل الفعلي وقف على "Test timeout... element is not
+  // enabled" هنا بالظبط). التست بقى بيتأكد من السلوك الجديد مباشرة: الزرار
+  // معطّل والإرشاد ظاهر، بدل محاولة ضغط مستحيلة وانتظار توست مستحيل الظهور.
+  test('أتعاب من غير اختيار قضية → زرار الحفظ يفضل معطّل من الأساس (مش قابل للضغط أصلاً)', async ({ page }) => {
     await login(page);
-    const caseTitle = `اختبار E2E - فاليديشن أتعاب 1 - ${Date.now()}`;
-    await createCase(page, caseTitle);
-
-    // ⚡ H (16 أغسطس 2026): `nav-more-toggle`+`nav-more-fees` (موبايل)
-    // بقوا `lg:hidden` على الديسكتوب — بديلهم نقرة واحدة `desktop-nav-fees`.
+    // ⚡ H (16 أغسطس 2026): `nav-cases` (موبايل) بقى `lg:hidden` على
+    // الديسكتوب — بديله `desktop-nav-cases`.
     await page.getByTestId('desktop-nav-fees').click();
     await page.getByTestId('add-fee-button').click();
 
-    // نملى المبلغ بس من غير ما نختار قضية
+    // نملى المبلغ بس من غير ما نختار قضية أصلاً
     await page.getByTestId('fee-total').fill('1000');
-    await page.getByTestId('save-fee-button').click();
 
-    await expectToast(page, '❌ حقل "القضية" مطلوب — يرجى اختيار القضية');
-    await expect(page.getByTestId('save-fee-button')).toBeVisible();
+    await expect(page.getByTestId('fee-client-locked')).toContainText(
+      'لا يوجد موكل مرتبط بهذه القضية'
+    );
+    await expect(page.getByTestId('save-fee-button')).toBeDisabled();
   });
 
+  // 🔴 CHANGED (إصلاح CI): لازم createCaseWithClient (مش createCase) —
+  // وإلا الزرار يفضل معطّل من الأساس زي التست فوق، ومحصلش نوصل للتوست
+  // المطلوب اختباره هنا أصلًا. وحقل "المستلم من المكتب" بقى إجباري (وبيتفحص
+  // قبل "الإجمالي" في ترتيب الفاليديشن — useFeesActions.ts:389) فلازم
+  // يتملى، وإلا التست هيوقف على توست "المستلم" مش "الإجمالي".
   test('أتعاب من غير مبلغ → رسالة "الإجمالي مطلوب"، ومفيش حفظ', async ({ page }) => {
     await login(page);
     const caseTitle = `اختبار E2E - فاليديشن أتعاب 2 - ${Date.now()}`;
-    await createCase(page, caseTitle);
+    await createCaseWithClient(page, caseTitle);
 
     // ⚡ H (16 أغسطس 2026): `nav-more-toggle`+`nav-more-fees` (موبايل)
     // بقوا `lg:hidden` على الديسكتوب — بديلهم نقرة واحدة `desktop-nav-fees`.
     await page.getByTestId('desktop-nav-fees').click();
     await page.getByTestId('add-fee-button').click();
 
-    await page.getByTestId('fee-case-select').selectOption({ label: caseTitle });
+    await selectCaseFromSearch(page, 'fee-case-select', caseTitle);
+    await page.getByTestId('fee-receiver').fill('محامي الاختبار');
     // مفيش كتابة في fee-total خالص
     await page.getByTestId('save-fee-button').click();
 
@@ -60,17 +72,20 @@ test.describe('فاليديشن الحقول المطلوبة', () => {
     await expect(page.getByTestId('save-fee-button')).toBeVisible();
   });
 
+  // 🔴 CHANGED (إصلاح CI): نفس ملحوظة التست فوق — createCaseWithClient +
+  // selectCaseFromSearch + المستلم مطلوب قبل ما نوصل لفحص القيمة السالبة.
   test('أتعاب بمبلغ سالب → رسالة خطأ، ومفيش حفظ', async ({ page }) => {
     await login(page);
     const caseTitle = `اختبار E2E - فاليديشن أتعاب 3 - ${Date.now()}`;
-    await createCase(page, caseTitle);
+    await createCaseWithClient(page, caseTitle);
 
     // ⚡ H (16 أغسطس 2026): `nav-more-toggle`+`nav-more-fees` (موبايل)
     // بقوا `lg:hidden` على الديسكتوب — بديلهم نقرة واحدة `desktop-nav-fees`.
     await page.getByTestId('desktop-nav-fees').click();
     await page.getByTestId('add-fee-button').click();
 
-    await page.getByTestId('fee-case-select').selectOption({ label: caseTitle });
+    await selectCaseFromSearch(page, 'fee-case-select', caseTitle);
+    await page.getByTestId('fee-receiver').fill('محامي الاختبار');
     await page.getByTestId('fee-total').fill('-500');
     await page.getByTestId('save-fee-button').click();
 
