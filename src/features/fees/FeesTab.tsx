@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from '../../shared/lib/notifications';
 import { Inp } from '@/shared/ui/Inp';
-import { Sel } from '@/shared/ui/Sel';
-import { ClientSearchSelect, type ClientSearchResult } from '@/shared/ui/ClientSearchSelect';
+import { CaseSearchSelect } from '@/shared/ui/CaseSearchSelect';
 import { createPortal } from 'react-dom';
 import { I, COUNTRY_CONFIGS, loadOfficeSetting } from '../../constants';
-import { useFeesActions } from './hooks/useFeesActions';
+import { useFeesActions, resolveCaseFeeClient } from './hooks/useFeesActions';
 import { useInvoicePrinting } from './hooks/useInvoicePrinting';
 import DeleteConfirmModal from '@/shared/modals/DeleteConfirmModal';
 import { useNestedModalBackButton } from '../../shared/lib/useNestedModalBackButton';
@@ -163,6 +162,12 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
 
     // ── المتغيرات المحسوبة تأتي من useFeesActions مباشرة ──
 
+    // 🔒 NEW (طلب المستخدم — 29 أغسطس 2026): محسوبة مرة واحدة هنا لاستخدامها
+    // في عرض الموكل المقفول (فوق) وفي تعطيل زر "حفظ" (تحت) معًا — نفس
+    // resolveCaseFeeClient المستخدمة في handleSave (useFeesActions.ts).
+    const selectedCaseForForm = cases.find((c) => c.id === form.case_id);
+    const resolvedFormClient = resolveCaseFeeClient(selectedCaseForForm, clients);
+
     return React.createElement('div',{className:"space-y-4 fade-in"},
 
         // ── هيدر القسم: العنوان + زر الملخص المالي + أيقونة البحث ──
@@ -255,7 +260,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         // ─ زر الإضافة (بعد ما زر الملخص المالي اتنقل للهيدر فوق، بقى الزرار
         // الوحيد في الصف ده — عرض كامل ثابت على الموبايل والديسكتوب) ─
         React.createElement('button',{
-            onClick:()=>{setShowForm(!showForm);setEditId(null);setForm({case_id:'',client_id:'',client_name_manual:'',client_name_text:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); },
+            onClick:()=>{setShowForm(!showForm);setEditId(null);setForm({case_id:'',client_id:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); },
             'data-testid':'add-fee-button',
             className:"w-full py-3 border border-dashed border-premium-gold/30 rounded-2xl flex items-center justify-center gap-2 text-premium-gold text-xs font-black hover:bg-premium-gold/5 transition-all active:scale-[0.98]"
         }, React.createElement(I.Plus), "إضافة أتعاب قضية"),
@@ -274,49 +279,34 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         React.createElement('h4',{className:"text-xs font-black text-premium-gold"},editId ? "✏️ تعديل الأتعاب" : "📋 إضافة أتعاب"),
                         React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);},className:"w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90"},"✕")
                     ),
-                    React.createElement(Sel,{
-                        label:"القضية",value:form.case_id,
+                    // 🔒 CHANGED (طلب المستخدم — 29 أغسطس 2026): دروب-داون قضية عادي
+                    // بقى CaseSearchSelect (بحث حي في الداتابيز، بنفس نمط
+                    // ClientSearchSelect) بدل <select> محدود بالقضايا المحمّلة محليًا.
+                    React.createElement(CaseSearchSelect,{
+                        label:"القضية",
                         required:true,
                         testId:'fee-case-select',
-                        onChange:(e: React.ChangeEvent<HTMLSelectElement>) =>{
-                            const cid = e.target.value;
-                            const lc = cases.find((c) =>c.id===cid);
-                            const lcl = lc ? clients.find((cl) =>cl.id===lc.client_id) : null;
-                            setForm((p) =>({...p, case_id:cid, client_id: lcl ? '' : p.client_id, client_name_manual: lcl ? '' : p.client_name_manual}));
+                        selectedLabel: cases.find((c) => c.id === form.case_id)?.title || '',
+                        onSelect:(c) => {
+                            ensureClientsLoaded?.(c.client_id ? [c.client_id] : []);
+                            setForm((p) =>({...p, case_id:c.id, client_id: c.client_id || ''}));
                         },
-                        options:[{value:'',label:'اختر القضية...'}, ...cases.map((c) =>({value:c.id,label:c.title}))]
+                        placeholder:'ابحث بعنوان القضية أو رقمها...',
                     }),
-                    React.createElement('div',{className:"space-y-1.5"},
-                        // ⚡ CHANGED (8 أغسطس 2026 — البند 6): ClientSearchSelect بدل
-                        // <select> محدود بأول 15 موكل محمّلين — بيبحث في الداتابيز
-                        // مباشرة، وبيستدعي ensureClientsLoaded فورًا وقت الاختيار
-                        // (راجع تعليق ensureClientsLoaded في تعريف FeesTabProps فوق).
-                        React.createElement(ClientSearchSelect,{
-                            label:"اسم الموكل",
-                            required:true,
-                            testId:'fee-client-select',
-                            selectedLabel: (() => {
-                                const matched = clients.find((cl) => cl.id === form.client_id);
-                                return matched?.full_name || '';
-                            })(),
-                            isManualSelected: form.client_name_manual === '__manual__',
-                            manualOption:{label:'➕ آخر (اكتب يدوي)'},
-                            onManualSelect:() => setForm((p) =>({...p, client_name_manual:'__manual__', client_id:''})),
-                            onSelect:(c: ClientSearchResult) => {
-                                ensureClientsLoaded?.([c.id]);
-                                setForm((p) =>({...p, client_name_manual:'', client_id: c.id}));
-                            },
-                            placeholder:'اختر موكل... (اكتب للبحث)',
-                        }),
-                        form.client_name_manual==='__manual__' && React.createElement('input',{
-                            type:"text",
-                            value:form.client_name_text||'',
-                            onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p, client_name_text:e.target.value})),
-                            placeholder:"اكتب اسم الموكل...",
-                            className:"w-full p-2.5 text-xs rounded-xl border border-premium-gold/30 bg-black/30 text-white placeholder-slate-600",
-                            style:{fontFamily:'Cairo,sans-serif'},
-                            autoFocus:true
-                        })
+                    // 🔒 CHANGED (طلب المستخدم — 29 أغسطس 2026): اسم الموكل بقى عرض
+                    // مقفول تمامًا، مُشتق تلقائيًا من القضية المختارة فوق عبر
+                    // resolveCaseFeeClient — نفس نمط pay-client-locked في FeeCard.tsx
+                    // بالحرف. مفيش اختيار يدوي ولا نص حر بعد دلوقتي.
+                    React.createElement('div',{className:"space-y-1"},
+                        React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"اسم الموكل",React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
+                        React.createElement('div',{
+                            'data-testid':'fee-client-locked',
+                            className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-black/30 text-white min-h-[2.25rem] flex items-center"
+                        },
+                            resolvedFormClient.displayLabel || React.createElement('span', { className: "text-slate-500" },
+                                '⚠️ لا يوجد موكل مرتبط بهذه القضية — يرجى تحديد الموكل من بيانات القضية أولاً'
+                            )
+                        )
                     ),
                     React.createElement(Inp,{label:"المستلم من المكتب",required:true,value:form.receiver,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,receiver:e.target.value})),placeholder:"اسم المحامي أو الموظف المستلم"}),
                     React.createElement(Inp,{label:"إجمالي الأتعاب",required:true,type:"number",value:form.total,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,total:e.target.value})),placeholder:"0",'data-testid':'fee-total'}),
@@ -348,7 +338,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     ),
                     React.createElement(Inp,{label:"ملاحظات",value:form.notes,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,notes:e.target.value})),placeholder:"أي ملاحظات..."}),
                     React.createElement('div',{className:"flex gap-2"},
-                        React.createElement('button',{onClick:handleSave,disabled:saving,'data-testid':'save-fee-button',className:"flex-1 py-2.5 bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg rounded-xl text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-95"},
+                        React.createElement('button',{onClick:handleSave,disabled:saving || !resolvedFormClient.displayLabel,'data-testid':'save-fee-button',className:"flex-1 py-2.5 bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg rounded-xl text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-95"},
                             saving?React.createElement(I.Spin):React.createElement(I.Check),"حفظ"),
                         React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);},className:"px-4 py-2.5 bg-white/5 text-slate-400 rounded-xl text-xs font-bold active:scale-95"},"إلغاء")
                     )
