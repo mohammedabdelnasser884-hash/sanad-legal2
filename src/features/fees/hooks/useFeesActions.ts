@@ -121,8 +121,6 @@ export interface ConfirmDeletePayState {
 export interface FeeFormState {
     case_id: string;
     client_id: string;
-    client_name_manual: string;
-    client_name_text: string;
     receiver: string;
     total: string;
     paid: string;
@@ -136,7 +134,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
     const [expandedPayments, setExpandedPayments] = useState<Record<string, boolean>>({});
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
-    const [form, setForm] = useState<FeeFormState>({case_id:'', client_id:'', client_name_manual:'', client_name_text:'', receiver:'', total:'', paid:'', payment_date:'', notes:''});
+    const [form, setForm] = useState<FeeFormState>({case_id:'', client_id:'', receiver:'', total:'', paid:'', payment_date:'', notes:''});
     const [saving, setSaving] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
     const [addPaymentFor, setAddPaymentFor] = useState<string | null>(null);
@@ -380,8 +378,14 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         // بس في مسار الإنشاء الجديد (!editId) — في وضع التعديل الحقل ده
         // أصلاً disabled ومالوش تأثير (راجع تعليق fee-paid في FeesTab.tsx).
         if (!form.case_id) { toast('❌ حقل "القضية" مطلوب — يرجى اختيار القضية', true); return; }
-        const hasClient = (form.client_name_manual === '__manual__' ? !!form.client_name_text?.trim() : !!form.client_id);
-        if (!hasClient) { toast('❌ حقل "اسم الموكل" مطلوب', true); return; }
+        // 🔒 CHANGED (طلب المستخدم — 29 أغسطس 2026): اسم الموكل مبقاش قابل
+        // للتحديد يدويًا من الفورم — بيتشتق من القضية المختارة وقت الحفظ
+        // نفسه (نفس نمط resolveCaseFeeClient المستخدم في FeeCard.tsx)، عشان
+        // نضمن إن أي تعديل لاحق على ربط القضية بالموكل (بعد ما الفورم اتفتح)
+        // ينعكس في القيمة الفعلية المحفوظة، مش قيمة قديمة متجمدة في form.client_id.
+        const selectedCaseForSave = cases.find((c) => c.id === form.case_id);
+        const resolvedClient = resolveCaseFeeClient(selectedCaseForSave, clients);
+        if (!resolvedClient.displayLabel) { toast('❌ القضية دي مش مربوطة بموكل — يرجى تحديد الموكل من بيانات القضية أولاً', true); return; }
         if (!form.receiver?.trim()) { toast('❌ حقل "المستلم من المكتب" مطلوب', true); return; }
         const parsedTotal = parseFloat(form.total);
         if (!form.total || isNaN(parsedTotal)) { toast('❌ حقل "إجمالي الأتعاب" مطلوب', true); return; }
@@ -392,16 +396,8 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             if (!form.payment_date) { toast('❌ حقل "تاريخ الدفعة" مطلوب', true); return; }
         }
         setSaving(true);
-        let clientId: string | null = null;
-        let clientName: string | null = null;
-        if (form.client_name_manual === '__manual__') {
-            clientName = form.client_name_text || null;
-            clientId = null;
-        } else if (form.client_id) {
-            const matchedClient = clients.find((cl) => cl.id === form.client_id);
-            clientName = matchedClient?.full_name || null;
-            clientId = form.client_id;
-        }
+        const clientId: string | null = resolvedClient.clientId || null;
+        const clientName: string | null = resolvedClient.displayLabel || null;
         const payload = {
             case_id: form.case_id,
             case_title: cases.find((c) => c.id === form.case_id)?.title || null,
@@ -447,7 +443,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             // الجديدة مش متوافقة مع فلتر التاب المفتوح، وتسحب معاها المودال.
             setFees((prev) => prev.map((f) => (f.id === editId ? { ...f, ...payloadWithStatus } : f)));
             setSaving(false);
-            setShowForm(false); setForm({case_id:'',client_id:'',client_name_manual:'',client_name_text:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); setEditId(null);
+            setShowForm(false); setForm({case_id:'',client_id:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); setEditId(null);
             fetchGrandSummary();
             fetchStatusCounts();
             return;
@@ -502,7 +498,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             });
         }
         setSaving(false);
-        setShowForm(false); setForm({case_id:'',client_id:'',client_name_manual:'',client_name_text:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); setEditId(null);
+        setShowForm(false); setForm({case_id:'',client_id:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); setEditId(null);
         fetchFees(0, feesFilter, feesSearch, false);
         fetchGrandSummary();
         fetchStatusCounts();
