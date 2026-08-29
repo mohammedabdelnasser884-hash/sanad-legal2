@@ -103,7 +103,29 @@ for (const bp of BREAKPOINTS) {
       // يتفتح (بعكس nav-more-clients اللي بيختفي مع إغلاق قائمة
       // "المزيد" وقت التنقل) — أفضل مؤشر إن الشاشة فعلاً حمّلت.
       await expect(page.getByTestId('new-client-button')).toBeVisible();
-      await expect(page).toHaveScreenshot(`${bp.name}-05-clients.png`, { fullPage: true });
+      // 🔒 FIX (تشخيص لوجز CI — 29 أغسطس 2026): لقطة الموكلين كانت بتقارن
+      // محتوى القايمة نفسه (أسماء/أرقام حقيقية)، مش بس التخطيط. القايمة
+      // مرتبة created_at desc وبتجيب أول PAGE_SIZE بس — وده تست رقم 113
+      // من 116 (workers:1، تسلسلي)، يعني وقت ما بياخد اللقطة، عشرات
+      // موكلين "اختبار E2E" من تستات قبله (clients/validation/fees-linkage/
+      // case-parties...) لسه موجودين فعليًا (التنظيف بيحصل في globalTeardown
+      // بعد كل التستات، مش بعد كل تست لوحده) — فبيملّوا صفحة 1 كاملة
+      // ويستبدلوا الموكلين اللي الـbaseline اتلقطلهم أصلاً. نفس فئة
+      // المشكلة اللي حلها mobile-01-dashboard قبل كده (راجع تعليق
+      // playwright.config.ts، 25 أغسطس) بترفيع maxDiffPixelRatio — هنا
+      // بنطبّق الحل الجذري المؤجل ساعتها فعليًا (mask) بدل ما نمتص الفرق:
+      // بنغطي صفوف/كروت الموكلين الديناميكية (client-card على موبايل/
+      // تابلت، clients-table-row على الديسكتوب) عشان المقارنة تفضل بتتأكد
+      // من التخطيط والهيدر والتابين وزرار الإضافة (اللي كلها ثابتة وبتكشف
+      // كسر شكل حقيقي)، من غير ما تعتمد على محتوى نصي متغير حسب ترتيب
+      // التستات قبلها.
+      const dynamicClientRows = isDesktopBp
+        ? page.getByTestId('clients-table-row')
+        : page.getByTestId('client-card');
+      await expect(page).toHaveScreenshot(`${bp.name}-05-clients.png`, {
+        fullPage: true,
+        mask: [dynamicClientRows],
+      });
 
       await page.getByTestId(navDashboard).click();
     });
