@@ -150,6 +150,52 @@ export function buildFieldDiff(
 }
 
 // ══════════════════════════════════════════════════════════════
+//  buildDeleteSnapshot / buildAddSnapshot
+//  ⚡ NEW (سجل النشاط — تغطية كاملة للحذف/الإضافة، 30 أغسطس 2026):
+//  buildFieldDiff بتقارن قديم بجديد وقت التعديل، لكن وقت الحذف مفيش
+//  "جديد"، ووقت الإضافة مفيش "قديم". الدالتين دول بيستخدموا نفس شكل
+//  FieldDiffEntry (وبالتالي نفس عرض "من ← إلى" الجاهز في ActivitySection)
+//  لكن بمعنى مختلف:
+//    - buildDeleteSnapshot: old = القيمة قبل الحذف، new = "🗑️ محذوف"
+//      (بيحفظ آخر صورة من السجل المهم قبل ما يتشال نهائيًا)
+//    - buildAddSnapshot: old = "—"، new = القيمة اللي اتدخلت
+//      (بيوثّق كل الحقول اللي دخلها المستخدم وقت الإضافة)
+//  زي buildFieldDiff بالظبط، لازم تتنادى بالسجل *قبل* عملية DELETE
+//  الفعلية (أو بعد الإدراج في حالة الإضافة، بنفس الكائن اللي اتبعت للـ insert).
+// ══════════════════════════════════════════════════════════════
+const DELETED_MARK = '🗑️ محذوف';
+
+export function buildDeleteSnapshot(
+    record: Record<string, unknown> | null | undefined,
+    fields: FieldDiffMap
+): FieldDiffEntry[] {
+    const result: FieldDiffEntry[] = [];
+    if (!record) return result;
+    for (const field of Object.keys(fields)) {
+        const { label, format } = fields[field];
+        const text = normalizeForDiff(record[field], format);
+        if (!text) continue; // مفيش قيمة أصلاً — مفيش داعي نسجلها
+        result.push({ field, label, old: text, new: DELETED_MARK });
+    }
+    return result;
+}
+
+export function buildAddSnapshot(
+    record: Record<string, unknown> | null | undefined,
+    fields: FieldDiffMap
+): FieldDiffEntry[] {
+    const result: FieldDiffEntry[] = [];
+    if (!record) return result;
+    for (const field of Object.keys(fields)) {
+        const { label, format } = fields[field];
+        const text = normalizeForDiff(record[field], format);
+        if (!text) continue;
+        result.push({ field, label, old: '—', new: text });
+    }
+    return result;
+}
+
+// ══════════════════════════════════════════════════════════════
 //  logActivity — تسجيل نشاط في activity_log (لوحة الإدارة)
 //  ⚠️ مصممة عشان متعطلش أي عملية أساسية:
 //  - لو المستخدم مش عامل لوجين (نادرًا) → بترجع بصمت
