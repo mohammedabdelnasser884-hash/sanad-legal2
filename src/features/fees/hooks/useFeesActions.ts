@@ -257,25 +257,14 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         const from = page * PAGE_SIZE;
         const to   = from + PAGE_SIZE - 1;
 
-        let q = db.from('case_fees')
-            .select('*', { count: 'exact' })
-            .is('deleted_at', null)
-            .order('created_at', { ascending: false })
-            .range(from, to);
-        // 🔀 FIX (دمج تابي "مؤجلة" و"مفتوحة"): تاب "pending" بيغطي حالتين
-        // فعليتين في الداتابيز (deferred + open) — .in() بدل .eq() واحدة.
-        // تاب "collected" لسه .eq() عادية زي ما كانت.
-        q = status === 'pending' ? q.in('status', ['deferred', 'open']) : q.eq('status', status);
-
-        if (search.trim()) {
-            const s = search.trim();
-            // FIX: فاصلة أو قوس في نص البحث كان بيكسر صياغة فلتر .or()
-            q = q.or([ilikeOrClause('client_name', s), ilikeOrClause('notes', s)].join(','));
-        }
-
         // ⚡ FIX (تحليل شكوى "قسم الأتعاب بيقعد يحمّل" — 9 أغسطس 2026): نفس
         // نمط fetchStatusCounts/fetchGrandSummary فوق — offline يوقف فورًا،
         // أونلاين بطيء يتقفل بعد 8 ثواني، وأي فشل يتسجل بلقب واضح.
+        // 🔄 CHANGED (طلب المستخدم — 29 أغسطس 2026، توسيع بحث الأتعاب): الـguard
+        // بقى بيتعمل هنا فوق (قبل بناء أي استعلام) بدل تحت، لأن بحث اسم/رقم/نوع
+        // الدعوى (تحت) بقى محتاج استعلام شبكة إضافي على جدول `cases` قبل
+        // استعلام `case_fees` الرئيسي — لازم نفس فحص الأوفلاين يغطي الاتنين
+        // مع بعض، مش بس الاستعلام الرئيسي زي قبل.
         const guard = createFetchGuard();
         if (guard.offline) {
             recordError('db_fees', 'offline');
@@ -291,6 +280,54 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             setLoading(false);
             return;
         }
+
+        let q = db.from('case_fees')
+            .select('*', { count: 'exact' })
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .range(from, to);
+        // 🔀 FIX (دمج تابي "مؤجلة" و"مفتوحة"): تاب "pending" بيغطي حالتين
+        // فعليتين في الداتابيز (deferred + open) — .in() بدل .eq() واحدة.
+        // تاب "collected" لسه .eq() عادية زي ما كانت.
+        q = status === 'pending' ? q.in('status', ['deferred', 'open']) : q.eq('status', status);
+
+        if (search.trim()) {
+            const s = search.trim();
+            // FIX: فاصلة أو قوس في نص البحث كان بيكسر صياغة فلتر .or()
+            // 🔄 CHANGED (طلب المستخدم — 29 أغسطس 2026): البحث كان بيغطي اسم
+            // الموكل والملاحظات بس — كتابة اسم الدعوى/رقمها/نوعها كانت بترجع
+            // نتيجة فاضية دايمًا. case_title عمود موجود فعليًا على case_fees
+            // نفسها (بيتسجل وقت الإنشاء، create_fee_with_advance RPC) فبإمكاننا
+            // نضيفه هنا مباشرة من غير أي استعلام إضافي. لكن رقم القضية
+            // (case_number_official) ونوعها (case_type) أعمدة موجودة بس على
+            // جدول `cases` نفسه، مش متكررة (denormalized) على case_fees — فلو
+            // نص البحث ملقاش تطابق مباشر في client_name/notes/case_title،
+            // بندوّر كمان على قضايا مطابقة بالاسم/الرقم/النوع في `cases` ونجيب
+            // كل سجلات الأتعاب المرتبطة بيها (نفس نمط title/case_number_official
+            // المستخدم في useAppData.ts/CaseSearchSelect.tsx، + case_type إضافي
+            // هنا تحديدًا لأن ده المطلوب صراحة).
+            const orParts = [
+                ilikeOrClause('client_name', s),
+                ilikeOrClause('notes', s),
+                ilikeOrClause('case_title', s),
+            ];
+            const { data: matchedCases } = await db.from('cases')
+                .select('id')
+                .is('deleted_at', null)
+                .or([
+                    ilikeOrClause('title', s),
+                    ilikeOrClause('case_number_official', s),
+                    ilikeOrClause('case_type', s),
+                ].join(','))
+                .limit(200)
+                .abortSignal(guard.controller.signal);
+            if (matchedCases && matchedCases.length > 0) {
+                const ids = matchedCases.map((c: { id: string }) => c.id);
+                orParts.push(`case_id.in.(${ids.join(',')})`);
+            }
+            q = q.or(orParts.join(','));
+        }
+
         try {
             const { data, error, count } = await q.abortSignal(guard.controller.signal);
             if (error) throw error;
