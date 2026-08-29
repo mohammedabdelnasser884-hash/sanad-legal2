@@ -80,6 +80,25 @@ vi.mock('../../../shared/lib/dataAccess', () => ({
     }
     return result;
   },
+  // ⚡ FIX (buildAddSnapshot مفقودة من الـmock — 30 أغسطس 2026): handleAddSession
+  // بقى بينادي buildAddSnapshot (سجل النشاط، تغطية الإضافة) — نفس منطق
+  // buildFieldDiff فوق بالظبط، لكن old ثابتة '—' زي النسخة الأصلية.
+  buildAddSnapshot: (
+    record: Record<string, unknown> | null | undefined,
+    fields: Record<string, { label: string; format?: (v: unknown) => string }>,
+  ) => {
+    const result: { field: string; label: string; old: string; new: string }[] = [];
+    if (!record) return result;
+    const norm = (v: unknown, format?: (v: unknown) => string) =>
+      v === null || v === undefined || v === '' ? '' : format ? format(v) : String(v);
+    for (const field of Object.keys(fields)) {
+      const { label, format } = fields[field];
+      const text = norm(record[field], format);
+      if (!text) continue;
+      result.push({ field, label, old: '—', new: text });
+    }
+    return result;
+  },
   recalcNextHearing: async (
     db: {
       from: (table: string) => {
