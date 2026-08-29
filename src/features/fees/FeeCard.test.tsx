@@ -62,7 +62,12 @@ function Harness({ cases, fee = makeFee(), autoOpenPayment = true }: { cases: Ma
     fee, cases, clients, currency: 'ج.م',
     fmt: (n: number | string | null | undefined) => String(n ?? ''),
     fmtDate: (d: string | null | undefined) => d || '',
-    detailsFor: null, setDetailsFor: vi.fn(),
+    // 🔒 FIX (بعد أول تشغيل فعلي في CI، 29 أغسطس 2026): فورم "تسجيل دفعة"
+    // (وفيه pay-client-locked/confirm-add-payment) متداخل جوه مودال
+    // التفاصيل نفسه (createPortal، شرط detailsFor===fee.id) — مش بس شرط
+    // addPaymentFor===fee.id زي ما كان مفترض هنا غلط. الشرطين لازم
+    // يتحققوا مع بعض عشان عناصر فورم الدفعة تظهر أصلًا في الـDOM.
+    detailsFor: autoOpenPayment ? fee.id : null, setDetailsFor: vi.fn(),
     expandedPayments: {}, setExpandedPayments: vi.fn(),
     invoiceLoadingFor: null, setInvoiceLoadingFor: vi.fn(),
     getOrCreateInvoice: vi.fn(),
