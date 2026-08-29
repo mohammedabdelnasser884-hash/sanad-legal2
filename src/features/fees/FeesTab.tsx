@@ -276,6 +276,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     ),
                     React.createElement(Sel,{
                         label:"القضية",value:form.case_id,
+                        required:true,
                         testId:'fee-case-select',
                         onChange:(e: React.ChangeEvent<HTMLSelectElement>) =>{
                             const cid = e.target.value;
@@ -292,6 +293,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         // (راجع تعليق ensureClientsLoaded في تعريف FeesTabProps فوق).
                         React.createElement(ClientSearchSelect,{
                             label:"اسم الموكل",
+                            required:true,
                             testId:'fee-client-select',
                             selectedLabel: (() => {
                                 const matched = clients.find((cl) => cl.id === form.client_id);
@@ -316,8 +318,8 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                             autoFocus:true
                         })
                     ),
-                    React.createElement(Inp,{label:"المستلم من المكتب",value:form.receiver,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,receiver:e.target.value})),placeholder:"اسم المحامي أو الموظف المستلم"}),
-                    React.createElement(Inp,{label:"إجمالي الأتعاب",type:"number",value:form.total,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,total:e.target.value})),placeholder:"0",'data-testid':'fee-total'}),
+                    React.createElement(Inp,{label:"المستلم من المكتب",required:true,value:form.receiver,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,receiver:e.target.value})),placeholder:"اسم المحامي أو الموظف المستلم"}),
+                    React.createElement(Inp,{label:"إجمالي الأتعاب",required:true,type:"number",value:form.total,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,total:e.target.value})),placeholder:"0",'data-testid':'fee-total'}),
                     // 🔴 FIX (29 أغسطس 2026 — باج #2): حقل "المبلغ المدفوع" في فورم
                     // التعديل كان بيقبل كتابة لكن handleSave (مسار editId) كان
                     // بيتجاهله تمامًا بصمت — يبان "✅ تم تحديث الأتعاب" بينما
@@ -329,6 +331,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     // مقدّمة أولى عبر create_fee_with_advance).
                     React.createElement(Inp,{
                         label: editId ? "المبلغ المدفوع (للتعديل، استخدم زر «تسجيل دفعة»)" : "المبلغ المدفوع",
+                        required: !editId,
                         type:"number",value:form.paid,
                         disabled: !!editId,
                         onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,paid:e.target.value})),
@@ -336,7 +339,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         className: editId ? "w-full p-3 text-xs rounded-xl border border-white/10 bg-white/5 text-slate-500 cursor-not-allowed" : undefined
                     }),
                     React.createElement('div',{className:"space-y-1"},
-                        React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"تاريخ الدفعة"),
+                        React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"تاريخ الدفعة", !editId && React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
                         React.createElement('input',{
                             type:"date",value:form.payment_date,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,payment_date:e.target.value})),
                             className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-black/30 text-white",
