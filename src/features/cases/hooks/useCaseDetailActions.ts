@@ -3,7 +3,7 @@ import { db } from '../../../supabaseClient';
 import { toast } from '../../../shared/lib/notifications';
 import { resolveStorageUrl } from '../../../shared/lib/storage';
 import { escapeHtml } from '../../../shared/lib/sanitize';
-import { safeUpdate, logActivity } from '../../../shared/lib/dataAccess';
+import { safeUpdate, logActivity, buildFieldDiff, buildDeleteSnapshot, buildAddSnapshot } from '../../../shared/lib/dataAccess';
 import { PDF_FONT_FAMILY, PDF_FONT_LINK } from '../../../shared/lib/pdf';
 import { loadOfficeSetting } from '../../../constants';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
@@ -518,6 +518,7 @@ ${PDF_FONT_LINK}
       case_name: caseData.title || null, case_type: caseData.type || null,
       client_name: client?.full_name || null,
       userName: profile?.full_name || null,
+      changes: buildAddSnapshot({ content: noteText.trim() }, { content: { label: 'نص الملاحظة' } }),
     });
     setNoteText('');
     setShowAddNote(false);
@@ -533,11 +534,18 @@ ${PDF_FONT_LINK}
     }
     if (error) { toast('❌ فشل حذف الملاحظة، حاول مرة أخرى', true); return; }
     toast('🗑 تم حذف الملاحظة');
+    // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): كان بيسجل عنوان
+    // القضية بس، ونص الملاحظة اللي اتحذفت كان بيضيع تمامًا. دلوقتي بنحفظ
+    // آخر نسخة من النص في عمود changes قبل ما يتشال نهائيًا.
+    const deletedNote = notes.find((n) => n.id === noteId);
     logActivity(db, 'حذف ملاحظة', {
       entity_type: 'note', entity_id: noteId, details: caseData.title || null,
       case_name: caseData.title || null, case_type: caseData.type || null,
       client_name: client?.full_name || null,
       userName: profile?.full_name || null,
+      changes: buildDeleteSnapshot(deletedNote as unknown as Record<string, unknown>, {
+        content: { label: 'نص الملاحظة' },
+      }),
     });
     fetchSessions();
   };
@@ -558,11 +566,18 @@ ${PDF_FONT_LINK}
     if (conflict) { toast('⚠️ هذه الملاحظة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
     if (error) { toast('❌ فشل تعديل الملاحظة — تحقق من الاتصال وأعد المحاولة', true); return; }
     toast('✅ تم تعديل الملاحظة');
+    // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): بيسجل دلوقتي الفرق
+    // الفعلي بين النص القديم والجديد بدل رسالة عامة "تم التعديل".
     logActivity(db, 'تعديل ملاحظة', {
       entity_type: 'note', entity_id: noteId, details: caseData.title || null,
       case_name: caseData.title || null, case_type: caseData.type || null,
       client_name: client?.full_name || null,
       userName: profile?.full_name || null,
+      changes: buildFieldDiff(
+        note as unknown as Record<string, unknown>,
+        { content },
+        { content: { label: 'نص الملاحظة' } }
+      ),
     });
     fetchSessions();
   };
@@ -577,11 +592,18 @@ ${PDF_FONT_LINK}
     if (conflict) { toast('⚠️ هذه القضية عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
     if (!success) { toast('❌ فشل تغيير الحالة', true); return; }
     toast('✅ تم تحديث حالة القضية');
+    // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): كان details بيسجل
+    // الحالة الجديدة بس، دلوقتي بيسجل "من ← إلى" زي باقي التعديلات.
     logActivity(db, 'تغيير حالة قضية', {
       entity_type: 'case', entity_id: caseData.id, details: `${caseData.title} — ${newStatus}`,
       case_name: caseData.title || null, case_type: caseData.type || null,
       client_name: client?.full_name || null,
       userName: profile?.full_name || null,
+      changes: buildFieldDiff(
+        { status: caseData.status },
+        { status: newStatus },
+        { status: { label: 'الحالة' } }
+      ),
     });
     onUpdate?.(newStatus);
   };
