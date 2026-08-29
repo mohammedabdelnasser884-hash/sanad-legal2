@@ -133,10 +133,14 @@ function dbWriteMock(): ReturnType<typeof vi.fn> {
 // من غير override صريح لـ cr_number ومحتاج يعدّي الفاليديشن ده لازم يلاقي
 // قيمة صالحة بشكل افتراضي. التست المخصص لفحص الفاليديشن نفسه بيعمل
 // override صريح بـ cr_number: '' (شوف describe('handleSaveClient — فاليديشن التوكيل') تحت).
+// ⚡ FIX (طلب المستخدم — 30 أغسطس 2026): address الافتراضي بقى بقيمة
+// حقيقية بدل فاضي — نفس سبب cr_number فوق بالظبط: العنوان بقى بوابة
+// إجبارية في handleSaveClient. التست المخصص لفحص الفاليديشن نفسه بيعمل
+// override صريح بـ address: '' (شوف describe('handleSaveClient — فاليديشن العنوان') تحت).
 function makeForm(overrides: Partial<ClientFormData> = {}): ClientFormData {
   return {
     full_name: 'أحمد محمد علي', type: 'individual', phone: '', phone2: '', email: '',
-    address: '', notes: '', national_id: '', cr_number: '12345/أب/2026/مكتب الشهر العقاري', kin_name: '', kin_phone: '',
+    address: 'القاهرة، مدينة نصر', notes: '', national_id: '', cr_number: '12345/أب/2026/مكتب الشهر العقاري', kin_name: '', kin_phone: '',
     ...overrides,
   };
 }
@@ -224,6 +228,30 @@ describe('useClientActions', () => {
       await handleSaveClient(makeForm({ cr_number: '12345/أب//مكتب الشهر العقاري' }), null, null);
 
       expect(toast).toHaveBeenCalledWith('⚠️ بيانات التوكيل إجبارية — يرجى إدخال رقم التوكيل وحرفه وسنته على الأقل', true);
+      expect(dbWriteMock()).not.toHaveBeenCalled();
+    });
+  });
+
+  // ⚡ NEW (طلب المستخدم — 30 أغسطس 2026): تغطية بوابة "العنوان إجباري"
+  // الجديدة في handleSaveClient (راجع التعليق فوق فحص form.address هناك).
+  describe('handleSaveClient — فاليديشن العنوان', () => {
+    it('عنوان فاضي → توست خطأ "حقل مطلوب"، مفيش أي __dbWrite', async () => {
+      const params = makeParams();
+      const { handleSaveClient } = useClientActions(params);
+
+      await handleSaveClient(makeForm({ address: '' }), null, null);
+
+      expect(toast).toHaveBeenCalledWith('❌ حقل "العنوان" مطلوب', true);
+      expect(dbWriteMock()).not.toHaveBeenCalled();
+    });
+
+    it('عنوان مسافات بس → نفس رفض الفاليديشن', async () => {
+      const params = makeParams();
+      const { handleSaveClient } = useClientActions(params);
+
+      await handleSaveClient(makeForm({ address: '   ' }), null, null);
+
+      expect(toast).toHaveBeenCalledWith('❌ حقل "العنوان" مطلوب', true);
       expect(dbWriteMock()).not.toHaveBeenCalled();
     });
   });
