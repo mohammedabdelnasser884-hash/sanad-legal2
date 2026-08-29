@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from '../../shared/lib/notifications';
 import { escapeTelegramHtml, onlyDigits, normalizeArabicDigits } from '../../shared/lib/sanitize';
-import { logActivity } from '../../shared/lib/dataAccess';
+import { logActivity, buildAddSnapshot } from '../../shared/lib/dataAccess';
 import { db } from '../../supabaseClient';
 import { showErrorToast } from '../../shared/lib/errorReporting';
 import { Inp } from '@/shared/ui/Inp';
@@ -501,6 +501,10 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
                 logActivity(db, 'إضافة جلسة مستقلة', {
                     entity_type: 'session',
                     details: `${form.session_date || ''}${standaloneSessionPartsLabel ? ' — ' + standaloneSessionPartsLabel : ''}`.trim() || null,
+                    changes: buildAddSnapshot(form as unknown as Record<string, unknown>, {
+                        session_date: { label: 'تاريخ الجلسة' },
+                        court: { label: 'المحكمة' },
+                    }),
                 });
             } catch { /* activity log اختياري */ }
 
