@@ -1,7 +1,10 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { I } from '../../constants';
-import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
+// ⚡ NEW (طلب المستخدم — 29 أغسطس 2026): useModalPresentation مبقاش
+// مستخدم هنا — مودال تفاصيل الأتعاب بقى بيفتح في نص الشاشة دايمًا (كلاس
+// ثابت، راجع التعليق جنب fee-detail-modal تحت) بدل الاعتماد على الـhook
+// المشترك لتحديد الشكل حسب نوع الشاشة.
 import type { ClientRow, CaseFeeRow, FeePaymentRow, InvoiceRow, PaymentsByFeeId } from '../../types';
 import type { MappedCase } from '../../hooks/useAppData';
 import type { InvoiceModalState, ConfirmDeletePayState, FeeFormState } from './hooks/useFeesActions';
@@ -79,9 +82,11 @@ function FeeCard({
   const isFullyPaid = !isOpenNoAmount && rem <= 0;
   const feePayments = payments[fee.id]||[];
   const showPays = expandedPayments[fee.id];
-  // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
-  // المُطبَّق في NewCaseModal.tsx.
-  const modalPresentation = useModalPresentation();
+  // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب، مُزال 29 أغسطس 2026):
+  // كانت هنا modalPresentation = useModalPresentation() — اتشالت لأن
+  // المودال بقى بيفتح في نص الشاشة دايمًا بكلاس ثابت (راجع التعليق جنب
+  // fee-detail-modal تحت)، مش محتاج الـhook يحدد الشكل ديناميكيًا حسب
+  // نوع الشاشة زي قبل.
 
   // ⚡ NEW (طلب المستخدم — 29 أغسطس 2026): اسم الموكل في فورم "تسجيل دفعة"
   // بقى بياخد تلقائيًا من قضية الأتعاب نفسها (linkedCase فوق) — نفس قاعدة
@@ -118,13 +123,20 @@ function FeeCard({
                             React.createElement('span',{className:`text-[9px] font-black px-2 py-1 rounded-full shrink-0 ${isOpenNoAmount?'bg-rose-500/15 text-rose-400':isFullyPaid?'bg-emerald-500/15 text-emerald-400':'bg-amber-500/15 text-amber-400'}`}, isOpenNoAmount ? '⚠️ مفتوحة' : isFullyPaid ? '✅ مسدد' : pct+'%')
                         ),
                         // ─ مودال التفاصيل الكاملة ─
+                        // ⚡ NEW (طلب المستخدم — 29 أغسطس 2026): الكارت ده تحديدًا (تفاصيل
+                        // الأتعاب) بقى بيفتح في نص الشاشة دايمًا (زي الديسكتوب بالظبط) حتى
+                        // على الموبايل، بدل نمط الـ"Bottom Sheet" المعتاد (items-end) المطبّق
+                        // على باقي مودالات المشروع عبر useModalPresentation — قرار مقصود
+                        // لهذا المودال بس (مش تعديل على الـhook المشترك، عشان منأثرش على
+                        // باقي الـ30+ مودال التانية في المشروع اللي لسه محتاجة سلوك
+                        // الـBottom Sheet العادي على الموبايل).
                         detailsFor===fee.id && createPortal(React.createElement('div',{
-                            className:`fixed inset-0 z-[70] flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/80 backdrop-blur-sm`,
+                            className:"fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm",
                             'data-testid':'fee-detail-modal',
                             onClick:(e: React.MouseEvent<HTMLDivElement>) => { if(e.target===e.currentTarget) setDetailsFor(null); }
                         },
                         React.createElement('div',{
-                            className:`bg-premium-card w-full max-w-lg ${modalPresentation.panelShapeClassName} shadow-2xl overflow-y-auto no-scrollbar max-h-[90vh] ${modalPresentation.panelAnimationClassName}`,
+                            className:"bg-premium-card w-full max-w-lg mx-4 rounded-3xl border border-white/10 shadow-2xl overflow-y-auto no-scrollbar max-h-[90vh] fade-in",
                             onClick:(e: React.MouseEvent<HTMLDivElement>) =>e.stopPropagation()
                         },
                                 React.createElement('div',{className:"px-4 pt-4 pb-2"},
@@ -152,18 +164,23 @@ function FeeCard({
                                 )
                             ),
                             // الأرقام
+                            // ⚡ NEW (طلب المستخدم — 29 أغسطس 2026): الأرقام دي (الإجمالي/
+                            // المدفوع/المتبقي) بقت بخط أكبر (text-[10px] → text-base) —
+                            // أهم أرقام في الكارت وكانت صغيرة جدًا. زوّدنا الـpadding شوية
+                            // (p-2 → p-2.5) والليبل تحتها (text-[8px] → text-[9px]) عشان
+                            // يفضلوا متوازنين بصريًا مع الرقم الأكبر فوقهم.
                             React.createElement('div',{className:"grid grid-cols-3 gap-2 text-center"},
-                                React.createElement('div',{className:"bg-white/3 rounded-xl p-2"},
-                                    React.createElement('p',{className:"text-[10px] font-black text-white"},fmt(fee.total_fees)),
-                                    React.createElement('p',{className:"text-[8px] text-slate-500"},"الإجمالي")
+                                React.createElement('div',{className:"bg-white/3 rounded-xl p-2.5"},
+                                    React.createElement('p',{className:"text-base font-black text-white"},fmt(fee.total_fees)),
+                                    React.createElement('p',{className:"text-[9px] text-slate-500 mt-0.5"},"الإجمالي")
                                 ),
-                                React.createElement('div',{className:"bg-emerald-500/8 rounded-xl p-2"},
-                                    React.createElement('p',{className:"text-[10px] font-black text-emerald-400"},fmt(fee.paid_fees)),
-                                    React.createElement('p',{className:"text-[8px] text-slate-500"},"المدفوع")
+                                React.createElement('div',{className:"bg-emerald-500/8 rounded-xl p-2.5"},
+                                    React.createElement('p',{className:"text-base font-black text-emerald-400"},fmt(fee.paid_fees)),
+                                    React.createElement('p',{className:"text-[9px] text-slate-500 mt-0.5"},"المدفوع")
                                 ),
-                                React.createElement('div',{className:"bg-rose-500/8 rounded-xl p-2"},
-                                    React.createElement('p',{'data-testid':'fee-remaining-value',className:`text-[10px] font-black ${rem>0?'text-rose-400':'text-emerald-400'}`},fmt(rem)),
-                                    React.createElement('p',{className:"text-[8px] text-slate-500"},"المتبقي")
+                                React.createElement('div',{className:"bg-rose-500/8 rounded-xl p-2.5"},
+                                    React.createElement('p',{'data-testid':'fee-remaining-value',className:`text-base font-black ${rem>0?'text-rose-400':'text-emerald-400'}`},fmt(rem)),
+                                    React.createElement('p',{className:"text-[9px] text-slate-500 mt-0.5"},"المتبقي")
                                 )
                             ),
                             // ملاحظات القضية
@@ -194,7 +211,7 @@ function FeeCard({
                                     feePayments.map((p: FeePaymentRow)=>
                                         React.createElement('div',{key:p.id,'data-testid':'payment-row',className:"flex items-center justify-between bg-white/3 rounded-xl px-3 py-2 gap-2"},
                                             React.createElement('div',{className:"flex-1"},
-                                                React.createElement('p',{'data-testid':'payment-row-amount',className:"text-[10px] font-black text-emerald-400"},fmt(p.amount)+" "+currency),
+                                                React.createElement('p',{'data-testid':'payment-row-amount',className:"text-sm font-black text-emerald-400"},fmt(p.amount)+" "+currency),
                                                 React.createElement('p',{className:"text-[9px] text-slate-500"},fmtDate(p.payment_date)),
                                                 p.received_by && React.createElement('p',{className:"text-[9px] text-blue-400 mt-0.5"},"👤 استلم: "+p.received_by),
                                                 p.notes && React.createElement('p',{className:"text-[9px] text-slate-400 mt-0.5"},"📝 "+p.notes)
