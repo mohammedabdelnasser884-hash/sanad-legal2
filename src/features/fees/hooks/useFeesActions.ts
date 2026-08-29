@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from '../../../shared/lib/notifications';
-import { safeUpdate, logActivity, buildFieldDiff, type FieldDiffMap } from '../../../shared/lib/dataAccess';
+import { safeUpdate, logActivity, buildFieldDiff, buildDeleteSnapshot, buildAddSnapshot, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import { ilikeOrClause } from '../../../shared/lib/sanitize';
 import { COUNTRY_CONFIGS } from '../../../constants';
 import { db } from '../../../supabaseClient';
@@ -595,11 +595,23 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             // بيرجع inserted كـ `{}` بدل الصف الحقيقي. بنعمل cast هنا للشكل
             // المعروف فعليًا (RPC بترجع صف واحد فيه id).
             const insertedRow = inserted as { id?: string } | null;
+            // ⚡ FIX (طلب المستخدم — 30 أغسطس 2026): كان الـ changes بيسجل
+            // المبلغ الإجمالي والمستلم بس. بنضيف هنا القضية والموكل (متاحين
+            // أصلاً في payload) والمقدم المدفوع (initialPaidAmount، مش جزء من
+            // payload لإنه بيتبعت لـ RPC بشكل منفصل) عشان سجل النشاط يوثّق
+            // كل حاجة اتدخلت وقت إضافة الأتعاب مش المبلغ الإجمالي بس.
             logActivity(db, 'إضافة أتعاب', {
                 entity_type: 'fee', entity_id: insertedRow?.id, details: feeAddDetails,
                 client_name: clientName || null,
                 case_name: cases.find((c) => c.id === form.case_id)?.title || null,
                 case_type: cases.find((c) => c.id === form.case_id)?.type || null,
+                changes: buildAddSnapshot({ ...payload, advance_amount: initialPaidAmount } as unknown as Record<string, unknown>, {
+                    case_title: { label: 'القضية' },
+                    client_name: { label: 'الموكل' },
+                    total_fees: { label: 'إجمالي الأتعاب', format: (v) => fmt(v as number) },
+                    advance_amount: { label: 'دفعة مقدمة', format: (v) => fmt(v as number) },
+                    receiver: { label: 'المستلم' },
+                }),
             });
         }
         setSaving(false);
@@ -705,6 +717,9 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             toast('⚠️ حذف الدفعة يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
             return;
         }
+        // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): بنلقط مبلغ
+        // وتاريخ الدفعة قبل حذفها فعليًا من الداتابيز.
+        const deletedPayment = (payments[fee.id] || []).find((p) => p.id === payId);
         const { error: deleteError } = await window.__dbWrite({ type: 'DELETE', table: 'fee_payments', id: payId });
         if(deleteError){ toast('❌ فشل حذف الدفعة، يرجى المحاولة مرة أخرى', true); return; }
         const {data:allPays} = await db.from('fee_payments').select('amount').eq('fee_id',fee.id);
@@ -722,6 +737,10 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             client_name: fee.client_name || null,
             case_name: cases.find((c) => c.id === fee.case_id)?.title || null,
             case_type: cases.find((c) => c.id === fee.case_id)?.type || null,
+            changes: buildDeleteSnapshot(deletedPayment as unknown as Record<string, unknown>, {
+                amount: { label: 'المبلغ', format: (v) => fmt(v as number) },
+                payment_date: { label: 'تاريخ الدفعة', format: (v) => fmtDate(v as string) },
+            }),
         });
         // 🔒 FIX (26 يوليو 2026 — نفس مشكلة handleAddPayment): تحديث محلي
         // للسجل بدل fetchFees الكاملة اللي ممكن تشيله من fees[] لو الفلتر
@@ -749,6 +768,10 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             client_name: targetFee?.client_name || null,
             case_name: cases.find((c) => c.id === targetFee?.case_id)?.title || null,
             case_type: cases.find((c) => c.id === targetFee?.case_id)?.type || null,
+            changes: buildDeleteSnapshot(targetFee as unknown as Record<string, unknown>, {
+                total_fees: { label: 'إجمالي الأتعاب', format: (v) => fmt(v as number) },
+                paid_fees: { label: 'المدفوع', format: (v) => fmt(v as number) },
+            }),
         });
         refetchFees();
         fetchGrandSummary();
