@@ -125,7 +125,8 @@ vi.mock('../../../shared/lib/dataAccess', async (importOriginal) => {
   };
 });
 
-import { useFeesActions } from './useFeesActions';
+import { useFeesActions, resolveCaseFeeClient } from './useFeesActions';
+import { formatPartySideLine } from '../../../shared/parties/partyDisplay';
 
 const cases: MappedCase[] = [{
   id: 'case-1', number: '1', title: 'قضية عمالية', court: '', type: 'عمالي',
@@ -154,6 +155,58 @@ async function renderFeesHook() {
   await waitFor(() => expect(view.result.current.loading).toBe(false));
   return view;
 }
+
+// ══════════════════════════════════════════════════════════════════
+// resolveCaseFeeClient — 3 حالات (المرحلة 2 من خطة تنفيذ "قفل حقل
+// الموكل" — 29 أغسطس 2026). دالة صرفة (pure) — مفيش داعي لأي mock db
+// أو renderFeesHook، بنستدعيها مباشرة بمدخلات مبنية يدويًا.
+// ══════════════════════════════════════════════════════════════════
+describe('resolveCaseFeeClient', () => {
+  it('قضية بموكل حقيقي واحد مرتبط (client_id مطابق) → clientId + displayLabel باسم الموكل', () => {
+    const lc: MappedCase = {
+      ...cases[0],
+      id: 'case-single', client_id: 'client-1',
+      parties: [{ side: 'plaintiff', name: 'أحمد محمد', capacity: 'مدعي', client_id: 'client-1' }],
+    };
+    const result = resolveCaseFeeClient(lc, clients);
+    expect(result).toEqual({ clientId: 'client-1', manualText: '', displayLabel: 'أحمد محمد' });
+  });
+
+  it('قضية فيها أكتر من شخص مسمّى على نفس جهة الموكل → manualText بالمسمى الجامع، clientId فاضي', () => {
+    const lc: MappedCase = {
+      ...cases[0],
+      id: 'case-multi', client_id: 'client-2',
+      plaintiff_legal_title: 'الورثة الشرعيون',
+      parties: [
+        { side: 'plaintiff', name: 'وريث أول', capacity: 'مدعي', client_id: 'client-2' },
+        { side: 'plaintiff', name: 'وريث تاني', capacity: 'مدعي', client_id: null },
+      ],
+    };
+    const expectedJoint = formatPartySideLine(
+      [{ name: 'وريث أول', capacity: 'مدعي' }, { name: 'وريث تاني', capacity: 'مدعي' }],
+      'الورثة الشرعيون'
+    );
+    const result = resolveCaseFeeClient(lc, clients);
+    expect(result.clientId).toBe('');
+    expect(result.manualText).toBe(expectedJoint);
+    expect(result.displayLabel).toBe(expectedJoint);
+  });
+
+  it('قضية من غير أي موكل مرتبط (client_id فاضي) → EMPTY_RESOLVED_CLIENT', () => {
+    const lc: MappedCase = {
+      ...cases[0],
+      id: 'case-no-client', client_id: null,
+      parties: [{ side: 'plaintiff', name: 'موكل بدون ربط', capacity: 'مدعي', client_id: null }],
+    };
+    const result = resolveCaseFeeClient(lc, clients);
+    expect(result).toEqual({ clientId: '', manualText: '', displayLabel: '' });
+  });
+
+  it('lc غير معرّف (undefined) → EMPTY_RESOLVED_CLIENT من غير أي throw', () => {
+    const result = resolveCaseFeeClient(undefined, clients);
+    expect(result).toEqual({ clientId: '', manualText: '', displayLabel: '' });
+  });
+});
 
 describe('useFeesActions', () => {
   beforeEach(() => {
