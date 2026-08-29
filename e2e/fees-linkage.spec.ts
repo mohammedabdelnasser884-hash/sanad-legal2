@@ -71,6 +71,15 @@ test('٢) فك ربط الموكل بعد إنشاء سجل أتعاب عليه 
   // بعد فك الربط بنجاح، زرار "🔓" بيختفي (الطرف مبقاش عنده client_id).
   await expect(unlinkTrigger).toHaveCount(0);
 
+  // 🔴 CHANGED (إصلاح CI بعد تشغيل فعلي — 29 أغسطس 2026): كان ناقص هنا
+  // إغلاق case-detail-view (مودال تفاصيل القضية، fixed inset-0 z-50) قبل
+  // محاولة الرجوع لتبويب الأتعاب — التشغيل الفعلي وقف على
+  // "desktop-nav-fees ... subtree intercepts pointer events" لأن المودال
+  // فضل فاتح فوق الشريط الجانبي بالكامل ومنع أي كليك عليه. case-detail-close
+  // (CaseDetailView.tsx) هو زرار الإغلاق الصريح.
+  await page.getByTestId('case-detail-close').click();
+  await page.getByTestId('case-detail-view').waitFor({ state: 'hidden', timeout: 10_000 });
+
   // 3) الرجوع لتبويب الأتعاب — محاولة فتح تعديل السجل الموجود بالفعل:
   // الفورم لازم يبقى مقفول ومعطّل بنفس منطق فورم الإضافة تمامًا، رغم إن
   // السجل نفسه كان اتعمل صح وقت ما القضية كانت مربوطة بموكل.
