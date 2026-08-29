@@ -120,7 +120,7 @@ function buildNearestSessionMap(sessionsData: { case_id: string | null; session_
 // نفس نمط useSessionsPartiesMap (B.1) بس هنا بشكل دالة عادية (مش hook)
 // لأنها بتتنادى جوه useCallback موجودة أصلًا (fetchCases/searchCases)،
 // مش من جوه component body.
-async function fetchPartiesMapByCaseIds(caseIds: string[]): Promise<{ [k: string]: PartyDisplayRow[] }> {
+export async function fetchPartiesMapByCaseIds(caseIds: string[]): Promise<{ [k: string]: PartyDisplayRow[] }> {
     if (caseIds.length === 0) return {};
     const { data, error } = await db
         .from('case_parties')
@@ -143,7 +143,7 @@ async function fetchPartiesMapByCaseIds(caseIds: string[]): Promise<{ [k: string
 // الـ .map() المكرر في fetchCases/searchCases بالحرف — مستخرج هنا كدالة
 // مشتركة عشان ensureCasesLoaded (تحت) يقدر يبني MappedCase بنفس الشكل
 // بالظبط لأي قضية بتتجاب بالـid مباشرة (برّه الصفحة/الفلتر الحالي).
-function mapCaseRow(
+export function mapCaseRow(
     r: CaseRow,
     sessionsMap: { [k: string]: string },
     partiesMap: { [k: string]: PartyDisplayRow[] },
