@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from '../../shared/lib/notifications';
 import { validateUploadFile, resolveStorageUrl } from '../../shared/lib/storage';
-import { logActivity } from '../../shared/lib/dataAccess';
+import { logActivity, buildAddSnapshot, buildDeleteSnapshot } from '../../shared/lib/dataAccess';
 import { ilikeOrClause } from '../../shared/lib/sanitize';
 import { Inp } from '@/shared/ui/Inp';
 import { Sel } from '@/shared/ui/Sel';
@@ -241,7 +241,18 @@ function ArchiveTab({cases, clients, nav}: ArchiveTabProps){
             return;
         }
         toast('✅ تم رفع المستند وإضافته للأرشيف');
-        logActivity(db, 'رفع مستند (أرشيف)', { entity_type: 'document', details: docLabel.trim() || pendingFile.name });
+        logActivity(db, 'رفع مستند (أرشيف)', {
+            entity_type: 'document', details: docLabel.trim() || pendingFile.name,
+            changes: buildAddSnapshot({
+                file_name: docLabel.trim() || pendingFile.name,
+                category: docCategory,
+                original_name: pendingFile.name,
+            }, {
+                file_name: { label: 'اسم الملف' },
+                category: { label: 'التصنيف' },
+                original_name: { label: 'الاسم الأصلي' },
+            }),
+        });
         setShowForm(false); setPendingFile(null); setDocLabel(''); setDocCaseId('');
         if (fileInputRef.current) fileInputRef.current.value = '';
         setFilterCat(docCategory);
@@ -256,7 +267,14 @@ function ArchiveTab({cases, clients, nav}: ArchiveTabProps){
         setDeletingId(null);
         if (dbErr) { toast('❌ فشل تحديث قاعدة البيانات', true); return; }
         toast('🗑 تم حذف المستند من الأرشيف');
-        logActivity(db, 'حذف مستند (أرشيف)', { entity_type: 'document', entity_id: doc.id, details: doc.file_name || null });
+        logActivity(db, 'حذف مستند (أرشيف)', {
+            entity_type: 'document', entity_id: doc.id, details: doc.file_name || null,
+            changes: buildDeleteSnapshot(doc as unknown as Record<string, unknown>, {
+                file_name: { label: 'اسم الملف' },
+                category: { label: 'التصنيف' },
+                original_name: { label: 'الاسم الأصلي' },
+            }),
+        });
         setDocs((prev: CaseDocumentRow[]) => prev.filter((d: CaseDocumentRow) => d.id !== doc.id));
         setDocsTotal((prev: number) => prev - 1);
     };
