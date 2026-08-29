@@ -71,7 +71,10 @@ vi.mock('../../../shared/lib/storage', async (importOriginal) => {
 });
 
 const logActivity = vi.fn();
-vi.mock('../../../shared/lib/dataAccess', () => ({ logActivity: (...a: unknown[]) => logActivity(...a) }));
+vi.mock('../../../shared/lib/dataAccess', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/lib/dataAccess')>();
+  return { ...actual, logActivity: (...a: unknown[]) => logActivity(...a) };
+});
 
 const getCurrentTenantId = vi.fn();
 vi.mock('../../../constants', () => ({ getCurrentTenantId: () => getCurrentTenantId() }));
