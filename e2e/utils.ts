@@ -128,7 +128,25 @@ export async function logout(page: Page): Promise<void> {
 // الأولى في كل جهة عندها data-testid بالشكل new-case-<side>-0-<field>
 // (star/name/capacity/national-id)، ولازم تفعيل ⭐ الأول عشان الرقم
 // القومي يبقى مطلوب/يتفحص، ومطابق لفاليديشن casePartiesValidation.ts.
-export async function createCase(page: Page, title: string): Promise<void> {
+//
+// 🆕 (المرحلة 6 — خطة "قفل حقل الموكل في قسم الأتعاب"، 29 أغسطس 2026):
+// بيانات الطرف المدعي (⭐) كانت دايمًا بتتكتب يدويًا هنا — is_client=true
+// (case_parties)، لكن party.client_id فاضل null لأنه مفيش ربط فعلي
+// بموكل حقيقي من جدول clients (راجع linkClientToParty في
+// NewCaseModal.tsx: client_id بيتحط بس لما المستخدم يختار من
+// ClientSearchSelect، مش بمجرد الضغط على ⭐). وبما إن cases.client_id
+// نفسه = primaryPlaintiff?.client_id (راجع NewCaseModal.tsx سطر 398)،
+// كل القضايا الناتجة عن الهيلبر ده كانت بترجع EMPTY_RESOLVED_CLIENT من
+// resolveCaseFeeClient — أي تست أتعاب/دفعات مبني عليها كان هيفشل من أول
+// خطوة تحت القرار الجديد (قفل حقل الموكل في FeesTab.tsx/FeeCard.tsx).
+// باراميتر opts.linkClientName اختياري تمامًا (افتراضيًا undefined) —
+// أي نداء موجود من الـ44 مكان التاني في المشروع بيفضل شغال زي ما هو
+// بالظبط (بيانات يدوية، بلا ربط)؛ بس لو اتبعت، بندوّر عن الموكل ده في
+// ClientSearchSelect (سلوت "ربط بموكل من النظام" اللي بيظهر بس فوق طرف
+// عليه ⭐، راجع renderPartyExtra في NewCaseModal.tsx) ونختاره، فيتملى
+// الاسم/الرقم القومي/العنوان تلقائيًا من بيانات الموكل الحقيقية
+// ويترتبط party.client_id (وبالتبعية cases.client_id) بيه فعليًا.
+export async function createCase(page: Page, title: string, opts?: { linkClientName?: string }): Promise<void> {
   // 🔒 FIX (تحليل لوج [DEBUG page:framenavigated] — 17 أغسطس 2026، تشغيلة
   // رابعة): السبب الجذري الحقيقي لفشل permissions-matrix.spec.ts اتلقى —
   // مش login/loginAs خالص. التريس أثبت فجوة 117 ثانية كاملة (كل ميزانية
@@ -178,9 +196,25 @@ export async function createCase(page: Page, title: string): Promise<void> {
   // للجهة التانية أو نضغط حفظ القضية.
   await page.getByTestId('party-side-card-plaintiff').click();
   await page.getByTestId('new-case-plaintiff-0-star').click();
-  await page.getByTestId('new-case-plaintiff-0-name').fill('موكل اختبار E2E');
-  await page.getByTestId('new-case-plaintiff-0-capacity').fill('مدعي');
-  await page.getByTestId('new-case-plaintiff-0-national-id').fill('12345678901234');
+  if (opts?.linkClientName) {
+    // 🆕 (المرحلة 6): سلوت "ربط بموكل من النظام" بيظهر بس دلوقتي (بعد ⭐)
+    // — data-testid ديناميكي بالشكل new-case-party-client-search-<party.id>
+    // (party.id مُولّد داخليًا من usePartyFields.ts، مش متوقّع مقدمًا)،
+    // فبندوّر بـattribute-prefix selector بدل قيمة ثابتة. طرف واحد بس
+    // عليه ⭐ في اللحظة دي (plaintiff-0)، فمضمون عنصر واحد ظاهر بس.
+    const clientSearch = page.locator('[data-testid^="new-case-party-client-search-"]');
+    await clientSearch.fill(opts.linkClientName);
+    // نفس الديباونس المستخدم فعليًا جوه ClientSearchSelect.tsx (300ms).
+    await page.getByRole('button', { name: new RegExp(opts.linkClientName) }).first().click();
+    // linkClientToParty بيملى الاسم/الرقم القومي/العنوان تلقائيًا من
+    // بيانات الموكل الحقيقية — الحقل الوحيد الباقي يدوي هو "صفته" (مش
+    // جزء من بيانات الموكل نفسه، خاص بالقضية دي).
+    await page.getByTestId('new-case-plaintiff-0-capacity').fill('مدعي');
+  } else {
+    await page.getByTestId('new-case-plaintiff-0-name').fill('موكل اختبار E2E');
+    await page.getByTestId('new-case-plaintiff-0-capacity').fill('مدعي');
+    await page.getByTestId('new-case-plaintiff-0-national-id').fill('12345678901234');
+  }
   await page.getByTestId('new-case-plaintiff-subform-save').click();
   await page.getByTestId('party-side-card-defendant').click();
   await page.getByTestId('new-case-defendant-0-name').fill('خصم اختبار E2E');
@@ -202,8 +236,8 @@ export async function createCase(page: Page, title: string): Promise<void> {
 // القضية (نفس منطق cases.spec.ts بتاع خطوة 2)، الهيلبر ده بيعمل الاتنين
 // ويسيب الصفحة على شاشة تفاصيل القضية (case-detail-view) جاهزة.
 // (نفس ملحوظة auth.spec.ts فوق: cases.spec.ts اتسيب من غير تعديل عمدًا.)
-export async function createAndOpenCase(page: Page, title: string): Promise<void> {
-  await createCase(page, title);
+export async function createAndOpenCase(page: Page, title: string, opts?: { linkClientName?: string }): Promise<void> {
+  await createCase(page, title, opts);
   // ⚡ H1/H3: نفس مبدأ createCase فوق — الفتح بقى عبر زرار
   // `cases-table-row-open` جوّه الصف الملفتر بالـtitle (بدل النقر على
   // الكارت نفسه اللي بقى `lg:hidden`).
