@@ -68,6 +68,9 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
       payClientNameText, setPayClientNameText, feesSearch, setFeesSearch,
       feesFilter, setFeesFilter,
       fetchFees, handleSave, handleAddPayment, handleDeletePayment, handleDelete, handlePermanentDeleteFee,
+      // 🔴 FIX (باج #1): feesPage/feesTotal/feesMore كانت متصدّرة من الـhook
+      // من غير أي استهلاك في الواجهة — دلوقتي بتغذّي زر "تحميل المزيد".
+      feesPage, feesTotal, feesMore,
       // ── قيم محسوبة من الـ hook (مركزية — لا تُعاد هنا) ──
       fmt, fmtDate,
       feesSections, feesAfterCategoryFilter, filteredFees,
@@ -315,7 +318,23 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     ),
                     React.createElement(Inp,{label:"المستلم من المكتب",value:form.receiver,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,receiver:e.target.value})),placeholder:"اسم المحامي أو الموظف المستلم"}),
                     React.createElement(Inp,{label:"إجمالي الأتعاب",type:"number",value:form.total,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,total:e.target.value})),placeholder:"0",'data-testid':'fee-total'}),
-                    React.createElement(Inp,{label:"المبلغ المدفوع",type:"number",value:form.paid,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,paid:e.target.value})),placeholder:"0",'data-testid':'fee-paid'}),
+                    // 🔴 FIX (29 أغسطس 2026 — باج #2): حقل "المبلغ المدفوع" في فورم
+                    // التعديل كان بيقبل كتابة لكن handleSave (مسار editId) كان
+                    // بيتجاهله تمامًا بصمت — يبان "✅ تم تحديث الأتعاب" بينما
+                    // التعديل الفعلي مش بيحصل (فشل صامت + تأكيد كاذب). القيمة
+                    // الحقيقية للمدفوع بتتغيّر فقط عبر مسار "تسجيل دفعة" المخصص
+                    // (RPC معاملات حقيقية + سجل fee_payments)، مش من هنا. الحقل
+                    // دلوقتي للعرض بس في وضع التعديل (disabled)، وبيفضل قابل
+                    // للكتابة زي ما هو في وضع الإضافة (فيه بيتحول فعليًا لدفعة
+                    // مقدّمة أولى عبر create_fee_with_advance).
+                    React.createElement(Inp,{
+                        label: editId ? "المبلغ المدفوع (للتعديل، استخدم زر «تسجيل دفعة»)" : "المبلغ المدفوع",
+                        type:"number",value:form.paid,
+                        disabled: !!editId,
+                        onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForm((p) =>({...p,paid:e.target.value})),
+                        placeholder:"0",'data-testid':'fee-paid',
+                        className: editId ? "w-full p-3 text-xs rounded-xl border border-white/10 bg-white/5 text-slate-500 cursor-not-allowed" : undefined
+                    }),
                     React.createElement('div',{className:"space-y-1"},
                         React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"تاريخ الدفعة"),
                         React.createElement('input',{
@@ -364,7 +383,8 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             // في مودال مركزي أصلًا من دفعة 2.1) صالح للشبكة من غير أي
             // تعديل داخلي. `lg:space-y-0` عشان `space-y-3` (margin-top
             // بين العناصر) ميتعارضش مع `lg:gap-3` جوه الشبكة.
-            : React.createElement('div',{className:"space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start xl:grid-cols-3"},
+            : React.createElement(React.Fragment, null,
+              React.createElement('div',{className:"space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start xl:grid-cols-3"},
                 filteredFees.map((fee) => React.createElement(FeeCard, {
                     key: fee.id, fee, cases, clients, currency, fmt, fmtDate, ensureClientsLoaded,
                     detailsFor, setDetailsFor,
@@ -377,6 +397,29 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     handleAddPayment, setEditId, setForm, setShowForm, setConfirmDeleteFee,
                     payments,
                 }))
+              ),
+              // 🔴 FIX (29 أغسطس 2026 — باج #1): زر "تحميل المزيد" كان مفقود
+              // تمامًا رغم إن الـbackend (useFeesActions) مبني بالكامل على
+              // pagination (PAGE_SIZE=15) — أي تاب فيه أكتر من 15 سجل كان
+              // بيخفي الباقي بصمت من غير أي مؤشر. نفس نمط CasesTab.tsx
+              // (feesTotal بيشمل فلتر الحالة والبحث الحاليين أصلاً، فمفيش
+              // داعي شرط إضافي عليهم).
+              feesMore && React.createElement('button', {
+                  onClick: () => fetchFees(feesPage + 1, feesFilter, feesSearch, true),
+                  disabled: loading,
+                  'data-testid': 'fees-load-more',
+                  className: "w-full py-3 rounded-2xl text-xs font-black active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-40",
+                  style: { background: 'rgba(212,175,55,0.07)', border: '1px solid rgba(212,175,55,0.18)', color: '#D4AF37' }
+              },
+                  loading
+                      ? React.createElement(I.Spin)
+                      : React.createElement('span', { className: "text-base" }, "⬇️"),
+                  "تحميل المزيد",
+                  React.createElement('span', {
+                      className: "text-[9px] px-2 py-0.5 rounded-full font-black",
+                      style: { background: 'rgba(212,175,55,0.12)', color: '#D4AF37' }
+                  }, `${feesTotal - fees.length} سجل`)
+              )
               ),
 
         // ─ مودال تأكيد حذف الأتعاب الرئيسية ─
