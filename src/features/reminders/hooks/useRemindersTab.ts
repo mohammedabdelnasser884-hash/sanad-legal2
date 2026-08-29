@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from '../../../shared/lib/notifications';
-import { safeUpdate, logActivity, buildFieldDiff, type FieldDiffMap } from '../../../shared/lib/dataAccess';
+import { safeUpdate, logActivity, buildFieldDiff, buildDeleteSnapshot, buildAddSnapshot, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import { recordError, recordSuccess } from '../../../systemHealth';
 import { db } from '../../../supabaseClient';
 import { normalizeArabicDigits } from '../../../shared/lib/sanitize';
@@ -321,7 +321,14 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
         toast('✅ تم إضافة التذكير');
         // ⚡ NEW (سجل النشاط — بيان مميز عند الإضافة، مرحلة 4): التاريخ بدل
         // العنوان بس.
-        logActivity(db, 'إضافة تذكير', { userName: _userName, entity_type: 'reminder', details: `${form.title.trim()} — ${form.due_date}` });
+        logActivity(db, 'إضافة تذكير', {
+            userName: _userName, entity_type: 'reminder', details: `${form.title.trim()} — ${form.due_date}`,
+            changes: buildAddSnapshot(form as unknown as Record<string, unknown>, {
+                title: { label: 'العنوان' },
+                due_date: { label: 'تاريخ الاستحقاق' },
+                notes: { label: 'ملاحظات' },
+            }),
+        });
         setShowForm(false); setForm({title:'',due_date:'',notes:''});
         fetchReminders(); // refresh كل الأقسام
     };
@@ -356,10 +363,18 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
     };
 
     const handleDelete = async (id: string) => {
+        // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): بنلقط نسخة من
+        // التذكير قبل الحذف عشان نسجلها في changes، وكمان بنبعتها كـ data
+        // مع عملية __dbWrite نفسها — لو اتقيّدت أوفلاين، هتتخزن جوه الطابور
+        // وتبقى متاحة وقت المزامنة (offlineSync.ts) لبناء نفس السناب شوت.
+        const deletedReminder = reminders.find((r) => r.id === id);
         // 🆕 المرحلة 6 (توسيع الأوفلاين — H-3): __dbWrite بدل db.from(...).delete()
         // المباشر — لو النت مقطوع، الحذف بيتقيّد في الطابور ويتنفذ وقت المزامنة
         // بدل ما يفشل ويرجع المستخدم يحاول تاني لما النت يرجع.
-        const {error, offline, queued} = await window.__dbWrite({ type: 'DELETE', table: 'reminders', id });
+        const {error, offline, queued} = await window.__dbWrite({
+            type: 'DELETE', table: 'reminders', id,
+            data: deletedReminder ? { title: deletedReminder.title, due_date: deletedReminder.due_date } : undefined,
+        });
         if(offline && queued){
             toast('📥 الحذف محفوظ محلياً — سيُزامن عند عودة الإنترنت');
             return;
@@ -370,7 +385,14 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             return;
         }
         toast('🗑 تم حذف التذكير');
-        logActivity(db, 'حذف تذكير', { userName: _userName, entity_type: 'reminder', entity_id: id });
+        logActivity(db, 'حذف تذكير', {
+            userName: _userName, entity_type: 'reminder', entity_id: id,
+            details: deletedReminder?.title || null,
+            changes: buildDeleteSnapshot(deletedReminder as unknown as Record<string, unknown>, {
+                title: { label: 'العنوان' },
+                due_date: { label: 'تاريخ الاستحقاق' },
+            }),
+        });
         fetchReminders();
     };
 
