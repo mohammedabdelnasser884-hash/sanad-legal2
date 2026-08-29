@@ -15,6 +15,10 @@ import InfoSection from './case-detail/InfoSection';
 import ChecklistSection from './case-detail/ChecklistSection';
 import DocsSection from './case-detail/DocsSection';
 import TimelineSection from './case-detail/TimelineSection';
+// ⚡ NEW (طلب المستخدم — 29 أغسطس 2026): تاب "الأتعاب" جوه تفاصيل
+// القضية — نفس مصدر بيانات تاب الأتعاب العام (FeesTab.tsx)، فقط
+// مفلتر لهذه القضية. راجع تعليقات FeesSection.tsx للتفاصيل.
+import FeesSection from './case-detail/FeesSection';
 import PdfViewerModal from '@/shared/modals/PdfViewerModal';
 import { useCaseDetailActions } from './hooks/useCaseDetailActions';
 // 🆕 (مرحلة F2 — خطة Desktop): بيستخدم بس في overlay "تعديل القضية"
@@ -42,7 +46,7 @@ import { isPartyOrphaned, type PartyDomainContext } from '../../shared/parties/p
 // "تعديل"/"حذف" فى هيدر القضية محكومين بـcan_edit_cases/can_delete_cases.
 // الدفاع الحقيقي (useCaseActions.ts + RLS) موجود بالفعل من غير ده — هنا
 // بس تجربة مستخدم (إخفاء الزرار) عشان لا يظهر أصلًا لمن ليس له صلاحية.
-import { checkPermission } from '../../shared/lib/permissions';
+import { checkPermission, isAdminRole } from '../../shared/lib/permissions';
 
 // شكل عنصر حالة القضية (نفس الحقول المستخدمة فعليًا في مصفوفة statuses تحت)
 interface CaseStatusOption {
@@ -678,6 +682,12 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
                     {key:'docs', label:'المستندات', icon:'📁'},
                     {key:'info', label:'البيانات', icon:'📋'},
                     {key:'checklist', label:'المراجعة', icon:'🩺'},
+                    // ⚡ NEW (طلب المستخدم — 29 أغسطس 2026): تاب "الأتعاب" —
+                    // ظاهر دايمًا (فاضي أو لأ) بس لأدمن المكتب فقط، بالظبط
+                    // نفس شرط ظهور تاب "الأتعاب" الرئيسي في CommandDock.tsx
+                    // (isAdmin هناك = isAdminRole(profile) هنا، نفس المصدر
+                    // الوحيد لتعريف الأدمن في المشروع).
+                    ...(isAdminRole(profile) ? [{key:'fees', label:'الأتعاب', icon:'💰'}] : []),
                 ] as CaseDetailTab[]).map((tab) =>
                     React.createElement('button', {
                         key: tab.key,
@@ -760,7 +770,12 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
             }),
 
             // ═══ المراجعة (نواقص الملف) — Rule-based بدون AI، المرحلة 1 من خطة المساعد الذكي ═══
-            activeSection === 'checklist' && React.createElement(ChecklistSection, { caseData, client: effectiveClient, sessions, notes, docs, caseParties, onGoToTab: setActiveSection })
+            activeSection === 'checklist' && React.createElement(ChecklistSection, { caseData, client: effectiveClient, sessions, notes, docs, caseParties, onGoToTab: setActiveSection }),
+
+            // ═══ الأتعاب (أدمن المكتب فقط — راجع شرط isAdminRole فوق) ═══
+            activeSection === 'fees' && isAdminRole(profile) && React.createElement(FeesSection, {
+                caseData, clients, country, profile, ensureClientsLoaded: onEnsureClientsLoaded,
+            })
         ),
 
         // ── مودال تأكيد حذف الجلسة ──
