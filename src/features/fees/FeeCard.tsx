@@ -314,7 +314,12 @@ function FeeCard({
                                     React.createElement('div',{className:"flex gap-2"},
                                         React.createElement('button',{
                                             onClick:()=>handleAddPayment(fee),
-                                            disabled: payingFeeId === fee.id,
+                                            // 🔒 CHANGED (طلب المستخدم — 29 أغسطس 2026 — المرحلة 4): الزرار بقى
+                                            // معطّل من الأساس لو مفيش موكل مربوط بالقضية (payClientName فاضي)،
+                                            // مش بس فحص بعد الضغط عبر hasPayClient جوه handleAddPayment —
+                                            // المستخدم ياخد إشارة قبل ما يحاول يحفظ أصلًا (نفس نمط save-fee-button
+                                            // في FeesTab.tsx).
+                                            disabled: payingFeeId === fee.id || !payClientName,
                                             'data-testid':'confirm-add-payment',
                                             className:"flex-1 py-2 bg-emerald-500 text-white rounded-xl text-xs font-black active:scale-95 disabled:opacity-50"
                                         }, payingFeeId === fee.id ? "... جارِ التسجيل" : "✅ تسجيل"),
