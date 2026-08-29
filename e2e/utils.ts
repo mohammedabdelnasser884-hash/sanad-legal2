@@ -429,6 +429,20 @@ export async function createCaseWithClient(page: Page, caseTitle: string): Promi
   return clientName;
 }
 
+// إصلاح CI (بعد تشغيل فعلي — 29 أغسطس 2026) — هيلبرَي تاريخ مشتركين بين
+// كل تستات الأتعاب/الدفعات (fees.spec.ts, fees-payments.spec.ts,
+// fees-linkage.spec.ts, validation.spec.ts) بدل ما كل ملف يعرّف todayIso()
+// بتاعه لوحده. ADVANCE_PAYMENT_DATE تاريخ ثابت في الماضي (مش نسبي زي
+// "أمس") — مُستخدم عمدًا كتاريخ الدفعة المقدّمة الإجبارية وقت إنشاء أي
+// سجل أتعاب (create_fee_with_advance)، عشان لما تست يسجّل دفعة إضافية
+// بعدين بتاريخ النهاردة، الترتيب في تاريخ الدفعات (fee_payments مرتبة
+// `payment_date` تنازليًا) يبقى مضمون ومحدد مقدمًا: أحدث دفعة (النهاردة)
+// دايمًا أول عنصر في القائمة — مش ترتيب غامض لو الاتنين بنفس تاريخ اليوم.
+export function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+export const ADVANCE_PAYMENT_DATE = '2020-01-15';
+
 // المرحلة 3 (خطة تنفيذ اختبارات E2E المقسمة) — هيلبر إضافة جلسة لقضية
 // مفتوحة بالفعل على شاشة تفاصيلها (case-detail-view، تبويب "الجلسات"
 // نشط). بيستقبل رقم اليوم (day) في الشهر الحالي (نفس تاريخ اليوم أو أي
