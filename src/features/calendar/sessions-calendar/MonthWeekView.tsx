@@ -89,43 +89,43 @@ function MonthWeekView({ weeks, sessionsMap, tasksMap, cases, clients, onOpenCas
                 const total    = daySess.length;
 
                 return React.createElement('div', { key: dateStr, className: "pt-3 first:pt-0" },
-                    // فاصل اليوم — خلفية خفيفة + خط سفلي أوضح، عشان يبقى
-                    // فاصل بصري حقيقي بين يوم والتاني (مش مجرد خط بالكاد بيتحس)
+                    // فاصل اليوم — شريط بلون فاتح قريب من الأبيض (مش أبيض
+                    // خالص) وكل الكلام جواه أسود، عشان يبقى حاجز بصري واضح
+                    // فعلاً بين يوم والتاني، مش مجرد تلميح لوني على الخلفية الغامقة.
                     React.createElement('div', {
-                        className: "flex items-center gap-2 py-2.5 px-2.5 rounded-lg",
+                        className: "flex items-center gap-2 py-2.5 px-3 rounded-lg",
                         style: {
-                            background: isToday ? 'rgba(212,175,55,0.06)' : 'rgba(255,255,255,0.025)',
-                            borderBottom: isToday ? '1px solid rgba(212,175,55,0.25)' : '1px solid rgba(255,255,255,0.09)'
+                            background: isToday ? '#f3e8c9' : '#e8eaed'
                         }
                     },
                         React.createElement('div', {
-                            className: "flex items-center gap-1.5 flex-1 min-w-0"
+                            className: "flex items-center gap-2 flex-1 min-w-0"
                         },
                             React.createElement('span', {
-                                className: "text-[11px] font-black",
-                                style: { color: isToday ? '#D4AF37' : '#94a3b8' }
+                                className: "text-[14px] font-black",
+                                style: { color: '#111827' }
                             }, dayName),
                             React.createElement('span', {
-                                className: "text-[11px] font-bold",
-                                style: { color: isToday ? 'rgba(212,175,55,0.7)' : '#475569' }
+                                className: "text-[13px] font-black",
+                                style: { color: '#111827' }
                             }, `${dayNum}/${monthNum}`),
                             isToday && React.createElement('span', {
                                 className: "text-[7px] font-black px-1.5 py-0.5 rounded-full",
-                                style: { background: 'rgba(212,175,55,0.15)', color: '#D4AF37' }
+                                style: { background: 'rgba(212,175,55,0.25)', color: '#7c5a06' }
                             }, "اليوم")
                         ),
                         isFriday
                             ? React.createElement('span', {
                                 className: "text-[8px] font-black px-2 py-0.5 rounded-full",
-                                style: { background: 'rgba(167,139,250,0.12)', color: '#a78bfa' }
+                                style: { background: 'rgba(124,58,237,0.12)', color: '#6d28d9' }
                               }, "إجازة")
                             : total > 0
                                 ? React.createElement('span', {
                                     className: "text-[8px] font-black px-2 py-0.5 rounded-full",
-                                    style: { background: 'rgba(212,175,55,0.1)', color: '#D4AF37' }
+                                    style: { background: 'rgba(212,175,55,0.2)', color: '#7c5a06' }
                                   }, total + ' جلسة')
                                 : React.createElement('span', {
-                                    className: "text-[8px]", style: { color: '#1e293b' }
+                                    className: "text-[8px] font-bold", style: { color: '#6b7280' }
                                   }, "لا توجد جلسات")
                     ),
 
