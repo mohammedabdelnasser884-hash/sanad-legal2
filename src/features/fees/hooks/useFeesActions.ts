@@ -8,10 +8,58 @@ import { formatArNumber, formatArDate } from '../../../shared/ui/arabicLocale';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
 import { recordError, recordSuccess } from '../../../systemHealth';
 import { computeFeeStatus } from '../feeStatus';
+import { formatPartySideLine } from '../../../shared/parties/partyDisplay';
+import type { PartyDisplayRow } from '../../../shared/parties/partiesDisplay';
 import type { ClientRow, CaseFeeRow, FeePaymentRow, ProfileRow, PaymentsByFeeId } from '../../../types';
 import type { MappedCase } from '../../../hooks/useAppData';
 
 const PAGE_SIZE = 15;
+
+// ── نتيجة اشتقاق "اسم الموكل" من القضية (طلب المستخدم — 29 أغسطس 2026) ──
+export interface ResolvedCaseClient {
+    // معرف موكل حقيقي في جدول clients لو الجهة شخص واحد مرتبط بموكل — وإلا ''.
+    clientId: string;
+    // النص اليدوي (المسمى القانوني الجامع) لو الجهة أكتر من شخص — وإلا ''.
+    manualText: string;
+    // النص الجاهز للعرض في الحقل المقفول — فاضي يعني "مفيش موكل مرتبط
+    // بالقضية دي" (القضية محتاجة تتظبط من تاب القضايا أولًا).
+    displayLabel: string;
+}
+
+const EMPTY_RESOLVED_CLIENT: ResolvedCaseClient = { clientId: '', manualText: '', displayLabel: '' };
+
+// ⚡ NEW (طلب المستخدم — 29 أغسطس 2026): بما إن اختيار القضية إجباري أصلاً
+// وقت إضافة/تعديل سجل أتعاب، اسم الموكل بقى بيتاخد تلقائيًا من القضية
+// نفسها (مقفول — مش قابل للتعديل من فورم الأتعاب) بدل اختيار مستقل. لو
+// جهة الموكل في القضية فيها أكتر من شخص مسمّى، بيتعرض المسمى القانوني
+// الجامع ليهم بدل اسم واحد — بنفس الدالة المستخدمة في كل مكان تاني في
+// المشروع لعرض ملخص الجهة (formatPartySideLine)، عشان الصيغة تتوحّد مع
+// باقي الشاشات (كارت القضية، الجلسات، إلخ) بدل ما نبني تنسيق تاني هنا.
+//
+// ⚠️ الجهة المقصودة بـ"الموكل" هنا محدَّدة بمطابقة case_parties.client_id
+// مع cases.client_id (الموكل الأساسي المسجّل على القضية وقت الحفظ — راجع
+// NewCaseModal.tsx: `partyFields.plaintiffs.find(p=>p.is_client)`) — مفيش
+// حاجة جديدة مضافة لسكيمة case_parties ولا لاستعلام useAppData.ts، فقط
+// استخدام الحقول المتاحة أصلًا (side/name/client_id) على MappedCase.parties.
+//
+// ⚠️ نطاق التطبيق: فورم "إضافة/تعديل أتعاب" (FeesTab.tsx) بس — فورم
+// "تسجيل دفعة" المستقل في FeeCard.tsx (اختيار موكل منفصل خاص بالدفعة)
+// اتسيب زي ما هو عمدًا، مفيش طلب صريح بتغييره.
+export function resolveCaseFeeClient(lc: MappedCase | undefined, clients: ClientRow[]): ResolvedCaseClient {
+    if (!lc) return EMPTY_RESOLVED_CLIENT;
+    const parties = (lc.parties || []) as PartyDisplayRow[];
+    const clientSideParty = lc.client_id ? parties.find((p) => p.client_id === lc.client_id) : null;
+    const side = clientSideParty?.side || null;
+    const namedOnSide = side ? parties.filter((p) => p.side === side && p.name && p.name.trim()) : [];
+    if (namedOnSide.length > 1) {
+        const legalTitle = side === 'plaintiff' ? lc.plaintiff_legal_title : lc.defendant_legal_title;
+        const joint = formatPartySideLine(namedOnSide, legalTitle);
+        if (joint) return { clientId: '', manualText: joint, displayLabel: joint };
+    }
+    const matchedClient = lc.client_id ? clients.find((cl) => cl.id === lc.client_id) : null;
+    if (matchedClient?.full_name) return { clientId: lc.client_id as string, manualText: '', displayLabel: matchedClient.full_name };
+    return EMPTY_RESOLVED_CLIENT;
+}
 
 // ─────────────────────────────────────────────────────────
 //  🔒 FIX (طلب المستخدم بعد فيكس فحص التكرار — 13 أغسطس 2026): الفتشات
