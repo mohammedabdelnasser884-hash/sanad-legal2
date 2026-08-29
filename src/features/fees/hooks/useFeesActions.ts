@@ -327,10 +327,22 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
     };
 
     const handleSave = async () => {
+        // 🔒 FIX (طلب المستخدم — 29 أغسطس 2026): كل حقول فورم الأتعاب بقت
+        // إجبارية عدا "ملاحظات". "المبلغ المدفوع" و"تاريخ الدفعة" إجباريين
+        // بس في مسار الإنشاء الجديد (!editId) — في وضع التعديل الحقل ده
+        // أصلاً disabled ومالوش تأثير (راجع تعليق fee-paid في FeesTab.tsx).
         if (!form.case_id) { toast('❌ حقل "القضية" مطلوب — يرجى اختيار القضية', true); return; }
+        const hasClient = (form.client_name_manual === '__manual__' ? !!form.client_name_text?.trim() : !!form.client_id);
+        if (!hasClient) { toast('❌ حقل "اسم الموكل" مطلوب', true); return; }
+        if (!form.receiver?.trim()) { toast('❌ حقل "المستلم من المكتب" مطلوب', true); return; }
         const parsedTotal = parseFloat(form.total);
         if (!form.total || isNaN(parsedTotal)) { toast('❌ حقل "إجمالي الأتعاب" مطلوب', true); return; }
         if (parsedTotal < 0) { toast('❌ خطأ: إجمالي الأتعاب لا يمكن أن يكون سالباً', true); return; }
+        if (!editId) {
+            const parsedPaid = parseFloat(form.paid);
+            if (!form.paid || isNaN(parsedPaid) || parsedPaid <= 0) { toast('❌ حقل "المبلغ المدفوع" مطلوب — أدخلي الدفعة الأولى (مقدم الأتعاب)', true); return; }
+            if (!form.payment_date) { toast('❌ حقل "تاريخ الدفعة" مطلوب', true); return; }
+        }
         setSaving(true);
         let clientId: string | null = null;
         let clientName: string | null = null;
@@ -453,6 +465,12 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         setPayingFeeId(fee.id);
         const amount = parseFloat(payAmount)||0;
         if(amount<=0){ toast('أدخل مبلغاً صحيحاً',true); setPayingFeeId(null); return; }
+        // 🔒 FIX (طلب المستخدم — 29 أغسطس 2026): باقي حقول فورم "تسجيل دفعة"
+        // إجبارية عدا الملاحظات (payNote).
+        const hasPayClient = (payClientName === '__manual__' ? !!payClientNameText?.trim() : !!payClientName);
+        if (!hasPayClient) { toast('❌ حقل "اسم الموكل" مطلوب', true); setPayingFeeId(null); return; }
+        if (!payDate) { toast('❌ حقل "تاريخ الدفعة" مطلوب', true); setPayingFeeId(null); return; }
+        if (!payReceiver?.trim()) { toast('❌ حقل "المستلم من المكتب" مطلوب', true); setPayingFeeId(null); return; }
         // 🔒 قرار عمل محسوم مع صاحب المشروع (21 يوليو — المرحلة 6، توسيع
         // الأوفلاين): تسجيل دفعة بينادي RPC ذرّية (record_fee_payment) —
         // نظام طابور الأوفلاين (__dbWrite) بيدعم بس INSERT/UPDATE/DELETE على
