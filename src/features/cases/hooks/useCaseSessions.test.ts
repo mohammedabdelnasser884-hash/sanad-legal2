@@ -99,6 +99,25 @@ vi.mock('../../../shared/lib/dataAccess', () => ({
     }
     return result;
   },
+  // ⚡ FIX (buildDeleteSnapshot مفقودة من الـmock — 30 أغسطس 2026): handleDeleteSession
+  // بقى بينادي buildDeleteSnapshot (سجل النشاط، تغطية الحذف) — نفس منطق
+  // buildAddSnapshot فوق، لكن new ثابتة '🗑️ محذوف' زي النسخة الأصلية.
+  buildDeleteSnapshot: (
+    record: Record<string, unknown> | null | undefined,
+    fields: Record<string, { label: string; format?: (v: unknown) => string }>,
+  ) => {
+    const result: { field: string; label: string; old: string; new: string }[] = [];
+    if (!record) return result;
+    const norm = (v: unknown, format?: (v: unknown) => string) =>
+      v === null || v === undefined || v === '' ? '' : format ? format(v) : String(v);
+    for (const field of Object.keys(fields)) {
+      const { label, format } = fields[field];
+      const text = norm(record[field], format);
+      if (!text) continue;
+      result.push({ field, label, old: text, new: '🗑️ محذوف' });
+    }
+    return result;
+  },
   recalcNextHearing: async (
     db: {
       from: (table: string) => {
