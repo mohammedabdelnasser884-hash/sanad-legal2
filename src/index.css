@@ -77,32 +77,32 @@
             --danger-border: rgba(239,68,68,0.20);
         }
 
-        /* ── Light: Ivory & Gold Legal ── */
+        /* ── Light: Clean Gray & Blue ── */
         html.light {
-            /* Warm ivory parchment — NOT cold grey */
-            --bg:            #faf7f2;
-            --bg-secondary:  #f4efe6;
+            /* Neutral light gray — NOT warm ivory */
+            --bg:            #f5f6f8;
+            --bg-secondary:  #eef0f3;
             --card:          #ffffff;
-            --card-hover:    #fffdf9;
-            --border:        rgba(180,148,80,0.14);
-            --border-strong: rgba(180,148,80,0.28);
-            --text-primary:  #1a1208;
-            --text-secondary:#4a3f2a;
-            --text-muted:    #7a6b52;
-            --text-faint:    #c4b89a;
-            --input-bg:      #fdfbf7;
-            --input-border:  rgba(180,148,80,0.22);
-            --gold:          #b8860b;   /* darker richer gold for light bg */
-            --gold-dim:      rgba(184,134,11,0.10);
-            --gold-glow:     rgba(184,134,11,0.20);
-            --overlay:       rgba(26,18,8,0.55);
-            --shadow-card:   0 2px 16px rgba(120,90,30,0.10), 0 1px 3px rgba(120,90,30,0.06);
-            --shadow-gold:   0 0 20px rgba(184,134,11,0.14);
-            --nav-blur:      rgba(250,247,242,0.97);
+            --card-hover:    #fbfcfd;
+            --border:        rgba(15,23,42,0.08);
+            --border-strong: rgba(15,23,42,0.14);
+            --text-primary:  #0f172a;
+            --text-secondary:#475569;
+            --text-muted:    #64748b;
+            --text-faint:    #cbd5e1;
+            --input-bg:      #f8fafc;
+            --input-border:  rgba(15,23,42,0.12);
+            --gold:          #2563eb;   /* renamed in spirit only — this is now the blue accent */
+            --gold-dim:      rgba(37,99,235,0.10);
+            --gold-glow:     rgba(37,99,235,0.20);
+            --overlay:       rgba(15,23,42,0.55);
+            --shadow-card:   0 4px 20px rgba(15,23,42,0.08), 0 1px 3px rgba(15,23,42,0.05);
+            --shadow-gold:   0 0 20px rgba(37,99,235,0.16);
+            --nav-blur:      rgba(245,246,248,0.97);
             --header-blur:   rgba(255,255,255,0.94);
-            --surface-tint:  rgba(184,134,11,0.04);
-            --surface-mid:   rgba(184,134,11,0.07);
-            --surface-high:  rgba(184,134,11,0.12);
+            --surface-tint:  rgba(37,99,235,0.04);
+            --surface-mid:   rgba(37,99,235,0.07);
+            --surface-high:  rgba(37,99,235,0.12);
             --danger-bg:     rgba(185,28,28,0.07);
             --danger-border: rgba(185,28,28,0.18);
         }
@@ -190,7 +190,7 @@
         /* Backgrounds */
         html.light .bg-premium-bg    { background: var(--bg) !important; }
         html.light .bg-premium-card  { background: var(--card) !important; }
-        html.light .bg-black\/30     { background: rgba(184,134,11,0.05) !important; }
+        html.light .bg-black\/30     { background: rgba(37,99,235,0.05) !important; }
         html.light .bg-black\/80     { background: var(--overlay) !important; }
         html.light .bg-white\/3      { background: var(--surface-tint) !important; }
         html.light .bg-white\/5      { background: var(--surface-mid) !important; }
@@ -204,7 +204,7 @@
         /* Typography */
         html.light .text-white        { color: var(--text-primary) !important; }
         html.light .text-slate-100    { color: var(--text-primary) !important; }
-        html.light .text-slate-200    { color: #2a1f0e !important; }
+        html.light .text-slate-200    { color: #1e293b !important; }
         html.light .text-slate-300    { color: var(--text-secondary) !important; }
         html.light .text-slate-400    { color: var(--text-secondary) !important; }
         html.light .text-slate-500    { color: var(--text-muted) !important; }
@@ -214,8 +214,8 @@
         html.light .text-premium-gold { color: var(--gold) !important; }
         html.light .bg-premium-gold   { background: var(--gold) !important; }
         html.light .border-premium-gold { border-color: var(--gold) !important; }
-        html.light [class*="text-amber-300"]  { color: #92650a !important; }
-        html.light [class*="text-amber-400"]  { color: #b8860b !important; }
+        html.light [class*="text-amber-300"]  { color: #1d4ed8 !important; }
+        html.light [class*="text-amber-400"]  { color: #2563eb !important; }
         /* ── FIX (تقرير تشخيص الديسكتوب، Phase 4، بند 2 — تحذير CSS syntax
            وقت الـ build): السطور دي كانت بتستخدم "\/" (باك سلاش قبل الشرطة
            المائلة) جوه قيمة نصية بين علامتي تنصيص ([class*="..."]). الإسكيب ده
@@ -224,12 +224,12 @@
            بين تنصيص — أقوى مرشح لقيته لتحذير "Expected identifier but found
            "-"" اللي ظهر وقت minify الـ CSS. اتشالت الإسكيب الزيادة؛ المطابقة
            بتفضل شغالة زي ما هي لأنها substring match عادي. ── */
-        html.light [class*="bg-amber-500/10"]{ background: rgba(184,134,11,0.09) !important; }
-        html.light [class*="bg-amber-500/8"] { background: rgba(184,134,11,0.07) !important; }
-        html.light [class*="border-amber-500"]{ border-color: rgba(184,134,11,0.22) !important; }
-        html.light [class*="bg-premium-gold/10"]  { background: rgba(184,134,11,0.09) !important; }
-        html.light [class*="bg-premium-gold/8"]   { background: rgba(184,134,11,0.07) !important; }
-        html.light [class*="border-premium-gold/"] { border-color: rgba(184,134,11,0.22) !important; }
+        html.light [class*="bg-amber-500/10"]{ background: rgba(37,99,235,0.09) !important; }
+        html.light [class*="bg-amber-500/8"] { background: rgba(37,99,235,0.07) !important; }
+        html.light [class*="border-amber-500"]{ border-color: rgba(37,99,235,0.22) !important; }
+        html.light [class*="bg-premium-gold/10"]  { background: rgba(37,99,235,0.09) !important; }
+        html.light [class*="bg-premium-gold/8"]   { background: rgba(37,99,235,0.07) !important; }
+        html.light [class*="border-premium-gold/"] { border-color: rgba(37,99,235,0.22) !important; }
 
         /* Danger / rose */
         html.light .bg-rose-500\/10   { background: var(--danger-bg) !important; }
@@ -244,12 +244,15 @@
         html.light input::placeholder, html.light textarea::placeholder {
             color: var(--text-faint) !important;
         }
+        html.light input:focus, html.light select:focus, html.light textarea:focus {
+            border-color: var(--gold) !important;
+        }
 
         /* Header & Nav */
         html.light .backdrop-blur-lg  { background: var(--header-blur) !important; }
         html.light nav.fixed          { background: var(--nav-blur) !important;
                                         border-top-color: var(--border) !important;
-                                        box-shadow: 0 -4px 24px rgba(120,90,30,0.08) !important; }
+                                        box-shadow: 0 -4px 24px rgba(15,23,42,0.06) !important; }
 
         /* Shadows */
         html.light [class*="shadow-premium-shadow"] {
@@ -259,10 +262,10 @@
 
         /* Toast */
         html.light .toast {
-            background: #fff9ed !important;
+            background: #eff6ff !important;
             border-color: var(--gold) !important;
             color: var(--gold) !important;
-            box-shadow: 0 8px 32px rgba(120,90,30,0.15) !important;
+            box-shadow: 0 8px 32px rgba(15,23,42,0.12) !important;
         }
 
         /* Active / selected nav items */
@@ -278,15 +281,15 @@
         /* Scrollbar in light mode */
         html.light ::-webkit-scrollbar { width: 4px; }
         html.light ::-webkit-scrollbar-track { background: var(--bg-secondary); }
-        html.light ::-webkit-scrollbar-thumb { background: rgba(184,134,11,0.25); border-radius: 4px; }
+        html.light ::-webkit-scrollbar-thumb { background: rgba(37,99,235,0.25); border-radius: 4px; }
 
-        /* Background texture: subtle warm grain */
+        /* Background texture: subtle cool grain (replaces old warm-gold grain) */
         html.light body::before {
             content: '';
             position: fixed; inset: 0; z-index: 0;
             pointer-events: none;
             background-image:
-                radial-gradient(ellipse 80% 50% at 15% 0%, rgba(212,175,55,0.07) 0%, transparent 60%),
-                radial-gradient(ellipse 60% 40% at 85% 100%, rgba(184,134,11,0.05) 0%, transparent 55%);
+                radial-gradient(ellipse 80% 50% at 15% 0%, rgba(37,99,235,0.05) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 40% at 85% 100%, rgba(37,99,235,0.04) 0%, transparent 55%);
         }
         html.light #root { position: relative; z-index: 1; }
