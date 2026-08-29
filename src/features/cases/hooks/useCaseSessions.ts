@@ -3,7 +3,7 @@ import { db } from '../../../supabaseClient';
 import { toast } from '../../../shared/lib/notifications';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
 import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
-import { logActivity, recalcNextHearing as recalcNextHearingShared, buildFieldDiff, type FieldDiffMap } from '../../../shared/lib/dataAccess';
+import { logActivity, recalcNextHearing as recalcNextHearingShared, buildFieldDiff, buildDeleteSnapshot, buildAddSnapshot, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import type { ClientRow, ProfileRow, CaseSessionRow } from '../../../types';
 import type { MappedCase } from '../../../hooks/useAppData';
 import type { EditingSessionForm } from '../case-detail/TimelineSection';
@@ -99,6 +99,11 @@ export function useCaseSessions(
       case_name: caseData.title || null, case_type: caseData.type || null,
       client_name: client?.full_name || null,
       userName: profile?.full_name || null,
+      changes: buildAddSnapshot(sessionForm as unknown as Record<string, unknown>, {
+        date: { label: 'تاريخ الجلسة' },
+        location_hall: { label: 'القاعة' },
+        description: { label: 'الوصف' },
+      }),
     });
     if (onNotify) {
       let msg = `📅 <b>جلسة جديدة</b>\n\n`;
@@ -125,9 +130,17 @@ export function useCaseSessions(
     // التنفيذ الفعلي): غرضه الوحيد إن offlineQueue.ts يعرف بعد المزامنة
     // الفعلية إن next_hearing للقضية دي محتاج إعادة حساب (راجع
     // caseSessionCaseIdsToRecalc هناك).
+    // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): بنلقط بيانات الجلسة
+    // قبل الحذف — وبنبعتها كمان جوه data مع __dbWrite عشان لو الحذف اتقيّد
+    // أوفلاين، تفضل متاحة وقت المزامنة (offlineSync.ts).
+    const deletedSession = sessions.find((s) => s.id === sessionId);
     const { error, offline, queued } = await window.__dbWrite({
       type: 'DELETE', table: 'case_sessions', id: sessionId,
-      data: { _offlineSessionCaseId: caseData.id }
+      data: {
+        _offlineSessionCaseId: caseData.id,
+        date: deletedSession?.date,
+        location_hall: deletedSession?.location_hall,
+      }
     });
     if (offline && queued) {
       toast('📥 الحذف محفوظ محلياً — سيُزامن عند عودة الإنترنت');
@@ -142,6 +155,10 @@ export function useCaseSessions(
       case_name: caseData.title || null, case_type: caseData.type || null,
       client_name: client?.full_name || null,
       userName: profile?.full_name || null,
+      changes: buildDeleteSnapshot(deletedSession as unknown as Record<string, unknown>, {
+        date: { label: 'تاريخ الجلسة' },
+        location_hall: { label: 'القاعة' },
+      }),
     });
     refetchAll();
   };
