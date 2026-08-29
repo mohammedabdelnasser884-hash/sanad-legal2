@@ -216,6 +216,24 @@
         html.light .border-premium-gold { border-color: var(--gold) !important; }
         html.light [class*="text-amber-300"]  { color: #1d4ed8 !important; }
         html.light [class*="text-amber-400"]  { color: #2563eb !important; }
+        /* ── FIX (مراجعة تباين الوضع النهاري — تصفح الصور المرفقة، 30
+           أغسطس 2026): مجموعة كبيرة من الشارات/الأيقونات/رؤوس القضايا
+           بتستخدم درجات "-300/-400" الفاتحة (مصممة أصلاً لتقرأ فوق خلفية
+           غامقة في الوضع الليلي) — على خلفية فاتحة بقت باهتة جدًا وغير
+           مقروءة تقريبًا (تحديدًا رأس صفحة تفاصيل القضية وشارات الحالة/النوع).
+           الحل: تغميق كل عائلة لون لأقرب درجة "-600" مقروءة، بنفس نمط
+           تحويل amber اللي فوق، من غير أي تعديل على أي ملف component. ── */
+        html.light [class*="text-rose-300"], html.light [class*="text-rose-400"]       { color: #e11d48 !important; }
+        html.light [class*="text-emerald-300"], html.light [class*="text-emerald-400"] { color: #059669 !important; }
+        html.light [class*="text-purple-300"], html.light [class*="text-purple-400"]   { color: #9333ea !important; }
+        html.light [class*="text-blue-300"], html.light [class*="text-blue-400"]       { color: #2563eb !important; }
+        html.light [class*="text-violet-300"], html.light [class*="text-violet-400"]   { color: #7c3aed !important; }
+        html.light [class*="text-sky-300"], html.light [class*="text-sky-400"]         { color: #0284c7 !important; }
+        html.light [class*="text-cyan-300"], html.light [class*="text-cyan-400"]       { color: #0891b2 !important; }
+        html.light [class*="text-teal-300"], html.light [class*="text-teal-400"]       { color: #0d9488 !important; }
+        html.light [class*="text-orange-300"], html.light [class*="text-orange-400"]   { color: #ea580c !important; }
+        html.light [class*="text-indigo-300"], html.light [class*="text-indigo-400"]   { color: #4f46e5 !important; }
+        html.light [class*="text-fuchsia-300"], html.light [class*="text-fuchsia-400"] { color: #c026d3 !important; }
         /* ── FIX (تقرير تشخيص الديسكتوب، Phase 4، بند 2 — تحذير CSS syntax
            وقت الـ build): السطور دي كانت بتستخدم "\/" (باك سلاش قبل الشرطة
            المائلة) جوه قيمة نصية بين علامتي تنصيص ([class*="..."]). الإسكيب ده
