@@ -76,10 +76,14 @@ vi.mock('../../../shared/lib/storage', () => ({ resolveStorageUrl: (...a: unknow
 
 const safeUpdate = vi.fn();
 const logActivity = vi.fn();
-vi.mock('../../../shared/lib/dataAccess', () => ({
-  safeUpdate: (...a: unknown[]) => safeUpdate(...a),
-  logActivity: (...a: unknown[]) => logActivity(...a),
-}));
+vi.mock('../../../shared/lib/dataAccess', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/lib/dataAccess')>();
+  return {
+    ...actual,
+    safeUpdate: (...a: unknown[]) => safeUpdate(...a),
+    logActivity: (...a: unknown[]) => logActivity(...a),
+  };
+});
 
 // useCaseSessions/useCaseDocuments هوكس فرعية — mock ثابت (مش state حقيقي)
 // عشان نقدر نتحقق من setSessions/setDocs اتنادوا بإيه من جوه fetchSessions.
