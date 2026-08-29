@@ -111,6 +111,16 @@ test('حساب مكتب عادي (مش سوبر أدمن) → قسم "المست
   await page.getByTestId('case-tab-docs').click();
   await expect(page.getByTestId('case-detail-generate-document-btn')).toHaveCount(0);
 
+  // 🔴 CHANGED (إصلاح CI بعد تشغيل فعلي — 29 أغسطس 2026): كان ناقص هنا
+  // إغلاق case-detail-view (مودال تفاصيل القضية، fixed inset-0 z-50) قبل
+  // محاولة الرجوع لتبويب القضايا مباشرة — التشغيل الفعلي وقف على
+  // "desktop-nav-cases ... subtree intercepts pointer events" بالظبط
+  // (نفس الباگ اللي اتصلح في fees-linkage.spec.ts: مودال تفاصيل القضية
+  // فضل فاتح فوق الشريط الجانبي بالكامل ومنع أي كليك عليه).
+  // case-detail-close (CaseDetailView.tsx) هو زرار الإغلاق الصريح.
+  await page.getByTestId('case-detail-close').click();
+  await page.getByTestId('case-detail-view').waitFor({ state: 'hidden', timeout: 10_000 });
+
   await page.getByTestId('desktop-nav-cases').click();
   await expect(page.getByTestId('desktop-nav-legalDocs')).toHaveCount(0);
 });
