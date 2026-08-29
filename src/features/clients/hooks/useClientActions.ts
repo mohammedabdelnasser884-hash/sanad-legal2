@@ -2,7 +2,7 @@ import { toast } from '../../../shared/lib/notifications';
 import { validateFullNameParts, validatePowerOfAttorney, checkClientDuplicate } from '../../../shared/lib/clientValidation';
 import { validateUploadFile, resolveStorageUrl } from '../../../shared/lib/storage';
 import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
-import { safeUpdate, logActivity, buildFieldDiff, type FieldDiffMap } from '../../../shared/lib/dataAccess';
+import { safeUpdate, logActivity, buildFieldDiff, buildAddSnapshot, buildDeleteSnapshot, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import { callAdminAction, db } from '../../../supabaseClient';
 import { getCurrentTenantId } from '../../../constants';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
@@ -281,6 +281,12 @@ export function useClientActions(params: {
                 userName: _userName, entity_type: 'client',
                 details: `${form.full_name} — ${clientAddTypeLabel}${form.phone ? ' — ' + form.phone : ''}`,
                 client_name: form.full_name || null,
+                changes: buildAddSnapshot(form as unknown as Record<string, unknown>, {
+                    full_name: { label: 'الاسم' },
+                    phone: { label: 'الهاتف' },
+                    national_id: { label: 'الرقم القومي' },
+                    type: { label: 'النوع', format: () => clientAddTypeLabel },
+                }),
             });
             // إشعار تليجرام - موكل جديد
             const typeLabel = form.type === 'company' ? 'شركة' : form.type === 'government' ? 'جهة حكومية' : 'فرد';
@@ -410,7 +416,14 @@ export function useClientActions(params: {
         setDeleteConfirm(null);
         if (error) { toast('❌ فشل حذف الموكل نهائياً — تحقق من الاتصال وأعد المحاولة', true); return; }
         toast('🗑️ تم حذف الموكل نهائياً');
-        logActivity(db, 'حذف موكل نهائياً', { userName: _userName, entity_type: 'client', entity_id: clientId, details: cl?.full_name || null, client_name: cl?.full_name || null });
+        logActivity(db, 'حذف موكل نهائياً', {
+            userName: _userName, entity_type: 'client', entity_id: clientId, details: cl?.full_name || null, client_name: cl?.full_name || null,
+            changes: buildDeleteSnapshot(cl as unknown as Record<string, unknown>, {
+                full_name: { label: 'الاسم' },
+                phone: { label: 'الهاتف' },
+                national_id: { label: 'الرقم القومي' },
+            }),
+        });
         setSelectedClient(null);
         setClients((prev) => prev.filter((c) => c.id !== clientId));
     };
