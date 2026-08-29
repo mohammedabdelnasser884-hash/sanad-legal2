@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, createCase, expectToast } from './utils';
+import { login, createCaseWithClient, selectCaseFromSearch, expectToast } from './utils';
 
 // المرحلة 4 من خطة تنفيذ اختبارات E2E المقسمة — الأتعاب: تسجيل دفعات
 // (جزئية/كاملة/أكبر من المتبقي)، منع التسجيل أوفلاين، معاينة الفاتورة،
@@ -8,6 +8,12 @@ import { login, createCase, expectToast } from './utils';
 // كل تست بيعمل قضية جديدة + سجل أتعاب جديد من الصفر (بدل ما يشارك سجل
 // واحد بين التستات) — نفس فلسفة fees.spec.ts الأصلي — عشان محدش يعتمد
 // على ترتيب تشغيل، ومحصلش تلوث بيانات بين تست وتاني.
+//
+// 🔄 CHANGED (المرحلة 7 — بعد القرار النهائي بقفل حقل الموكل في الفورمين):
+// createCase العادية بترجع قضية من غير موكل حقيقي → save-fee-button
+// وconfirm-add-payment يفضلوا disabled من أول خطوة. كل تست هنا بقى بيستخدم
+// createCaseWithClient (المرحلة 6) بدل createCase. وfee-case-select بقى
+// CaseSearchSelect (بحث حي) — selectCaseFromSearch بدل selectOption القديمة.
 
 // ⚠️ ملحوظة تنسيق: كل الأرقام المعروضة في الشاشة بتمر بـ formatArNumber
 // (shared/ui/arabicLocale.ts) اللي بيستخدم locale 'ar-EG' — يعني بتظهر
@@ -17,10 +23,14 @@ function arNum(n: number): string {
   return n.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
 }
 
+// 🔄 CHANGED (المرحلة 7): fee-case-select بقى CaseSearchSelect (بحث حي في
+// الداتابيز) بدل <select> عادي — selectCaseFromSearch (بحث + اختيار من
+// النتائج) بدل selectOption({label}) القديمة اللي بقت غير قابلة للاستخدام
+// خالص مع المكوّن الجديد.
 async function createFee(page: Page, caseTitle: string, total: string): Promise<void> {
   await page.getByTestId('desktop-nav-fees').click();
   await page.getByTestId('add-fee-button').click();
-  await page.getByTestId('fee-case-select').selectOption({ label: caseTitle });
+  await selectCaseFromSearch(page, 'fee-case-select', caseTitle);
   await page.getByTestId('fee-total').fill(total);
   await page.getByTestId('save-fee-button').click();
   await expect(page.getByTestId('fee-total')).not.toBeVisible({ timeout: 15_000 });
@@ -32,6 +42,16 @@ async function openFeeDetail(page: Page, caseTitle: string): Promise<void> {
   await page.getByTestId('fee-detail-modal').waitFor({ state: 'visible', timeout: 10_000 });
 }
 
+// 🔄 CHANGED (المرحلة 7 — طبقًا لملحوظة الخطة): date/receiver بقوا حقلين
+// إجباريين فعليًا جوه handleAddPayment (raise قبل حتى الوصول لـRPC —
+// useFeesActions.ts) من زمان، لكن الهيلبر ده كان لسه بيملاهم اختياريًا
+// بـ`if`. أي تست مبيمررش القيمتين صراحة كان المفروض يقف على توست فاليديشن
+// بدل ما ينجح. بقوا يتملوا دايمًا — بقيمة افتراضية لو مفيش opts، وبقيمة
+// الـopts نفسها لو اتبعتت (زي تست 5 اللي بيحدد receiver مقصودًا).
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 async function fillPaymentForm(
   page: Page,
   amount: string,
@@ -39,15 +59,15 @@ async function fillPaymentForm(
 ): Promise<void> {
   await page.getByTestId('add-payment-trigger').click();
   await page.getByTestId('pay-amount').fill(amount);
-  if (opts?.date) await page.getByTestId('pay-date').fill(opts.date);
-  if (opts?.receiver) await page.getByTestId('pay-receiver').fill(opts.receiver);
+  await page.getByTestId('pay-date').fill(opts?.date ?? todayIso());
+  await page.getByTestId('pay-receiver').fill(opts?.receiver ?? 'محامي الاختبار - افتراضي');
   if (opts?.note) await page.getByTestId('pay-note').fill(opts.note);
 }
 
 test('1) تسجيل دفعة جزئية وتحديث النسبة/المتبقي', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - أتعاب جزئي - ${Date.now()}`;
-  await createCase(page, caseTitle);
+  await createCaseWithClient(page, caseTitle);
   await createFee(page, caseTitle, '10000');
   await openFeeDetail(page, caseTitle);
 
@@ -64,7 +84,7 @@ test('1) تسجيل دفعة جزئية وتحديث النسبة/المتبقي
 test('2) دفعة تكمل السداد بالكامل — البطاقة تتحول لـ "مسدد"', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - أتعاب كامل - ${Date.now()}`;
-  await createCase(page, caseTitle);
+  await createCaseWithClient(page, caseTitle);
   await createFee(page, caseTitle, '3000');
   await openFeeDetail(page, caseTitle);
 
@@ -84,7 +104,7 @@ test('2) دفعة تكمل السداد بالكامل — البطاقة تتح
 test('3) دفعة أكبر من المتبقي — تحذير بس مش رفض (تُسجَّل فعليًا)', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - أتعاب تجاوز - ${Date.now()}`;
-  await createCase(page, caseTitle);
+  await createCaseWithClient(page, caseTitle);
   await createFee(page, caseTitle, '1000');
   await openFeeDetail(page, caseTitle);
 
@@ -103,7 +123,7 @@ test('3) دفعة أكبر من المتبقي — تحذير بس مش رفض (
 test('4) منع تسجيل الدفعة أوفلاين برسالة واضحة', async ({ page, context }) => {
   await login(page);
   const caseTitle = `اختبار E2E - أتعاب أوفلاين - ${Date.now()}`;
-  await createCase(page, caseTitle);
+  await createCaseWithClient(page, caseTitle);
   await createFee(page, caseTitle, '2000');
   await openFeeDetail(page, caseTitle);
 
@@ -125,7 +145,7 @@ test('4) منع تسجيل الدفعة أوفلاين برسالة واضحة',
 test('5) معاينة فاتورة دفعة مسجّلة', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - فاتورة - ${Date.now()}`;
-  await createCase(page, caseTitle);
+  await createCaseWithClient(page, caseTitle);
   await createFee(page, caseTitle, '5000');
   await openFeeDetail(page, caseTitle);
 
@@ -144,7 +164,7 @@ test('5) معاينة فاتورة دفعة مسجّلة', async ({ page }) => {
 test('6) حذف دفعة وإعادة حساب المتبقي', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - حذف دفعة - ${Date.now()}`;
-  await createCase(page, caseTitle);
+  await createCaseWithClient(page, caseTitle);
   await createFee(page, caseTitle, '4000');
   await openFeeDetail(page, caseTitle);
 
@@ -168,7 +188,7 @@ test('6) حذف دفعة وإعادة حساب المتبقي', async ({ page })
 test('7) تعديل سجل أتعاب موجود (تغيير الإجمالي)', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - تعديل أتعاب - ${Date.now()}`;
-  await createCase(page, caseTitle);
+  await createCaseWithClient(page, caseTitle);
   await createFee(page, caseTitle, '1000');
 
   const card = page.getByTestId('fee-card').filter({ hasText: caseTitle });
@@ -188,7 +208,7 @@ test('7) تعديل سجل أتعاب موجود (تغيير الإجمالي)',
 test('8) حذف سجل أتعاب (أرشفة) واختفاؤه من القائمة', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - حذف أتعاب - ${Date.now()}`;
-  await createCase(page, caseTitle);
+  await createCaseWithClient(page, caseTitle);
   await createFee(page, caseTitle, '1500');
 
   const card = page.getByTestId('fee-card').filter({ hasText: caseTitle });
