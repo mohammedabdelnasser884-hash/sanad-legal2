@@ -135,6 +135,17 @@ const cases: MappedCase[] = [{
   court_hall: null, session_hall: null, secretary_hall: null, secretary_name: null, session_time: null, secretary_mobile: null,
   plaintiff_national_id: null, plaintiff_power_of_attorney: null, defendant_national_id: null, plaintiff_address: null,
   plaintiff_legal_title: null, defendant_legal_title: null,
+}, {
+  // 🆕 (المرحلة 5 — 29 أغسطس 2026): قضية بلا موكل مربوط خالص — لازمة عشان
+  // نختبر سيناريو "قضية بلا موكل → منع حفظ" الحقيقي تحت القاعدة الجديدة
+  // (الموكل بقى مُشتق من resolveCaseFeeClient على القضية، مش من form.client_id
+  // اليدوي زي ما كان قبل كده).
+  id: 'case-no-client', number: '2', title: 'قضية بلا موكل', court: '', type: 'مدني',
+  court_level: null, circuit_number: null, status: 'مفتوحة', date: '', client_id: null,
+  plaintiff: null, plaintiff_role: null, defendant: null, defendant_role: null, year: 2026, updated_at: null, court_floor: null,
+  court_hall: null, session_hall: null, secretary_hall: null, secretary_name: null, session_time: null, secretary_mobile: null,
+  plaintiff_national_id: null, plaintiff_power_of_attorney: null, defendant_national_id: null, plaintiff_address: null,
+  plaintiff_legal_title: null, defendant_legal_title: null,
 }];
 const clients: ClientRow[] = [{ id: 'client-1', full_name: 'أحمد محمد' } as ClientRow];
 const profile = { id: 'lawyer-1' } as ProfileRow;
@@ -250,13 +261,13 @@ describe('useFeesActions', () => {
     // عدا "ملاحظات". التستات دي بتغطي الحقول التلاتة الجديدة (موكل/مستلم)
     // بالإضافة لحقلي (مبلغ مدفوع/تاريخ دفعة) اللي إجباريين بس في مسار
     // الإنشاء الجديد (!editId).
-    it('من غير اختيار موكل → توست "حقل مطلوب"، مفيش أي rpc', async () => {
+    it('قضية بلا موكل مربوط → توست "القضية مش مربوطة بموكل"، مفيش أي rpc', async () => {
       const { result } = await renderFeesHook();
 
-      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', receiver: 'المحاسب', total: '1000' }); });
+      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-no-client', receiver: 'المحاسب', total: '1000' }); });
       await act(async () => { await result.current.handleSave(); });
 
-      expect(toast).toHaveBeenCalledWith('❌ حقل "اسم الموكل" مطلوب', true);
+      expect(toast).toHaveBeenCalledWith('❌ القضية دي مش مربوطة بموكل — يرجى تحديد الموكل من بيانات القضية أولاً', true);
       expect(mockDb.rpcSpy).not.toHaveBeenCalled();
     });
 
