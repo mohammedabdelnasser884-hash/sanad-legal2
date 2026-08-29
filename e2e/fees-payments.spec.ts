@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { login, createCaseWithClient, selectCaseFromSearch, expectToast } from './utils';
+import { login, createCaseWithClient, selectCaseFromSearch, expectToast, todayIso, ADVANCE_PAYMENT_DATE } from './utils';
 
 // المرحلة 4 من خطة تنفيذ اختبارات E2E المقسمة — الأتعاب: تسجيل دفعات
 // (جزئية/كاملة/أكبر من المتبقي)، منع التسجيل أوفلاين، معاينة الفاتورة،
@@ -14,24 +14,45 @@ import { login, createCaseWithClient, selectCaseFromSearch, expectToast } from '
 // وconfirm-add-payment يفضلوا disabled من أول خطوة. كل تست هنا بقى بيستخدم
 // createCaseWithClient (المرحلة 6) بدل createCase. وfee-case-select بقى
 // CaseSearchSelect (بحث حي) — selectCaseFromSearch بدل selectOption القديمة.
+//
+// 🔴 CHANGED (إصلاح CI بعد تشغيل فعلي — 29 أغسطس 2026): زي ما اتوضّح في
+// fees.spec.ts، إنشاء أي سجل أتعاب بقى بيتطلب "المستلم"، "المدفوع" (> 0)،
+// و"تاريخ الدفعة" كحقول إجبارية — و"المدفوع" ده بالذات بقى دفعة حقيقية
+// أولى (advance) بتتسجل كصف في fee_payments عبر create_fee_with_advance،
+// مش مجرد رقم. ده أثّر على أرقام كل تست تحت (المتبقي بقى = الإجمالي -
+// الدفعة المقدّمة - أي دفعات إضافية، مش = الإجمالي فقط زي قبل)، وعلى عدّ
+// صفوف سجل الدفعات (الدفعة المقدّمة بقت تحسب صف زيادة). كل تست اتعدّل
+// بأرقام جديدة تحافظ على نفس *نية* التست الأصلية (نفس السيناريو المنطقي)
+// مع تعليق بالحساب الجديد جنب كل واحدة.
+//
+// ⚠️ ملحوظة تاريخ مهمة: الدفعة المقدّمة بتتسجل بتاريخ ثابت في الماضي
+// (ADVANCE_PAYMENT_DATE، من utils.ts) بدل تاريخ النهاردة، وأي دفعة إضافية
+// بتتسجل بتاريخ النهاردة (fillPaymentForm's default). ده مقصود: سجل
+// الدفعات مرتب `payment_date` تنازليًا (fetchFees في useFeesActions.ts)،
+// فلو الاتنين بنفس تاريخ اليوم الترتيب بينهم غير مضمون. بالفرق ده، أي
+// دفعة "إضافية" مسجّلة في التست دايمًا هتبقى أول عنصر (.first()) في
+// القايمة بشكل موثوق — مهم لتست 6 اللي بيحذف دفعة بعينها.
 
-// ⚠️ ملحوظة تنسيق: كل الأرقام المعروضة في الشاشة بتمر بـ formatArNumber
-// (shared/ui/arabicLocale.ts) اللي بيستخدم locale 'ar-EG' — يعني بتظهر
-// بأرقام عربية شرقية وفاصلة آلاف عربية (مثلاً "٤٬٠٠٠" مش "4,000"). الهيلبر
-// ده بيولّد نفس الصيغة بالظبط عشان التستات تقارن صح.
 function arNum(n: number): string {
   return n.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
 }
 
-// 🔄 CHANGED (المرحلة 7): fee-case-select بقى CaseSearchSelect (بحث حي في
-// الداتابيز) بدل <select> عادي — selectCaseFromSearch (بحث + اختيار من
-// النتائج) بدل selectOption({label}) القديمة اللي بقت غير قابلة للاستخدام
-// خالص مع المكوّن الجديد.
-async function createFee(page: Page, caseTitle: string, total: string): Promise<void> {
+// 🔄 CHANGED (المرحلة 7 + إصلاح CI): fee-case-select بقى CaseSearchSelect
+// (بحث حي في الداتابيز) بدل <select> عادي — selectCaseFromSearch بدل
+// selectOption القديمة. وبقى بياخد كائن opts (مش رقم total لوحده) عشان
+// يقدر يملى كل الحقول الإجبارية الأربعة الجديدة (راجع الملحوظة فوق).
+async function createFee(
+  page: Page,
+  caseTitle: string,
+  opts: { total: string; paid: string; receiver?: string }
+): Promise<void> {
   await page.getByTestId('desktop-nav-fees').click();
   await page.getByTestId('add-fee-button').click();
   await selectCaseFromSearch(page, 'fee-case-select', caseTitle);
-  await page.getByTestId('fee-total').fill(total);
+  await page.getByTestId('fee-receiver').fill(opts.receiver ?? 'محامي الاختبار - دفعة مقدّمة');
+  await page.getByTestId('fee-total').fill(opts.total);
+  await page.getByTestId('fee-paid').fill(opts.paid);
+  await page.getByTestId('fee-payment-date').fill(ADVANCE_PAYMENT_DATE);
   await page.getByTestId('save-fee-button').click();
   await expect(page.getByTestId('fee-total')).not.toBeVisible({ timeout: 15_000 });
 }
@@ -42,16 +63,11 @@ async function openFeeDetail(page: Page, caseTitle: string): Promise<void> {
   await page.getByTestId('fee-detail-modal').waitFor({ state: 'visible', timeout: 10_000 });
 }
 
-// 🔄 CHANGED (المرحلة 7 — طبقًا لملحوظة الخطة): date/receiver بقوا حقلين
-// إجباريين فعليًا جوه handleAddPayment (raise قبل حتى الوصول لـRPC —
-// useFeesActions.ts) من زمان، لكن الهيلبر ده كان لسه بيملاهم اختياريًا
-// بـ`if`. أي تست مبيمررش القيمتين صراحة كان المفروض يقف على توست فاليديشن
-// بدل ما ينجح. بقوا يتملوا دايمًا — بقيمة افتراضية لو مفيش opts، وبقيمة
-// الـopts نفسها لو اتبعتت (زي تست 5 اللي بيحدد receiver مقصودًا).
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
+// date/receiver حقلين إجباريين فعليًا جوه handleAddPayment (raise قبل حتى
+// الوصول لـRPC — useFeesActions.ts) — بيتملوا دايمًا هنا: بقيمة افتراضية
+// لو مفيش opts، وبقيمة الـopts نفسها لو اتبعتت (زي تست 5 اللي بيحدد
+// receiver مقصودًا للفاتورة). التاريخ الافتراضي هنا (todayIso) عمدًا مختلف
+// عن ADVANCE_PAYMENT_DATE بتاعة createFee — راجع ملحوظة الترتيب فوق.
 async function fillPaymentForm(
   page: Page,
   amount: string,
@@ -64,31 +80,37 @@ async function fillPaymentForm(
   if (opts?.note) await page.getByTestId('pay-note').fill(opts.note);
 }
 
+// 🔴 CHANGED (إصلاح CI): إجمالي 10000، دفعة مقدّمة إجبارية 1000 وقت
+// الإنشاء (بدل 0 قبل كده)، بعدين دفعة إضافية 3000 (بدل 4000) — نفس
+// المتبقي النهائي المستهدف أصلًا (6000 = 10000 - 1000 - 3000). عدد صفوف
+// سجل الدفعات بقى 2 (الدفعة المقدّمة + الدفعة الإضافية) بدل 1.
 test('1) تسجيل دفعة جزئية وتحديث النسبة/المتبقي', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - أتعاب جزئي - ${Date.now()}`;
   await createCaseWithClient(page, caseTitle);
-  await createFee(page, caseTitle, '10000');
+  await createFee(page, caseTitle, { total: '10000', paid: '1000' });
   await openFeeDetail(page, caseTitle);
 
-  await fillPaymentForm(page, '4000');
+  await fillPaymentForm(page, '3000');
   await page.getByTestId('confirm-add-payment').click();
   await expectToast(page, '✅ تم تسجيل الدفعة');
 
-  // المتبقي المفروض يبقى 6000 بعد دفعة 4000 من إجمالي 10000
+  // المتبقي = 10000 - 1000 (مقدّم) - 3000 (إضافية) = 6000
   await expect(page.getByTestId('fee-remaining-value')).toContainText(arNum(6000));
   await page.getByTestId('payments-history-toggle').click();
-  await expect(page.getByTestId('payment-row')).toHaveCount(1);
+  await expect(page.getByTestId('payment-row')).toHaveCount(2);
 });
 
+// 🔴 CHANGED (إصلاح CI): إجمالي 3000، دفعة مقدّمة إجبارية 500، بعدين دفعة
+// إضافية 2500 تكمل السداد بالكامل (500 + 2500 = 3000).
 test('2) دفعة تكمل السداد بالكامل — البطاقة تتحول لـ "مسدد"', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - أتعاب كامل - ${Date.now()}`;
   await createCaseWithClient(page, caseTitle);
-  await createFee(page, caseTitle, '3000');
+  await createFee(page, caseTitle, { total: '3000', paid: '500' });
   await openFeeDetail(page, caseTitle);
 
-  await fillPaymentForm(page, '3000');
+  await fillPaymentForm(page, '2500');
   await page.getByTestId('confirm-add-payment').click();
   await expectToast(page, '✅ تم تسجيل الدفعة');
 
@@ -101,11 +123,15 @@ test('2) دفعة تكمل السداد بالكامل — البطاقة تتح
   await expect(card.first()).toContainText('✅ مسدد');
 });
 
+// 🔴 CHANGED (إصلاح CI): إجمالي 1500، دفعة مقدّمة إجبارية 500 → المتبقي
+// 1000 (بدل ما يبدأ المتبقي = الإجمالي كامل زي قبل). بعدين دفعة 1500
+// (أكبر من الـ1000 المتبقي) — لسه بتحقق نفس نية التست الأصلية (دفعة أكبر
+// من المتبقي، مش رفض).
 test('3) دفعة أكبر من المتبقي — تحذير بس مش رفض (تُسجَّل فعليًا)', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - أتعاب تجاوز - ${Date.now()}`;
   await createCaseWithClient(page, caseTitle);
-  await createFee(page, caseTitle, '1000');
+  await createFee(page, caseTitle, { total: '1500', paid: '500' });
   await openFeeDetail(page, caseTitle);
 
   // المتبقي 1000، هنسجل 1500 (أكبر من المتبقي)
@@ -120,11 +146,14 @@ test('3) دفعة أكبر من المتبقي — تحذير بس مش رفض (
   await expect(page.getByTestId('payment-row-amount').first()).toContainText(arNum(1500));
 });
 
+// 🔴 CHANGED (إصلاح CI): إجمالي 2000، دفعة مقدّمة إجبارية 500 → المتبقي
+// 1500 قبل المحاولة الأوفلاين (بدل 2000 زي قبل، لأن مفيش طريقة تقنية
+// نخلق سجل أتعاب بمتبقي = الإجمالي كامل دلوقتي — الدفعة المقدّمة إجبارية).
 test('4) منع تسجيل الدفعة أوفلاين برسالة واضحة', async ({ page, context }) => {
   await login(page);
   const caseTitle = `اختبار E2E - أتعاب أوفلاين - ${Date.now()}`;
   await createCaseWithClient(page, caseTitle);
-  await createFee(page, caseTitle, '2000');
+  await createFee(page, caseTitle, { total: '2000', paid: '500' });
   await openFeeDetail(page, caseTitle);
 
   await fillPaymentForm(page, '500');
@@ -138,15 +167,19 @@ test('4) منع تسجيل الدفعة أوفلاين برسالة واضحة',
     await context.setOffline(false);
   }
 
-  // نتأكد إن المتبقي فعلاً متغيرش (مفيش دفعة انسجلت فعليًا)
-  await expect(page.getByTestId('fee-remaining-value')).toContainText(arNum(2000));
+  // نتأكد إن المتبقي فعلاً متغيرش (مفيش دفعة انسجلت فعليًا) — لسه 1500
+  // (2000 - 500 الدفعة المقدّمة، رغم محاولة الـ500 الأوفلاين المرفوضة)
+  await expect(page.getByTestId('fee-remaining-value')).toContainText(arNum(1500));
 });
 
+// 🔴 CHANGED (إصلاح CI): إجمالي 5000، دفعة مقدّمة إجبارية 1000 — مفيش أثر
+// على منطق التست نفسه (الفاتورة بتتفحص للدفعة الإضافية 2000 بالذات، مش
+// للدفعة المقدّمة).
 test('5) معاينة فاتورة دفعة مسجّلة', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - فاتورة - ${Date.now()}`;
   await createCaseWithClient(page, caseTitle);
-  await createFee(page, caseTitle, '5000');
+  await createFee(page, caseTitle, { total: '5000', paid: '1000' });
   await openFeeDetail(page, caseTitle);
 
   await fillPaymentForm(page, '2000', { receiver: 'محامي الاختبار' });
@@ -161,19 +194,29 @@ test('5) معاينة فاتورة دفعة مسجّلة', async ({ page }) => {
   await page.getByTestId('invoice-modal').waitFor({ state: 'hidden' });
 });
 
+// 🔴 CHANGED (إصلاح CI): إجمالي 4000، دفعة مقدّمة إجبارية 100 (بتاريخ
+// ADVANCE_PAYMENT_DATE، في الماضي). دفعة إضافية 1000 بتاريخ النهاردة —
+// بما إن سجل الدفعات مرتب تنازليًا بالتاريخ، الدفعة الإضافية (تاريخ
+// أحدث) دايمًا أول عنصر (.first())، فحذفها بالـ.first() آمن ومضمون —
+// مش هيمسح الدفعة المقدّمة بالغلط. المتبقي بعد الحذف بيرجع لـ3900 (4000
+// - 100 الدفعة المقدّمة الباقية)، مش 4000 زي قبل.
 test('6) حذف دفعة وإعادة حساب المتبقي', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - حذف دفعة - ${Date.now()}`;
   await createCaseWithClient(page, caseTitle);
-  await createFee(page, caseTitle, '4000');
+  await createFee(page, caseTitle, { total: '4000', paid: '100' });
   await openFeeDetail(page, caseTitle);
 
   await fillPaymentForm(page, '1000');
   await page.getByTestId('confirm-add-payment').click();
   await expectToast(page, '✅ تم تسجيل الدفعة');
-  await expect(page.getByTestId('fee-remaining-value')).toContainText(arNum(3000));
+  // المتبقي = 4000 - 100 (مقدّم) - 1000 (إضافية) = 2900
+  await expect(page.getByTestId('fee-remaining-value')).toContainText(arNum(2900));
 
   await page.getByTestId('payments-history-toggle').click();
+  // .first() = الدفعة الأحدث تاريخًا (النهاردة) = الدفعة الإضافية اللي
+  // اتسجلت فوق، مش الدفعة المقدّمة (تاريخها في الماضي — راجع الملحوظة
+  // فوق التست).
   await page.getByTestId('payment-delete-trigger').first().click();
   // بيانات نص التأكيد (fmt/fmtDate) بيتقروا من نفس المودال — نص مُنسّق
   // بأرقام عربية شرقية وصعب نعيد بناءه يدويًا، فبنقرأه من الشاشة نفسها.
@@ -181,15 +224,17 @@ test('6) حذف دفعة وإعادة حساب المتبقي', async ({ page })
   await page.getByTestId('confirm-delete-payment-input').fill(exactText);
   await page.getByTestId('confirm-delete-payment-yes').click();
 
-  await expect(page.getByTestId('payment-row')).toHaveCount(0);
-  await expect(page.getByTestId('fee-remaining-value')).toContainText(arNum(4000));
+  // بعد حذف الدفعة الإضافية، صف واحد بس فاضل (الدفعة المقدّمة)، والمتبقي
+  // بيرجع لـ3900 (4000 - 100)
+  await expect(page.getByTestId('payment-row')).toHaveCount(1);
+  await expect(page.getByTestId('fee-remaining-value')).toContainText(arNum(3900));
 });
 
 test('7) تعديل سجل أتعاب موجود (تغيير الإجمالي)', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - تعديل أتعاب - ${Date.now()}`;
   await createCaseWithClient(page, caseTitle);
-  await createFee(page, caseTitle, '1000');
+  await createFee(page, caseTitle, { total: '1000', paid: '200' });
 
   const card = page.getByTestId('fee-card').filter({ hasText: caseTitle });
   await card.first().click();
@@ -202,14 +247,17 @@ test('7) تعديل سجل أتعاب موجود (تغيير الإجمالي)',
   // ⚠️ handleSave بيقفل فورم التعديل بس (setShowForm(false)) — مودال
   // التفاصيل (detailsFor) فاضل مفتوح تحته زي ما هو، وبيتحدّث بالبيانات
   // الجديدة بعد fetchFees. مفيش داعي (ولا لازم) نفتحه تاني.
-  await expect(page.getByTestId('fee-remaining-value')).toContainText(arNum(7000));
+  // 🔴 CHANGED (إصلاح CI): المدفوع لسه 200 (فورم التعديل بيعطّل حقل
+  // "المبلغ المدفوع" ومايأثرش — راجع تعليق fee-paid في FeesTab.tsx) —
+  // فالمتبقي الجديد = 7000 - 200 = 6800، مش 7000 كامل زي قبل.
+  await expect(page.getByTestId('fee-remaining-value')).toContainText(arNum(6800));
 });
 
 test('8) حذف سجل أتعاب (أرشفة) واختفاؤه من القائمة', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - حذف أتعاب - ${Date.now()}`;
   await createCaseWithClient(page, caseTitle);
-  await createFee(page, caseTitle, '1500');
+  await createFee(page, caseTitle, { total: '1500', paid: '300' });
 
   const card = page.getByTestId('fee-card').filter({ hasText: caseTitle });
   await card.first().click();
