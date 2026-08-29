@@ -203,6 +203,16 @@
 
         /* Typography */
         html.light .text-white        { color: var(--text-primary) !important; }
+        /* ── FIX (فحص الصور — 30 أغسطس 2026): text-white/NN (شفافية جزئية)
+           مش مغطاة بقاعدة .text-white العادية لأن Tailwind بيولّد كلاس
+           منفصل تمامًا لكل درجة شفافية (اسمه فعليًا "text-white/60" بالحرف،
+           مش .text-white بأوباسيتي منفصلة) — ظهر واضح في الحالة الفارغة
+           لتبويب الجلسات ("لا توجد جلسات مسجلة" كانت شبه مختفية). بديل
+           بدرجة قتامة تتناسب مع نسبة الشفافية الأصلية. ── */
+        html.light [class*="text-white/40"] { color: var(--text-faint) !important; }
+        html.light [class*="text-white/60"] { color: var(--text-muted) !important; }
+        html.light [class*="text-white/70"],
+        html.light [class*="text-white/80"] { color: var(--text-secondary) !important; }
         html.light .text-slate-100    { color: var(--text-primary) !important; }
         html.light .text-slate-200    { color: #1e293b !important; }
         html.light .text-slate-300    { color: var(--text-secondary) !important; }
