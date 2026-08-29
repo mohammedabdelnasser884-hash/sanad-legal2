@@ -170,7 +170,7 @@ function ClientsTab({ cases, clients, clientSearch, setClientSearch, clientsPage
     setSearchOpen((s: boolean) => !s);
   };
 
-  return React.createElement(React.Fragment, null,
+  return React.createElement('div', { className: "space-y-4 fade-in" },
 
     // ── هيدر ──
     React.createElement('div', {className:"flex items-center justify-between"},
