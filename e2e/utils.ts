@@ -403,6 +403,32 @@ export async function expectToast(page: Page, text: string, timeout = 5_000): Pr
   await expect(toastEl).toHaveText(text, { timeout });
 }
 
+// المرحلة 7 (E2E) — هيلبر تفاعل مشترك مع CaseSearchSelect (دروب-داون بحث
+// حي بديل الـ<select> القديم لـfee-case-select، من المرحلة 3/1). بيكتب في
+// مربع البحث (يشغّل runSearch جوه المكوّن نفسه بعد ديباونس 300ms)، وبعدين
+// يستنى ويدوس على الخيار اللي نصه بيطابق caseTitle بالظبط — مش أول نتيجة
+// عشوائيًا، عشان عنوان قضية تجريبي ممكن يكون substring من قضية تانية اتعملت
+// في نفس تشغيلة CI (كلها بادئة "اختبار E2E - ..." مشتركة). Playwright بينتظر
+// العنصر يظهر ويبقى قابل للنقر أوتوماتيك، فمفيش داعي لـwaitFor صريح هنا.
+export async function selectCaseFromSearch(page: Page, testId: string, caseTitle: string): Promise<void> {
+  await page.getByTestId(testId).fill(caseTitle);
+  await page.getByTestId(`${testId}-option`).filter({ hasText: caseTitle }).first().click();
+}
+
+// المرحلة 7 (E2E) — بديل createCase العادية لكل تستات الأتعاب/الدفعات:
+// بما إن resolveCaseFeeClient بترجع EMPTY_RESOLVED_CLIENT لأي قضية من غير
+// client_id حقيقي مربوط (راجع القرار النهائي في تقرير المراجعة)، أي تست
+// أتعاب لازم يعمل موكل حقيقي ويربطه بالقضية وقت الإنشاء (⭐ + linkClientName
+// من المرحلة 6) — وإلا الفورمين (إضافة أتعاب/تسجيل دفعة) هيفضلوا مقفولين
+// برسالة "لا يوجد موكل مرتبط" من أول خطوة. اسم الموكل مشتق من caseTitle نفسه
+// (نفس بادئة/طابع Date.now() الفريد) عشان يفضل فريد بنفس ضمانات caseTitle.
+export async function createCaseWithClient(page: Page, caseTitle: string): Promise<string> {
+  const clientName = `موكل - ${caseTitle}`;
+  await createClient(page, clientName);
+  await createCase(page, caseTitle, { linkClientName: clientName });
+  return clientName;
+}
+
 // المرحلة 3 (خطة تنفيذ اختبارات E2E المقسمة) — هيلبر إضافة جلسة لقضية
 // مفتوحة بالفعل على شاشة تفاصيلها (case-detail-view، تبويب "الجلسات"
 // نشط). بيستقبل رقم اليوم (day) في الشهر الحالي (نفس تاريخ اليوم أو أي
