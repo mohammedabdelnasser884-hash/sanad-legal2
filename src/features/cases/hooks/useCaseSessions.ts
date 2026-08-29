@@ -138,8 +138,8 @@ export function useCaseSessions(
       type: 'DELETE', table: 'case_sessions', id: sessionId,
       data: {
         _offlineSessionCaseId: caseData.id,
-        date: deletedSession?.date,
-        location_hall: deletedSession?.location_hall,
+        session_date: deletedSession?.session_date,
+        session_hall: deletedSession?.session_hall,
       }
     });
     if (offline && queued) {
@@ -156,8 +156,8 @@ export function useCaseSessions(
       client_name: client?.full_name || null,
       userName: profile?.full_name || null,
       changes: buildDeleteSnapshot(deletedSession as unknown as Record<string, unknown>, {
-        date: { label: 'تاريخ الجلسة' },
-        location_hall: { label: 'القاعة' },
+        session_date: { label: 'تاريخ الجلسة' },
+        session_hall: { label: 'القاعة' },
       }),
     });
     refetchAll();
