@@ -176,6 +176,13 @@ export function useClientActions(params: {
         // موجود أصلاً عندهم في الواقع.
         const poaErr = validatePowerOfAttorney(form.cr_number);
         if (poaErr) { toast(poaErr, true); return false; }
+        // ⚡ NEW (طلب المستخدم — 30 أغسطس 2026): العنوان إجباري عند إنشاء
+        // موكل جديد — نفس فلسفة رقم التوكيل فوق بالظبط (الجيت الحقيقي هنا
+        // قبل أي INSERT فعلي، مش بس التحقق الفوري في NewClientModal.tsx).
+        if (!form.address || !form.address.trim()) {
+            toast('❌ حقل "العنوان" مطلوب', true);
+            return false;
+        }
         // فحص التكرار اللي هو استعلام على النت وممكن ياخد وقت لو النت
         // بطيء. قبل الفيكس ده كان setSavingClient(true) بعد الفحص، فلو
         // النت هيس والمستخدم ضغط "إضافة" أكتر من مرة، كل ضغطة كانت
