@@ -277,7 +277,12 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
             },
                     React.createElement('div',{className:"flex items-center justify-between mb-1"},
                         React.createElement('h4',{className:"text-xs font-black text-premium-gold"},editId ? "✏️ تعديل الأتعاب" : "📋 إضافة أتعاب"),
-                        React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);},className:"w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90"},"✕")
+                        // 🆕 (المرحلة 8 — E2E): data-testid مُضاف عشان تستات إغلاق/إلغاء
+                        // فورم الأتعاب (زي سيناريو "فك ربط موكل بعد إنشاء سجل") تقدر تقفل
+                        // الفورم بدقة، بدل الاعتماد على نص "✕" اللي ممكن يتكرر في عناصر
+                        // تانية (مودال تفاصيل الأتعاب تحته، مودال الفاتورة، ...إلخ) ويسبب
+                        // strict-mode violation في Playwright. صفر تغيير في السلوك/الشكل.
+                        React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);},'data-testid':'close-fee-form',className:"w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90"},"✕")
                     ),
                     // 🔒 CHANGED (طلب المستخدم — 29 أغسطس 2026): دروب-داون قضية عادي
                     // بقى CaseSearchSelect (بحث حي في الداتابيز، بنفس نمط
