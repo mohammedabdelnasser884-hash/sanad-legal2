@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { db } from '../../../../supabaseClient';
 import { toast } from '../../../../shared/lib/notifications';
-import { logActivity } from '../../../../shared/lib/dataAccess';
+import { logActivity, buildDeleteSnapshot } from '../../../../shared/lib/dataAccess';
 import { ilikeOrClause } from '../../../../shared/lib/sanitize';
 import type { CaseRow, ClientRow, CaseFeeRow, ProfileRow } from '../../../../types';
 
@@ -123,6 +123,11 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
             case_name: c?.title || null,
             case_type: c?.case_type || null,
             client_name: clients.find((cl) => cl.id === c?.client_id)?.full_name || null,
+            changes: buildDeleteSnapshot(c as unknown as Record<string, unknown>, {
+                title: { label: 'العنوان' },
+                case_type: { label: 'نوع القضية' },
+                status: { label: 'الحالة' },
+            }),
         });
         setArchivedCases((prev) => prev.filter((cs) => cs.id !== caseId));
         setArchivedCasesTotal((prev) => Math.max(0, prev - 1));
@@ -205,6 +210,11 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
             entity_type: 'client', entity_id: clientId,
             details: cl?.full_name || cl?.client_name || null,
             client_name: cl?.full_name || cl?.client_name || null,
+            changes: buildDeleteSnapshot(cl as unknown as Record<string, unknown>, {
+                full_name: { label: 'الاسم' },
+                client_name: { label: 'الاسم' },
+                phone: { label: 'الهاتف' },
+            }),
         });
         setArchivedClients((prev) => prev.filter((c) => c.id !== clientId));
         setArchivedClientsTotal((prev) => Math.max(0, prev - 1));
@@ -276,6 +286,10 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
             entity_type: 'fee', entity_id: feeId,
             client_name: f?.client_name || null,
             case_name: f?.case_title || null,
+            changes: buildDeleteSnapshot(f as unknown as Record<string, unknown>, {
+                total_fees: { label: 'إجمالي الأتعاب' },
+                paid_fees: { label: 'المدفوع' },
+            }),
         });
         setArchivedFees((prev) => prev.filter((x) => x.id !== feeId));
         setArchivedFeesTotal((prev) => Math.max(0, prev - 1));
