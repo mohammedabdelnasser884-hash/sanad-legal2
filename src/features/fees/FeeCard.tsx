@@ -244,6 +244,7 @@ function FeeCard({
                                     React.createElement('div',{className:"space-y-1.5"},
                                         React.createElement(ClientSearchSelect,{
                                             label:"اسم الموكل",
+                                            required:true,
                                             testId:'pay-client-select',
                                             selectedLabel: (() => {
                                                 const matched = clients.find((cl: ClientRow) => cl.id === payClientName);
@@ -269,26 +270,35 @@ function FeeCard({
                                             autoFocus:true
                                         })
                                     ),
-                                    React.createElement('input',{
-                                        type:"number",value:payAmount,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setPayAmount(e.target.value),
-                                        placeholder:"المبلغ...",
-                                        'data-testid':'pay-amount',
-                                        className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600",
-                                        style:{fontFamily:'Cairo,sans-serif'}
-                                    }),
-                                    React.createElement('input',{
-                                        type:"date",value:payDate,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setPayDate(e.target.value),
-                                        'data-testid':'pay-date',
-                                        className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-premium-bg text-white",
-                                        style:{fontFamily:'Cairo,sans-serif',colorScheme:'dark'}
-                                    }),
-                                    React.createElement('input',{
-                                        type:"text",value:payReceiver,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setPayReceiver(e.target.value),
-                                        placeholder:"اسم المستلم من المكتب...",
-                                        'data-testid':'pay-receiver',
-                                        className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600",
-                                        style:{fontFamily:'Cairo,sans-serif'}
-                                    }),
+                                    React.createElement('div',{className:"space-y-1"},
+                                        React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"المبلغ",React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
+                                        React.createElement('input',{
+                                            type:"number",value:payAmount,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setPayAmount(e.target.value),
+                                            placeholder:"المبلغ...",
+                                            'data-testid':'pay-amount',
+                                            className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600",
+                                            style:{fontFamily:'Cairo,sans-serif'}
+                                        })
+                                    ),
+                                    React.createElement('div',{className:"space-y-1"},
+                                        React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"تاريخ الدفعة",React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
+                                        React.createElement('input',{
+                                            type:"date",value:payDate,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setPayDate(e.target.value),
+                                            'data-testid':'pay-date',
+                                            className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-premium-bg text-white",
+                                            style:{fontFamily:'Cairo,sans-serif',colorScheme:'dark'}
+                                        })
+                                    ),
+                                    React.createElement('div',{className:"space-y-1"},
+                                        React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"المستلم من المكتب",React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
+                                        React.createElement('input',{
+                                            type:"text",value:payReceiver,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setPayReceiver(e.target.value),
+                                            placeholder:"اسم المستلم من المكتب...",
+                                            'data-testid':'pay-receiver',
+                                            className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600",
+                                            style:{fontFamily:'Cairo,sans-serif'}
+                                        })
+                                    ),
                                     React.createElement('textarea',{
                                         value:payNote,onChange:(e: React.ChangeEvent<HTMLTextAreaElement>) =>setPayNote(e.target.value),
                                         placeholder:"ملاحظات الدفعة...",rows:2,
