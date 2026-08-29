@@ -95,7 +95,7 @@ function MonthWeekView({ weeks, sessionsMap, tasksMap, cases, clients, onOpenCas
                     React.createElement('div', {
                         className: "flex items-center gap-2 py-2.5 px-3 rounded-lg",
                         style: {
-                            background: isToday ? '#f3e8c9' : '#e8eaed'
+                            background: isToday ? '#f0e3b0' : '#e7e0d1'
                         }
                     },
                         React.createElement('div', {
