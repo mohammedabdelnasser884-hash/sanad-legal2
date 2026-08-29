@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { db } from '../../../supabaseClient';
 import { toast } from '../../../shared/lib/notifications';
 import { validateUploadFile, resolveStorageUrl } from '../../../shared/lib/storage';
-import { logActivity } from '../../../shared/lib/dataAccess';
+import { logActivity, buildDeleteSnapshot, buildAddSnapshot } from '../../../shared/lib/dataAccess';
 import { getCurrentTenantId } from '../../../constants';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
 import type { ClientRow, ProfileRow, CaseDocumentRow } from '../../../types';
@@ -96,6 +96,15 @@ export function useCaseDocuments(
       case_name: caseData.title || null, case_type: caseData.type || null,
       client_name: client?.full_name || null,
       userName: profile?.full_name || null,
+      changes: buildAddSnapshot({
+        file_name: docLabel.trim() || pendingFile.name,
+        category: docCategory,
+        original_name: pendingFile.name,
+      }, {
+        file_name: { label: 'اسم الملف' },
+        category: { label: 'التصنيف' },
+        original_name: { label: 'الاسم الأصلي' },
+      }),
     });
     setShowDocForm(false); setPendingFile(null); setDocLabel(''); setDocCategory('مذكرة دفاع');
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -124,11 +133,20 @@ export function useCaseDocuments(
     setDeletingDocId(null);
     if (dbErr) { toast('❌ حُذف الملف لكن فشل تحديث السجل', true); return; }
     toast('🗑 تم حذف المستند');
+    // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): كان details بيسجل
+    // اسم الملف بس. دلوقتي بنبحث عن الصف الكامل في docs (لو لسه في الـ
+    // state قبل refetchAll) عشان نحفظ التصنيف والاسم الأصلي وحجم الملف.
+    const fullDoc = docs.find((d) => d.id === doc.id);
     logActivity(db, 'حذف مستند', {
       entity_type: 'document', entity_id: doc.id, details: `${caseData.title} — ${doc.file_name}`,
       case_name: caseData.title || null, case_type: caseData.type || null,
       client_name: client?.full_name || null,
       userName: profile?.full_name || null,
+      changes: buildDeleteSnapshot(fullDoc as unknown as Record<string, unknown>, {
+        file_name: { label: 'اسم الملف' },
+        category: { label: 'التصنيف' },
+        original_name: { label: 'الاسم الأصلي' },
+      }),
     });
     refetchAll();
   };
