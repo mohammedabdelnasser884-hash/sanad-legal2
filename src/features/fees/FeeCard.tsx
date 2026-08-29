@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { I } from '../../constants';
-import { ClientSearchSelect, type ClientSearchResult } from '@/shared/ui/ClientSearchSelect';
 import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { ClientRow, CaseFeeRow, FeePaymentRow, InvoiceRow, PaymentsByFeeId } from '../../types';
 import type { MappedCase } from '../../hooks/useAppData';
 import type { InvoiceModalState, ConfirmDeletePayState, FeeFormState } from './hooks/useFeesActions';
+import { resolveCaseFeeClient } from './hooks/useFeesActions';
 
 interface FeeCardProps {
   fee: CaseFeeRow;
@@ -82,6 +82,23 @@ function FeeCard({
   // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
   // المُطبَّق في NewCaseModal.tsx.
   const modalPresentation = useModalPresentation();
+
+  // ⚡ NEW (طلب المستخدم — 29 أغسطس 2026): اسم الموكل في فورم "تسجيل دفعة"
+  // بقى بياخد تلقائيًا من قضية الأتعاب نفسها (linkedCase فوق) — نفس قاعدة
+  // فورم إضافة/تعديل الأتعاب بالحرف (راجع resolveCaseFeeClient في
+  // useFeesActions.ts). الحقل مقفول تمامًا هنا؛ الـeffect بيشتغل بس وقت
+  // فتح فورم الدفعة لهذه البطاقة تحديدًا (addPaymentFor بيتساوى fee.id)،
+  // فمفيش أي تعديل لباقي منطق handleAddPayment/الفاليديشن الحالي في الـhook
+  // — لسه بيقرا payClientName/payClientNameText زي ما هو بالظبط، بس دلوقتي
+  // بيتملوا تلقائيًا بدل اختيار يدوي.
+  useEffect(() => {
+    if (addPaymentFor !== fee.id) return;
+    if (linkedCase?.client_id) ensureClientsLoaded?.([linkedCase.client_id]);
+    const resolved = resolveCaseFeeClient(linkedCase, clients);
+    setPayClientName(resolved.clientId || (resolved.manualText ? '__manual__' : ''));
+    setPayClientNameText(resolved.manualText || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addPaymentFor, fee.id, linkedCase, clients]);
 
   return React.createElement(React.Fragment,{key:fee.id},
                         // ─ الكارت المضغوط ─
@@ -238,37 +255,25 @@ function FeeCard({
                             // زر تسجيل دفعة + تعديل + حذف
                             !isFullyPaid && addPaymentFor===fee.id
                                 ? React.createElement('div',{className:"space-y-2 slide-up"},
-                                    // اسم الموكل — dropdown
-                                    // ⚡ CHANGED (8 أغسطس 2026 — البند 6): ClientSearchSelect بدل
-                                    // <select> محدود — راجع تعليق ensureClientsLoaded في FeeCardProps فوق.
-                                    React.createElement('div',{className:"space-y-1.5"},
-                                        React.createElement(ClientSearchSelect,{
-                                            label:"اسم الموكل",
-                                            required:true,
-                                            testId:'pay-client-select',
-                                            selectedLabel: (() => {
-                                                const matched = clients.find((cl: ClientRow) => cl.id === payClientName);
-                                                return matched?.full_name || '';
-                                            })(),
-                                            isManualSelected: payClientName==='__manual__',
-                                            manualOption:{label:'➕ آخر (اكتب يدوي)'},
-                                            onManualSelect:() => setPayClientName('__manual__'),
-                                            onSelect:(c: ClientSearchResult) => {
-                                                ensureClientsLoaded?.([c.id]);
-                                                setPayClientName(c.id);
-                                            },
-                                            placeholder:'اختر موكل... (اكتب للبحث)',
-                                        }),
-                                        payClientName==='__manual__' && React.createElement('input',{
-                                            type:"text",
-                                            value:payClientNameText||'',
-                                            onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setPayClientNameText(e.target.value),
-                                            placeholder:"اكتب اسم الموكل...",
-                                            'data-testid':'pay-client-name-text',
-                                            className:"w-full p-2.5 text-xs rounded-xl border border-premium-gold/30 bg-premium-bg text-white placeholder-slate-600",
-                                            style:{fontFamily:'Cairo,sans-serif'},
-                                            autoFocus:true
-                                        })
+                                    // 🔒 CHANGED (طلب المستخدم — 29 أغسطس 2026): كان دروب-داون بحث
+                                    // مستقل (ClientSearchSelect) — بقى عرض مقفول بس، مُشتق تلقائيًا
+                                    // من قضية الأتعاب (راجع الـeffect فوق). لو القضية مفيش موكل
+                                    // مرتبط بيها، بتظهر جملة إرشادية بدل الاسم وhandleAddPayment
+                                    // (الفاليديشن الحالية في الـhook) بترفض التسجيل لحد ما ده يتظبط.
+                                    React.createElement('div',{className:"space-y-1"},
+                                        React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"اسم الموكل",React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
+                                        React.createElement('div',{
+                                            'data-testid':'pay-client-locked',
+                                            className:"w-full p-2.5 text-xs rounded-xl border border-white/10 bg-premium-bg text-white min-h-[2.25rem] flex items-center"
+                                        },
+                                            (() => {
+                                                const label = payClientName==='__manual__' ? payClientNameText : (clients.find((cl: ClientRow) => cl.id === payClientName)?.full_name || '');
+                                                if (label) return label;
+                                                return React.createElement('span', { className: "text-slate-500" },
+                                                    '⚠️ لا يوجد موكل مرتبط بهذه القضية — يرجى تحديد الموكل من بيانات القضية أولاً'
+                                                );
+                                            })()
+                                        )
                                     ),
                                     React.createElement('div',{className:"space-y-1"},
                                         React.createElement('label',{className:"text-[10px] text-slate-400 font-bold"},"المبلغ",React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
