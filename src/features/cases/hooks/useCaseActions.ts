@@ -1,6 +1,6 @@
 import { toast } from '../../../shared/lib/notifications';
 import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
-import { logActivity, buildFieldDiff, type FieldDiffMap, type FieldDiffEntry } from '../../../shared/lib/dataAccess';
+import { logActivity, buildFieldDiff, buildAddSnapshot, buildDeleteSnapshot, type FieldDiffMap, type FieldDiffEntry } from '../../../shared/lib/dataAccess';
 import { checkCaseNumberDuplicate } from '../../../shared/lib/caseValidation';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
 import { runDuplicateCheckOfflineAware } from '../../../shared/lib/offlineGuard';
@@ -561,6 +561,12 @@ export function useCaseActions(params: {
                 case_name: form.title || null,
                 case_type: form.type || null,
                 client_name: clients.find((cl) => cl.id === form.client_id)?.full_name || null,
+                changes: buildAddSnapshot(form as unknown as Record<string, unknown>, {
+                    title: { label: 'العنوان' },
+                    type: { label: 'التصنيف' },
+                    court: { label: 'المحكمة' },
+                    number: { label: 'رقم القيد' },
+                }),
             });
             let caseMsg = `⚖️ <b>قضية جديدة تم تقييدها</b>\n`;
             caseMsg += `━━━━━━━━━━━━━━━━━━━━\n`;
@@ -639,6 +645,12 @@ export function useCaseActions(params: {
             case_name: c?.title || null,
             case_type: c?.type || null,
             client_name: clients.find((cl) => cl.id === c?.client_id)?.full_name || null,
+            changes: buildDeleteSnapshot(c as unknown as Record<string, unknown>, {
+                title: { label: 'العنوان' },
+                type: { label: 'التصنيف' },
+                status: { label: 'الحالة' },
+                number: { label: 'رقم القيد' },
+            }),
         });
         setSelectedCase(null);
         setCases((prev) => prev.filter((cs) => cs.id !== caseId));
