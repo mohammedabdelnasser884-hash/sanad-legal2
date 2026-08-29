@@ -141,7 +141,7 @@ function NewClientModal({onClose,onSave,loading,initialData,contextLabel}: NewCl
                     React.createElement(Inp,{label:"الاسم الكامل",value:form.full_name,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('full_name',e.target.value),placeholder:"مثال: محمد أحمد علي",required:true,'data-testid':'new-client-name'})
                 ),
                 React.createElement('div',{className:"lg:col-span-2"},
-                    React.createElement(Inp,{label:"العنوان",value:form.address,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('address',e.target.value),placeholder:"العنوان التفصيلي"})
+                    React.createElement(Inp,{label:"العنوان",value:form.address,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('address',e.target.value),placeholder:"العنوان التفصيلي",required:true,'data-testid':'new-client-address'})
                 ),
                 React.createElement('div',{className:"grid grid-cols-2 gap-3 lg:col-span-2"},
                     React.createElement(Sel,{label:"نوع الموكل",required:true,value:form.type,onChange:(e: React.ChangeEvent<HTMLSelectElement>) =>s('type',e.target.value),options:[
@@ -226,6 +226,9 @@ function NewClientModal({onClose,onSave,loading,initialData,contextLabel}: NewCl
                         if(!form.type){toast('يرجى اختيار نوع الموكل',true);return;}
                         if(!form.national_id.trim()){toast('يرجى إدخال الرقم القومي',true);return;}
                         if(form.national_id.length!==14){toast('⚠️ الرقم القومي لازم يكون 14 رقم بالظبط',true);return;}
+                        // ⚡ NEW (طلب المستخدم — 30 أغسطس 2026): العنوان إجباري عند
+                        // إنشاء موكل جديد.
+                        if(!form.address.trim()){toast('يرجى إدخال عنوان الموكل',true);return;}
                         // ⚡ NEW (12 أغسطس 2026 — بيانات التوكيل إجبارية عند إنشاء
                         // موكل جديد): قرار عمل — طالما بيتضاف لقائمة الموكلين،
                         // لازم يكون ليه رقم توكيل حقيقي، بغض النظر عن مكان
