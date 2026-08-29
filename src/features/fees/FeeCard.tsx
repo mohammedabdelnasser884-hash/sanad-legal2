@@ -330,17 +330,14 @@ function FeeCard({
                                     React.createElement('button',{
                                         'data-testid':'edit-fee-trigger',
                                         onClick:()=>{
-                                            // BUG-07 FIX: كان بيخمّن "هل ده موكل مسجّل؟" بمطابقة fee.client_name
-                                            // نصياً مع clients.full_name — ممكن يغلط لو فيه اسمين متطابقين أو
-                                            // الاسم اتغيّر بعدين. دلوقتي بنعتمد على fee.client_id الحقيقي (FK)
-                                            // اللي اتسجل وقت الحفظ، مفيش تخمين خالص.
-                                            const registeredClient = fee.client_id ? clients.find((cl: ClientRow) =>cl.id===fee.client_id) : null;
+                                            // 🔒 CHANGED (طلب المستخدم — 29 أغسطس 2026): اسم الموكل بقى مقفول
+                                            // ومُشتق تلقائيًا من القضية (case_id) وقت فتح فورم التعديل — مفيش
+                                            // داعي نحط client_id هنا يدويًا، resolveCaseFeeClient (جوه
+                                            // FeesTab.tsx/useFeesActions.ts) هيحسبه من القضية مباشرة.
                                             setEditId(fee.id);
                                             setForm({
                                                 case_id:fee.case_id || '',
-                                                client_id: registeredClient ? registeredClient.id : '',
-                                                client_name_manual: registeredClient ? '' : (fee.client_name ? '__manual__' : ''),
-                                                client_name_text: registeredClient ? '' : (fee.client_name||''),
+                                                client_id:'',
                                                 receiver:fee.receiver||'',
                                                 total:fee.total_fees as unknown as string,
                                                 paid:fee.paid_fees as unknown as string,
