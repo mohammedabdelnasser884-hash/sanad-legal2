@@ -234,7 +234,6 @@ export function useInvoicePrinting(
     const { name, contactLine, logoHtml } = await loadOfficeInfo();
     const w = openPrintWindow();
     if (!w) return;
-    const year = new Date().getFullYear();
     const css = [
       '*{margin:0;padding:0;box-sizing:border-box;}',
       `body{font-family:${RECEIPT_FONT_FAMILY};background:#fff;color:#1a1208;direction:rtl;print-color-adjust:exact;-webkit-print-color-adjust:exact;}`,
@@ -263,9 +262,22 @@ export function useInvoicePrinting(
       '@media print{body{margin:0;}.page{padding:28px 38px;}}'
     ].join('\n');
 
+    // 🔴 FIX (29 أغسطس 2026 — باج #3): الأرقام هنا كانت بتتولّد محليًا
+    // (INV-<سنة>-<ترتيب في القايمة>) بمعزل تام عن جدول `invoices` الحقيقي
+    // وعن generate_invoice_number المستخدمة في مسار الفاتورة الفردية —
+    // فكانت بتختلف عن رقم نفس الدفعة لو طُبعت فاتورتها الفردية، ومش
+    // متسلسلة فعليًا على مستوى المكتب (بتتصفّر من واحد مع كل دفعة تانية).
+    // getOrCreateInvoice نفسها اللي بتستخدمها الفاتورة الفردية (idempotent:
+    // بترجّع الرقم الموجود لو الفاتورة اتصدرت قبل كده، وإلا بتصدر واحدة
+    // حقيقية جديدة) — فبقى رقم كل دفعة هنا مطابق تمامًا لرقمها في أي مكان
+    // تاني تتعرض فيه.
+    const invoiceNumbers = await Promise.all(
+      feePayments.map((p) => getOrCreateInvoice(p, fee).then((inv) => inv.invoice_number).catch(() => '—'))
+    );
+
     let rows = '';
     feePayments.forEach((p, i) => {
-      const num = 'INV-' + year + '-' + String(i + 1).padStart(4, '0');
+      const num = invoiceNumbers[i];
       const d = p.payment_date ? formatArDate(p.payment_date, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
       const recv = escapeHtml(p.received_by || '—');
       const amt = formatArNumber(p.amount || 0, { maximumFractionDigits: 0 });
