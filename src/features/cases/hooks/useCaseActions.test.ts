@@ -138,6 +138,8 @@ vi.mock('../../../shared/lib/dataAccess', async (importOriginal) => {
   return {
     logActivity: (...a: unknown[]) => logActivity(...a),
     buildFieldDiff: actual.buildFieldDiff,
+    buildAddSnapshot: actual.buildAddSnapshot,
+    buildDeleteSnapshot: actual.buildDeleteSnapshot,
   };
 });
 
