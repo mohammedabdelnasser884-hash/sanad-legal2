@@ -176,7 +176,7 @@ describe('useFeesActions', () => {
     it('من غير إجمالي أتعاب → توست "حقل مطلوب"، مفيش أي insert', async () => {
       const { result } = await renderFeesHook();
 
-      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', total: '' }); });
+      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: 'المحاسب', total: '' }); });
       await act(async () => { await result.current.handleSave(); });
 
       expect(toast).toHaveBeenCalledWith('❌ حقل "إجمالي الأتعاب" مطلوب', true);
@@ -186,11 +186,55 @@ describe('useFeesActions', () => {
     it('إجمالي أتعاب سالب → توست خطأ، مفيش أي insert', async () => {
       const { result } = await renderFeesHook();
 
-      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', total: '-500' }); });
+      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: 'المحاسب', total: '-500' }); });
       await act(async () => { await result.current.handleSave(); });
 
       expect(toast).toHaveBeenCalledWith('❌ خطأ: إجمالي الأتعاب لا يمكن أن يكون سالباً', true);
       expect(mockDb.insertSpy).not.toHaveBeenCalled();
+    });
+
+    // 🆕 (طلب المستخدم — 29 أغسطس 2026): كل حقول فورم الأتعاب بقت إجبارية
+    // عدا "ملاحظات". التستات دي بتغطي الحقول التلاتة الجديدة (موكل/مستلم)
+    // بالإضافة لحقلي (مبلغ مدفوع/تاريخ دفعة) اللي إجباريين بس في مسار
+    // الإنشاء الجديد (!editId).
+    it('من غير اختيار موكل → توست "حقل مطلوب"، مفيش أي rpc', async () => {
+      const { result } = await renderFeesHook();
+
+      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', receiver: 'المحاسب', total: '1000' }); });
+      await act(async () => { await result.current.handleSave(); });
+
+      expect(toast).toHaveBeenCalledWith('❌ حقل "اسم الموكل" مطلوب', true);
+      expect(mockDb.rpcSpy).not.toHaveBeenCalled();
+    });
+
+    it('من غير المستلم من المكتب → توست "حقل مطلوب"، مفيش أي rpc', async () => {
+      const { result } = await renderFeesHook();
+
+      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: '', total: '1000' }); });
+      await act(async () => { await result.current.handleSave(); });
+
+      expect(toast).toHaveBeenCalledWith('❌ حقل "المستلم من المكتب" مطلوب', true);
+      expect(mockDb.rpcSpy).not.toHaveBeenCalled();
+    });
+
+    it('مسار الإنشاء الجديد، من غير مبلغ مدفوع → توست "حقل مطلوب"، مفيش أي rpc', async () => {
+      const { result } = await renderFeesHook();
+
+      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: 'المحاسب', total: '1000', paid: '' }); });
+      await act(async () => { await result.current.handleSave(); });
+
+      expect(toast).toHaveBeenCalledWith('❌ حقل "المبلغ المدفوع" مطلوب — أدخلي الدفعة الأولى (مقدم الأتعاب)', true);
+      expect(mockDb.rpcSpy).not.toHaveBeenCalled();
+    });
+
+    it('مسار الإنشاء الجديد، من غير تاريخ دفعة → توست "حقل مطلوب"، مفيش أي rpc', async () => {
+      const { result } = await renderFeesHook();
+
+      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: 'المحاسب', total: '1000', paid: '300', payment_date: '' }); });
+      await act(async () => { await result.current.handleSave(); });
+
+      expect(toast).toHaveBeenCalledWith('❌ حقل "تاريخ الدفعة" مطلوب', true);
+      expect(mockDb.rpcSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -202,15 +246,23 @@ describe('useFeesActions', () => {
     // الـRPC نفسها جوه القاعدة، مش الفرونت إند — فالتستات هنا بتتأكد من شكل
     // الـpayload المبعوت للـRPC، مش من insert/update منفصلين بعد كده.
 
-    it('من غير دفعة مقدّمة → RPC بـ p_paid_amount=0', async () => {
-      mockDb.setResult('rpc:create_fee_with_advance', { data: { id: 'new-fee-1' }, error: null });
+    // 🔀 (طلب المستخدم — 29 أغسطس 2026): "المبلغ المدفوع" و"تاريخ الدفعة"
+    // بقوا إجباريين في مسار الإنشاء الجديد (راجع describe الفاليديشن فوق
+    // لتستات رفض الحفظ من غيرهم) — يعني مبقاش فيه سيناريو "إنشاء من غير
+    // دفعة مقدّمة" ممكن يوصل لنداء الـRPC خالص؛ التست بقى بيتأكد إن
+    // الدفعة المُدخلة بتتبعت لـp_paid_amount زي ما هي بدل ما يفترض 0.
+
+    it('بدفعة مقدّمة (paid) → RPC بـ p_paid_amount والتاريخ المدخلين', async () => {
+      mockDb.setResult('rpc:create_fee_with_advance', { data: { id: 'new-fee-3' }, error: null });
       const { result } = await renderFeesHook();
 
-      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', total: '1000' }); });
+      act(() => {
+        result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: 'المحاسب', total: '1000', paid: '300', payment_date: '2026-07-16' });
+      });
       await act(async () => { await result.current.handleSave(); });
 
       expect(mockDb.rpcSpy).toHaveBeenCalledWith('create_fee_with_advance', expect.objectContaining({
-        p_case_id: 'case-1', p_case_title: 'قضية عمالية', p_total_fees: 1000, p_paid_amount: 0,
+        p_case_id: 'case-1', p_total_fees: 1000, p_paid_amount: 300, p_payment_date: '2026-07-16',
       }));
       // مفيش أي insert/update يدوي على case_fees أو fee_payments من الفرونت إند
       expect(mockDb.insertSpy).not.toHaveBeenCalled();
@@ -218,26 +270,11 @@ describe('useFeesActions', () => {
       expect(toast).toHaveBeenCalledWith('✅ تم إضافة الأتعاب');
     });
 
-    it('بدفعة مقدّمة (paid) → RPC بـ p_paid_amount والتاريخ المدخلين', async () => {
-      mockDb.setResult('rpc:create_fee_with_advance', { data: { id: 'new-fee-3' }, error: null });
-      const { result } = await renderFeesHook();
-
-      act(() => {
-        result.current.setForm({ ...result.current.form, case_id: 'case-1', total: '1000', paid: '300', payment_date: '2026-07-16' });
-      });
-      await act(async () => { await result.current.handleSave(); });
-
-      expect(mockDb.rpcSpy).toHaveBeenCalledWith('create_fee_with_advance', expect.objectContaining({
-        p_case_id: 'case-1', p_total_fees: 1000, p_paid_amount: 300, p_payment_date: '2026-07-16',
-      }));
-      expect(toast).toHaveBeenCalledWith('✅ تم إضافة الأتعاب');
-    });
-
     it('فشل الـRPC → توست خطأ، مفيش تصفير للفورم', async () => {
       mockDb.setResult('rpc:create_fee_with_advance', { data: null, error: { message: 'db error' } });
       const { result } = await renderFeesHook();
 
-      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', total: '1000' }); });
+      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: 'المحاسب', total: '1000', paid: '300', payment_date: '2026-07-16' }); });
       await act(async () => { await result.current.handleSave(); });
 
       expect(toast).toHaveBeenCalledWith('❌ فشل حفظ الأتعاب الجديدة — تحقق من الاتصال وأعد المحاولة', true);
@@ -256,7 +293,7 @@ describe('useFeesActions', () => {
       act(() => { result.current.setFees([existingFee]); });
       act(() => {
         result.current.setEditId('fee-edit-1');
-        result.current.setForm({ ...result.current.form, case_id: 'case-1', total: '2000' });
+        result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: 'المحاسب', total: '2000' });
       });
       await act(async () => { await result.current.handleSave(); });
 
@@ -276,7 +313,7 @@ describe('useFeesActions', () => {
       act(() => { result.current.setFees([existingFee]); });
       act(() => {
         result.current.setEditId('fee-edit-2');
-        result.current.setForm({ ...result.current.form, case_id: 'case-1', total: '2000' });
+        result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: 'المحاسب', total: '2000' });
       });
       await act(async () => { await result.current.handleSave(); });
 
@@ -302,10 +339,47 @@ describe('useFeesActions', () => {
       expect(mockDb.rpcSpy).not.toHaveBeenCalled();
     });
 
+    // 🆕 (طلب المستخدم — 29 أغسطس 2026): باقي حقول فورم "تسجيل دفعة"
+    // (اسم الموكل/تاريخ الدفعة/المستلم من المكتب) بقوا إجباريين عدا
+    // الملاحظات (payNote) — التستات دي بتتأكد من كل واحد على حدة، وبترتيب
+    // الفحص الحقيقي في الكود (موكل → تاريخ → مستلم) قبل فحص الأوفلاين
+    // وتحذير تجاوز المتبقي.
+    it('من غير اختيار موكل → توست "حقل مطلوب"، مفيش أي نداء rpc', async () => {
+      const { result } = await renderFeesHook();
+      act(() => { result.current.setPayAmount('200'); result.current.setPayDate('2026-07-20'); result.current.setPayReceiver('المحاسب'); });
+      await act(async () => { await result.current.handleAddPayment(makeFee()); });
+
+      expect(toast).toHaveBeenCalledWith('❌ حقل "اسم الموكل" مطلوب', true);
+      expect(mockDb.rpcSpy).not.toHaveBeenCalled();
+    });
+
+    it('من غير تاريخ دفعة → توست "حقل مطلوب"، مفيش أي نداء rpc', async () => {
+      const { result } = await renderFeesHook();
+      act(() => { result.current.setPayAmount('200'); result.current.setPayClientName('client-1'); result.current.setPayReceiver('المحاسب'); });
+      await act(async () => { await result.current.handleAddPayment(makeFee()); });
+
+      expect(toast).toHaveBeenCalledWith('❌ حقل "تاريخ الدفعة" مطلوب', true);
+      expect(mockDb.rpcSpy).not.toHaveBeenCalled();
+    });
+
+    it('من غير المستلم من المكتب → توست "حقل مطلوب"، مفيش أي نداء rpc', async () => {
+      const { result } = await renderFeesHook();
+      act(() => { result.current.setPayAmount('200'); result.current.setPayClientName('client-1'); result.current.setPayDate('2026-07-20'); });
+      await act(async () => { await result.current.handleAddPayment(makeFee()); });
+
+      expect(toast).toHaveBeenCalledWith('❌ حقل "المستلم من المكتب" مطلوب', true);
+      expect(mockDb.rpcSpy).not.toHaveBeenCalled();
+    });
+
     it('أوفلاين (مفيش نت) → توست تحذير واضح يطلب إعادة المحاولة أونلاين، من غير أي نداء rpc', async () => {
       Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
       const { result } = await renderFeesHook();
-      act(() => { result.current.setPayAmount('200'); });
+      act(() => {
+        result.current.setPayAmount('200');
+        result.current.setPayClientName('client-1');
+        result.current.setPayDate('2026-07-20');
+        result.current.setPayReceiver('المحاسب');
+      });
       await act(async () => { await result.current.handleAddPayment(makeFee()); });
 
       expect(toast).toHaveBeenCalledWith('⚠️ تسجيل الدفعة يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
@@ -316,7 +390,12 @@ describe('useFeesActions', () => {
     it('مبلغ أكبر من المتبقي → توست تحذير لكن بيكمل التسجيل عادي (مش حظر)', async () => {
       const { result } = await renderFeesHook();
       const fee = makeFee({ total_fees: 1000, paid_fees: 500 }); // المتبقي 500
-      act(() => { result.current.setPayAmount('900'); }); // أكبر من الـ 500 المتبقي
+      act(() => {
+        result.current.setPayAmount('900'); // أكبر من الـ 500 المتبقي
+        result.current.setPayClientName('client-1');
+        result.current.setPayDate('2026-07-20');
+        result.current.setPayReceiver('المحاسب');
+      });
       await act(async () => { await result.current.handleAddPayment(fee); });
 
       expect(toast).toHaveBeenCalledWith(expect.stringContaining('يتجاوز المتبقي'), true);
@@ -327,7 +406,12 @@ describe('useFeesActions', () => {
     it('اختيار موكل من القايمة → بيتسجل p_client_id/p_client_name بتاعه (مش بتاع الأتعاب الأصلية)', async () => {
       const { result } = await renderFeesHook();
       const fee = makeFee({ client_id: 'client-original', client_name: 'اسم قديم' });
-      act(() => { result.current.setPayAmount('200'); result.current.setPayClientName('client-1'); });
+      act(() => {
+        result.current.setPayAmount('200');
+        result.current.setPayClientName('client-1');
+        result.current.setPayDate('2026-07-20');
+        result.current.setPayReceiver('المحاسب');
+      });
       await act(async () => { await result.current.handleAddPayment(fee); });
 
       expect(mockDb.rpcSpy).toHaveBeenCalledWith('record_fee_payment', expect.objectContaining({
@@ -342,6 +426,8 @@ describe('useFeesActions', () => {
         result.current.setPayAmount('200');
         result.current.setPayClientName('__manual__');
         result.current.setPayClientNameText('اسم مكتوب يدويًا');
+        result.current.setPayDate('2026-07-20');
+        result.current.setPayReceiver('المحاسب');
       });
       await act(async () => { await result.current.handleAddPayment(fee); });
 
@@ -350,14 +436,25 @@ describe('useFeesActions', () => {
       }));
     });
 
-    it('من غير اختيار موكل → بيرجع لبيانات الـ fee الأصلية (fallback)', async () => {
+    // 🔀 (طلب المستخدم — 29 أغسطس 2026): اختيار الموكل بقى إجباري (راجع
+    // hasPayClient فوق)، يعني فرع الـfallback لبيانات الأتعاب الأصلية (لو
+    // المستخدم سايب الحقل فاضي) بقى كود دفاعي مش قابل للوصول من الفورم —
+    // التست القديم اللي كان بيعتمد عليه اتحول لتست فاليديشن (موجود فوق:
+    // "من غير اختيار موكل → توست..."). لسه فيه سيناريو واحد شرعي بيوصل
+    // لنفس فرع الكود: اختيار نفس موكل الأتعاب الأصلي بالظبط من القايمة.
+    it('اختيار نفس موكل الأتعاب الأصلي من القايمة → بيتسجل بياناته زي ما هي', async () => {
       const { result } = await renderFeesHook();
-      const fee = makeFee({ client_id: 'client-original', client_name: 'اسم الأتعاب الأصلي' });
-      act(() => { result.current.setPayAmount('200'); });
+      const fee = makeFee({ client_id: 'client-1', client_name: 'اسم قديم مختلف' });
+      act(() => {
+        result.current.setPayAmount('200');
+        result.current.setPayClientName('client-1');
+        result.current.setPayDate('2026-07-20');
+        result.current.setPayReceiver('المحاسب');
+      });
       await act(async () => { await result.current.handleAddPayment(fee); });
 
       expect(mockDb.rpcSpy).toHaveBeenCalledWith('record_fee_payment', expect.objectContaining({
-        p_client_id: 'client-original', p_client_name: 'اسم الأتعاب الأصلي',
+        p_client_id: 'client-1', p_client_name: 'أحمد محمد',
       }));
     });
 
@@ -366,6 +463,7 @@ describe('useFeesActions', () => {
       const fee = makeFee({ id: 'fee-99', client_id: 'client-1', client_name: 'اسم الأتعاب' });
       act(() => {
         result.current.setPayAmount('300');
+        result.current.setPayClientName('client-1');
         result.current.setPayDate('2026-07-20');
         result.current.setPayNote('ملاحظة الدفعة');
         result.current.setPayReceiver('المحاسب');
@@ -374,11 +472,11 @@ describe('useFeesActions', () => {
 
       expect(mockDb.rpcSpy).toHaveBeenCalledWith('record_fee_payment', {
         p_fee_id: 'fee-99', p_amount: 300, p_payment_date: '2026-07-20', p_notes: 'ملاحظة الدفعة',
-        p_received_by: 'المحاسب', p_client_id: 'client-1', p_client_name: 'اسم الأتعاب',
+        p_received_by: 'المحاسب', p_client_id: 'client-1', p_client_name: 'أحمد محمد',
       });
       expect(toast).toHaveBeenCalledWith('✅ تم تسجيل الدفعة');
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تسجيل دفعة', expect.objectContaining({
-        entity_type: 'fee', entity_id: 'fee-99', client_name: 'اسم الأتعاب',
+        entity_type: 'fee', entity_id: 'fee-99', client_name: 'أحمد محمد',
       }));
       expect(result.current.payAmount).toBe('');
       expect(result.current.payDate).toBe('');
@@ -386,10 +484,36 @@ describe('useFeesActions', () => {
       expect(result.current.payReceiver).toBe('');
     });
 
+    // 🆕 (طلب المستخدم — 29 أغسطس 2026): لو المستخدم سايب خانة الملاحظات
+    // فاضية، الـRPC نفسها (مش الفرونت إند) هي اللي بتحفظ "دفعة أتعاب"
+    // تلقائيًا بدل NULL (راجع migration 01-fee-payment-note-labels.sql) —
+    // الفرونت إند لسه بيبعت p_notes بالقيمة الفاضية/null زي ما هي، من غير
+    // أي منطق تسمية هنا، فالتست بيتأكد إن payNote الفاضي بيتبعت null زي
+    // ما كان بالظبط (مفيش تغيير في سلوك الهوك نفسه).
+    it('ملاحظات فاضية → بتتبعت p_notes:null زي ما كانت (التسمية الافتراضية مسؤولية الـRPC)', async () => {
+      const { result } = await renderFeesHook();
+      const fee = makeFee({ id: 'fee-100', client_id: 'client-1', client_name: 'اسم الأتعاب' });
+      act(() => {
+        result.current.setPayAmount('300');
+        result.current.setPayClientName('client-1');
+        result.current.setPayDate('2026-07-20');
+        result.current.setPayReceiver('المحاسب');
+        // payNote يفضل فاضي عمدًا
+      });
+      await act(async () => { await result.current.handleAddPayment(fee); });
+
+      expect(mockDb.rpcSpy).toHaveBeenCalledWith('record_fee_payment', expect.objectContaining({ p_notes: null }));
+    });
+
     it('فشل الـ rpc → توست خطأ، من غير logActivity', async () => {
       mockDb.setResult('rpc:record_fee_payment', { error: { message: 'rpc failed' } });
       const { result } = await renderFeesHook();
-      act(() => { result.current.setPayAmount('200'); });
+      act(() => {
+        result.current.setPayAmount('200');
+        result.current.setPayClientName('client-1');
+        result.current.setPayDate('2026-07-20');
+        result.current.setPayReceiver('المحاسب');
+      });
       await act(async () => { await result.current.handleAddPayment(makeFee()); });
 
       expect(toast).toHaveBeenCalledWith('❌ فشل تسجيل الدفعة، يرجى المحاولة مرة أخرى', true);
