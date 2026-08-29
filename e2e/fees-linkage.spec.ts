@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, createCase, createCaseWithClient, selectCaseFromSearch } from './utils';
+import { login, createCase, createCaseWithClient, selectCaseFromSearch, ADVANCE_PAYMENT_DATE } from './utils';
 
 // المرحلة 8 (خطة تنفيذ اختبارات E2E المقسمة — قسم الأتعاب) — تستات جديدة
 // للقرار النهائي (قفل حقل الموكل في الفورمين، مشتق من resolveCaseFeeClient،
@@ -41,11 +41,15 @@ test('٢) فك ربط الموكل بعد إنشاء سجل أتعاب عليه 
   await createCaseWithClient(page, caseTitle);
 
   // 1) إنشاء سجل أتعاب طبيعي — القضية معاها موكل حقيقي مربوط وقتها، فالحفظ
-  // المفروض ينجح عادي (نفس مسار fees.spec.ts).
+  // المفروض ينجح عادي (نفس مسار fees.spec.ts، بكل الحقول الإجبارية الأربعة
+  // — راجع ملحوظة إصلاح CI في fees.spec.ts).
   await page.getByTestId('desktop-nav-fees').click();
   await page.getByTestId('add-fee-button').click();
   await selectCaseFromSearch(page, 'fee-case-select', caseTitle);
+  await page.getByTestId('fee-receiver').fill('محامي الاختبار');
   await page.getByTestId('fee-total').fill('2000');
+  await page.getByTestId('fee-paid').fill('500');
+  await page.getByTestId('fee-payment-date').fill(ADVANCE_PAYMENT_DATE);
   await page.getByTestId('save-fee-button').click();
   await expect(page.getByTestId('fee-total')).not.toBeVisible({ timeout: 15_000 });
 
