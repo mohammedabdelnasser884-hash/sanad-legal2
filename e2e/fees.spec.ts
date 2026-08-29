@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, createCaseWithClient, selectCaseFromSearch } from './utils';
+import { login, createCaseWithClient, selectCaseFromSearch, ADVANCE_PAYMENT_DATE } from './utils';
 
 // خطوة 4 من مرحلة 7 (E2E) — إضافة أتعاب.
 // اتأكد من الكود الفعلي (FeesTab.tsx/useFeesActions.ts) إن الأتعاب سجل
@@ -14,7 +14,21 @@ import { login, createCaseWithClient, selectCaseFromSearch } from './utils';
 // createCaseWithClient (المرحلة 6 + 7) اللي بتعمل موكل حقيقي وتربطه وقت
 // الإنشاء. وحقل القضية بقى CaseSearchSelect (بحث حي)، مش <select> عادي —
 // selectOption() القديمة مبقتش تشتغل خالص، بدالها selectCaseFromSearch.
-
+//
+// 🔴 CHANGED (إصلاح CI بعد تشغيل فعلي — 29 أغسطس 2026): التشغيل الفعلي
+// كشف إن الفورم فيه 3 حقول إجبارية تانية غير fee-total كان التست ده (وكل
+// تستات الأتعاب التانية) بيتجاهلها خالص:
+//   1. "المستلم من المكتب" (fee-receiver) — إجباري دايمًا (useFeesActions.ts:389).
+//   2. "المبلغ المدفوع" (fee-paid) — إجباري في مسار الإنشاء الجديد (!editId)
+//      بس، لازم > 0 (دفعة مقدّمة إجبارية — create_fee_with_advance RPC).
+//   3. "تاريخ الدفعة" (fee-payment-date) — إجباري في نفس المسار.
+// من غيرهم save-fee-button كان بيرمي فورًا لتوست فاليديشن ("حقل ... مطلوب")
+// بدل ما يقفل الفورم فعليًا، وده اللي ظهر في اللوج (fee-total فضل visible
+// بعد الضغط — يعني الحفظ اتمنع بصمت). كمان بما إن الدفعة المقدّمة دي
+// بتتسجل كصف حقيقي في fee_payments (مش مجرد رقم على السجل)، حالة السجل
+// (computeFeeStatus) بقت 'deferred' لو المدفوع < الإجمالي — فاخترنا مدفوع
+// أول أقل من الإجمالي (1000 من 5000) عشان يفضل يظهر في التاب الافتراضي
+// "مؤجلة" بالظبط زي النية الأصلية للتست.
 test('إضافة أتعاب لقضية وظهورها في تبويب الأتعاب', async ({ page }) => {
   await login(page);
 
@@ -30,16 +44,21 @@ test('إضافة أتعاب لقضية وظهورها في تبويب الأتع
   // 3) اختيار القضية اللي اتعملت (بحث + اختيار من النتائج، نمط
   // CaseSearchSelect الجديد) — اسم الموكل بيتملى تلقائيًا (fee-client-locked)
   // من resolveCaseFeeClient بمجرد الاختيار، مفيش داعي نلمسه هنا. وكتابة
-  // إجمالي الأتعاب (باقي الحقول اختيارية حسب useFeesActions.handleSave).
+  // كل الحقول الإجبارية الأربعة (القضية فوق + المستلم + الإجمالي +
+  // المدفوع + تاريخ الدفعة — راجع الملحوظة فوق التست).
   await selectCaseFromSearch(page, 'fee-case-select', caseTitle);
+  await page.getByTestId('fee-receiver').fill('محامي الاختبار');
   await page.getByTestId('fee-total').fill('5000');
+  await page.getByTestId('fee-paid').fill('1000');
+  await page.getByTestId('fee-payment-date').fill(ADVANCE_PAYMENT_DATE);
 
   // 4) الحفظ — handleSave بيعمل setShowForm(false) و fetchFees() بعد النجاح
   await page.getByTestId('save-fee-button').click();
   await expect(page.getByTestId('fee-total')).not.toBeVisible({ timeout: 15_000 });
 
   // 5) التأكد إن سجل الأتعاب ظهر في القايمة (التبويب الافتراضي "مؤجلة"
-  // بيطابق حالة سجل بإجمالي > 0 ومدفوع = 0 — computeFeeStatus في feeStatus.ts)
+  // بيطابق حالة سجل بإجمالي > مدفوع — computeFeeStatus في feeStatus.ts —
+  // هنا 5000 إجمالي مقابل 1000 مدفوع، فلسه "مؤجلة" بالظبط)
   const newFeeCard = page.getByTestId('fee-card').filter({ hasText: caseTitle });
   await expect(newFeeCard.first()).toBeVisible({ timeout: 15_000 });
 });
