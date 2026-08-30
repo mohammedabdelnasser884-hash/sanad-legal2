@@ -32,24 +32,23 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        // ⚡ FIX (تحليل bundle build:analyze — 30 أغسطس 2026): فصل
-        // مكتبات الـvendor الأساسية (بتتغيّر نادرًا جدًا) عن كود
-        // التطبيق نفسه (بيتغيّر كل نشر) — بيسمح للمتصفح إنه يكاش شنك
-        // الـvendor لمدة طويلة عبر النشرات المتتالية، بدل ما يعيد
-        // تحميله من الصفر مع كل تحديث بسيط في كود سند. react/react-dom
-        // في شنك منفصل عن @supabase/supabase-js لأنهم بيتحدّثوا بمعدل
-        // مختلف تمامًا عن بعض. باقي مكتبات node_modules (الأصغر حجمًا)
-        // بتتجمّع في شنك vendor عام واحد. لاحظ إن jspdf/html2canvas/docx
-        // متعملهاش include هنا عمدًا — هما أصلًا بيتحمّلوا بـdynamic
-        // import() جوه exportApi.ts، فـVite بيطلعهم في chunks منفصلة
-        // تلقائيًا من غير أي تدخل هنا.
+        // ⚡ FIX (تحليل bundle، مرحلة 4 — 30 أغسطس 2026): مكتبة `docx`
+        // كانت فعلًا بتتحمّل كسول صح (dynamic import جوه exportApi.ts،
+        // زي jspdf/html2canvas بالظبط)، لكن Vite كان بيسمّي الشنك بتاعها
+        // تلقائيًا "index-B3-*.js" — لأن الملف الرئيسي لمكتبة docx نفسه
+        // اسمه "index.mjs"، فـVite بياخد نفس اسم شنك التطبيق الرئيسي
+        // ("index-*.js") ويضيف لاحقة تمييز بس. ده كان بيوهم إن فيه
+        // ~347kB زيادة في التحميل الأساسي رغم إنها مش بتتحمّل غير عند
+        // تصدير مستند Word فعليًا. بنسمّيها هنا صراحة "docx-export"
+        // عشان أي تحليل bundle مستقبلي يبقى واضح من أول نظرة.
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
           if (id.includes('react') || id.includes('scheduler')) return 'vendor-react';
           if (id.includes('@supabase')) return 'vendor-supabase';
-          if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('/docx/')) {
+          if (id.includes('jspdf') || id.includes('html2canvas')) {
             return undefined; // سيب دول لآلية الـdynamic import تتعامل معاهم
           }
+          if (id.includes('/docx/')) return 'docx-export';
           return 'vendor';
         },
       },
