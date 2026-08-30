@@ -366,6 +366,14 @@ export async function createClient(
   await page.getByTestId('new-client-button').click();
   await page.getByTestId('new-client-name').fill(name);
   await page.getByTestId('new-client-phone').fill('01000000000');
+  // 🔒 FIX (تحليل لوجز E2E — 30 أغسطس 2026): "العنوان" بقى حقل إجباري في
+  // NewClientModal (راجع required:true + فحص !form.address.trim() في
+  // onSave) لكن الهيلبر ده ما كانش بيملاه خالص — كل نداء لـcreateClient()
+  // كان بيقف صامت على توست "يرجى إدخال عنوان الموكل" والمودال يفضل مفتوح،
+  // فـclients-table-row مايظهرش أبدًا ويفشل الـwaitFor بعد 15 ثانية. ده كان
+  // السبب الجذري لغالبية فشل الـE2E في الرن الأخير (~45 من أصل ~49 فشل، كل
+  // اللي بيعدّي على createClient() في 10+ ملفات specs مختلفة).
+  await page.getByTestId('new-client-address').fill('عنوان تجريبي E2E');
   await page.getByTestId('new-client-national-id').fill(finalNationalId);
   // ⚡ NEW (طلب مباشر — 12 أغسطس 2026): "بيانات التوكيل" بقت إجبارية عند
   // إضافة موكل جديد (validatePowerOfAttorney في useClientActions.ts) —
