@@ -213,6 +213,17 @@
         html.light [class*="text-white/60"],
         html.light [class*="text-white/70"],
         html.light [class*="text-white/80"] { color: var(--text-secondary) !important; }
+        /* ── FIX (طلب المستخدم — 30 أغسطس 2026): شريط التنقل السفلي
+           (CommandDock) خلفيته غامقة دايمًا (inline style ثابت) بغض النظر
+           عن الوضع الليلي/النهاري — تصميم "دوك عائم غامق" مقصود، مش تابع
+           لنظام الألوان العادي. التعميم اللي فوق كان بيغمّق نص العناصر
+           الغير-مفعّلة جواه كمان، فبقت نص غامق على خلفية غامقة (تختفي).
+           الاستثناء ده بيرجّع النص الأبيض/شبه الأبيض الأصلي جوه الدوك بس،
+           في الوضعين الليلي والنهاري، من غير ما يأثر على أي حتة تانية. ── */
+        html.light .cmd-dock-nav [class*="text-white/40"] { color: rgba(255,255,255,0.4) !important; }
+        html.light .cmd-dock-nav [class*="text-white/60"] { color: rgba(255,255,255,0.6) !important; }
+        html.light .cmd-dock-nav [class*="text-white/70"] { color: rgba(255,255,255,0.7) !important; }
+        html.light .cmd-dock-nav [class*="text-white/80"] { color: rgba(255,255,255,0.8) !important; }
         html.light .text-slate-100    { color: var(--text-primary) !important; }
         html.light .text-slate-200    { color: #1e293b !important; }
         html.light .text-slate-300    { color: var(--text-secondary) !important; }
