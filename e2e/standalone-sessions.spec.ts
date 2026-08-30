@@ -155,6 +155,9 @@ test('3) مودال "تحويل لقضية؟" — إنشاء قضية من بي�
   await page.getByTestId('new-session-postsave-add-and-link-notfound').click({ timeout: 10_000 });
   await page.getByTestId('new-client-name').waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByTestId('new-client-phone').fill('01000000000');
+  // 🔒 FIX (تحليل لوجز E2E — 30 أغسطس 2026): "العنوان" بقى حقل إجباري في
+  // NewClientModal — راجع تعليقها الكامل في createClient() جوه utils.ts.
+  await page.getByTestId('new-client-address').fill('عنوان تجريبي E2E');
   // ⚡ NEW (طلب مباشر — 12 أغسطس 2026): بيانات التوكيل بقت إجبارية —
   // من غيرها المودال بيقف على توست تحذير ومايتقفلش خالص.
   // 🔒 FIX (تحليل لوجز E2E — 12 أغسطس 2026، تشغيلة تانية): uniquePoa()
