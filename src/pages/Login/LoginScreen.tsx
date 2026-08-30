@@ -95,7 +95,7 @@ function LoginScreen({onLogin}: LoginScreenProps){
                     React.createElement(SanadMark,{size:44})
                 ),
                 React.createElement('div',{style:{fontFamily:'Cairo,sans-serif',fontSize:36,fontWeight:900,
-                  color:'#ffffff',letterSpacing:'1px',lineHeight:1,marginBottom:10}},'سَنَد'),
+                  color:'var(--text-primary)',letterSpacing:'1px',lineHeight:1,marginBottom:10}},'سَنَد'),
                 React.createElement('div',{style:{fontFamily:'Cairo,sans-serif',fontSize:11,fontWeight:600,
                   color:'rgba(212,175,55,0.6)',letterSpacing:'3px'}},'نظام التشغيل القانوني')
             ),
