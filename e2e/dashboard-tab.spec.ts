@@ -23,6 +23,9 @@ test('الإجراءات السريعة: إضافة موكل من الداشبو
   await page.getByTestId('new-client-name').waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByTestId('new-client-name').fill(name);
   await page.getByTestId('new-client-phone').fill('01000000000');
+  // 🔒 FIX (تحليل لوجز E2E — 30 أغسطس 2026): "العنوان" بقى حقل إجباري في
+  // NewClientModal — راجع تعليقها الكامل في createClient() جوه utils.ts.
+  await page.getByTestId('new-client-address').fill('عنوان تجريبي E2E');
   // ⚠️ FIX: كانت .slice(0, 14) — بتاخد أول 14 خانة من '2900101' + Date.now()
   // (7+13=20 خانة)، يعني بتقطع آخر 6 خانات من Date.now() وتسيب بس أول 7
   // (اللي بتتغيّر ببطء شديد، كل ~16-17 دقيقة) → تكرار رقم قومي حقيقي بين
