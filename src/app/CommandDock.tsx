@@ -83,7 +83,7 @@ function CommandDock({
         // صفر تغيير على أي شكل بصري أو أي data-testid.
         React.createElement('nav', {
             ref: navRef,
-            className: 'pointer-events-auto relative z-50 w-full max-w-sm h-[62px] flex items-center px-2 gap-0',
+            className: 'cmd-dock-nav pointer-events-auto relative z-50 w-full max-w-sm h-[62px] flex items-center px-2 gap-0',
             style: {
                 background: 'rgba(15,25,50,0.97)', backdropFilter: 'blur(28px) saturate(180%)',
                 border: '1px solid rgba(212,175,55,0.25)', borderRadius: '24px',
