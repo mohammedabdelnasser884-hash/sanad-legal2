@@ -121,7 +121,7 @@ function AILegalAssistant({onClose, cases, clients, profile, country}: AILegalAs
     //    نفسه بدل ما يكتشفه بعد الدخول ──
     const aiTaskCards = [
         { mode: 'summary', icon: I.Note, title: 'تلخيص القضية', desc: 'تلخيص احترافي مختصر للقضية', accent: 'from-premium-gold/20 to-amber-300/5 border-premium-gold/20 text-premium-gold' },
-        { mode: 'generate', icon: I.Doc, title: 'توليد مستند', desc: 'مذكرات وصحف دعاوى وتوكيلات', accent: 'from-purple-500/20 to-purple-400/5 border-purple-500/20 text-purple-300' },
+        { mode: 'generate', icon: I.Doc, title: 'توليد مستند', desc: 'مذكرات وصحف دعاوى', accent: 'from-purple-500/20 to-purple-400/5 border-purple-500/20 text-purple-300' },
         { mode: 'client-message', icon: I.Chat, title: 'رسالة عميل مختصرة', desc: 'رسالة واتساب عن مستجدات القضية', accent: 'from-teal-500/20 to-teal-400/5 border-teal-500/20 text-teal-300' },
     ];
     const caseToolCards = [
