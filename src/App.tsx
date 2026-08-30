@@ -18,9 +18,21 @@ import AppModals from './app/AppModals';
 // onAIClick ويعرض DesktopSidebar الجديد على الديسكتوب جنب باقي children.
 // راجع shell/AppShell.tsx وshell/DesktopSidebar.tsx.
 import AppShell from './app/shell/AppShell';
-import FeesTab from './features/fees/FeesTab';
-import SessionsCalendar from '@/features/calendar/sessions-calendar/SessionsCalendar';
-import RemindersTab from './features/reminders/RemindersTab';
+// ⚡ FIX (تحليل bundle، مرحلة 2 — 30 أغسطس 2026): القضايا/الموكلين/
+// الفريق/الأتعاب/التذكيرات/التقويم كلهم كانوا بيتحمّلوا statically مع
+// فتح التطبيق (بيساهموا في الـ~606kB المتبقية في `index` بعد المرحلة
+// الأولى)، رغم إن التاب الافتراضي عند أول دخول هو "الداشبورد" دايمًا
+// (راجع resolveInitialTab في useNavigation.ts — dashboard هو fallback
+// الوحيد لو مفيش tab محفوظ في URL/localStorage). DashboardTab بس فضل
+// static (راجع تعليقه تحت) لأنه التاب الأغلبية المطلقة من المستخدمين
+// بيشوفوه فورًا؛ الباقي اتحول لـReact.lazy زي AdminPanel/ArchiveTab/
+// LegalDocumentsPage بالظبط (Suspense في كل مكان رندر تحت).
+const CasesTab = React.lazy(() => import('./features/dashboard/CasesTab'));
+const ClientsTab = React.lazy(() => import('./features/dashboard/ClientsTab'));
+const TeamTab = React.lazy(() => import('./features/dashboard/TeamTab'));
+const FeesTab = React.lazy(() => import('./features/fees/FeesTab'));
+const RemindersTab = React.lazy(() => import('./features/reminders/RemindersTab'));
+const SessionsCalendar = React.lazy(() => import('@/features/calendar/sessions-calendar/SessionsCalendar'));
 // ⚡ FIX (تقرير تشخيص الديسكتوب، Phase 4، بند 4 — تقسيم حزمة الـ JS، 15
 // أغسطس 2026): AdminPanel وكل الأقسام الإدارية التسعة اللي بيستوردها
 // (~9000 سطر تقريبًا) كانوا بيتحملوا statically ضمن الـ bundle الرئيسي
@@ -41,10 +53,12 @@ const LegalDocumentsPage = React.lazy(() => import('./pages/LegalDocumentsPage')
 
 // ─── Dashboard Components ─────────────────
 import AppHeader from './features/dashboard/AppHeader';
+// ⚡ DashboardTab فضل static عمدًا (مش React.lazy زي باقي التابات فوق)
+// — هو التاب الافتراضي الوحيد (resolveInitialTab في useNavigation.ts)،
+// فتحويله lazy كان هيضيف لحظة تحميل (Suspense fallback) لأغلبية
+// المستخدمين بالظبط في أول لحظة فتح للتطبيق، وهي نفس اللحظة اللي
+// بنحاول نسرّعها من الأساس.
 import DashboardTab from './features/dashboard/DashboardTab';
-import CasesTab from './features/dashboard/CasesTab';
-import TeamTab from './features/dashboard/TeamTab';
-import ClientsTab from './features/dashboard/ClientsTab';
 
 // ─── Hooks ───────────────────────────────
 import { useHealthMonitor } from './hooks/useHealthMonitor';
@@ -498,24 +512,46 @@ function App() {
         countryCourts: COUNTRY_CONFIGS[country]?.courts,
         countryCaseTypes: COUNTRY_CONFIGS[country]?.caseTypes,
     });
-    const CasesTabContent   = React.createElement(CasesTab, {
-        cases, casesFilter, setCasesFilter, casesPage, setCasesPage,
-        casesTotal, casesLoading, fetchCases, searchCases, casesSearch, setCasesSearch,
-        setShowCaseModal, setSelectedCase,
-        loadingCases: casesLoading, dbError,
-        // 🆕 (بند 1.2 — 6 أغسطس 2026): بادج "موكل محذوف" على كارت القضية.
-        // ⚡ FIX (8 أغسطس 2026): clientsWithExtras بدل clients الخام —
-        // كان بيوهم إن الموكل محذوف لمجرد إنه مش من ضمن أول 15 محمّلين.
-        clients: clientsWithExtras,
-        profile, // ⚡ NEW (مرحلة 3 خطة الصلاحيات): لزرار "تقييد قضية" — can_add_cases
-    });
-    const TeamTabContent    = React.createElement(TeamTab,    { lawyers, setShowLawyerModal });
-    const ClientsTabContent = React.createElement(ClientsTab, {
-        cases, clients, clientSearch, setClientSearch,
-        clientsPage, setClientsPage, clientsTotal, clientsLoading,
-        fetchClients, setSelectedClient, setShowClientModal,
-        profile, // ⚡ NEW (مرحلة 3 خطة الصلاحيات): لزرار "موكل جديد" — can_add_clients
-    });
+    // ⚡ Suspense مطلوب هنا لأن CasesTab بقى React.lazy فوق — نفس فكرة
+    // AdminPanel/ArchiveTab بالظبط.
+    const CasesTabContent   = React.createElement(React.Suspense, {
+            fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                React.createElement(I.Spin)
+            )
+        },
+        React.createElement(CasesTab, {
+            cases, casesFilter, setCasesFilter, casesPage, setCasesPage,
+            casesTotal, casesLoading, fetchCases, searchCases, casesSearch, setCasesSearch,
+            setShowCaseModal, setSelectedCase,
+            loadingCases: casesLoading, dbError,
+            // 🆕 (بند 1.2 — 6 أغسطس 2026): بادج "موكل محذوف" على كارت القضية.
+            // ⚡ FIX (8 أغسطس 2026): clientsWithExtras بدل clients الخام —
+            // كان بيوهم إن الموكل محذوف لمجرد إنه مش من ضمن أول 15 محمّلين.
+            clients: clientsWithExtras,
+            profile, // ⚡ NEW (مرحلة 3 خطة الصلاحيات): لزرار "تقييد قضية" — can_add_cases
+        })
+    );
+    // ⚡ Suspense مطلوب هنا لأن TeamTab بقى React.lazy فوق.
+    const TeamTabContent    = React.createElement(React.Suspense, {
+            fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                React.createElement(I.Spin)
+            )
+        },
+        React.createElement(TeamTab, { lawyers, setShowLawyerModal })
+    );
+    // ⚡ Suspense مطلوب هنا لأن ClientsTab بقى React.lazy فوق.
+    const ClientsTabContent = React.createElement(React.Suspense, {
+            fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                React.createElement(I.Spin)
+            )
+        },
+        React.createElement(ClientsTab, {
+            cases, clients, clientSearch, setClientSearch,
+            clientsPage, setClientsPage, clientsTotal, clientsLoading,
+            fetchClients, setSelectedClient, setShowClientModal,
+            profile, // ⚡ NEW (مرحلة 3 خطة الصلاحيات): لزرار "موكل جديد" — can_add_clients
+        })
+    );
     // ⚡ Suspense مطلوب هنا لأن ArchiveTab بقى React.lazy فوق — نفس فكرة
     // AdminPanel بالظبط (fallback سبينر بسيط، بيبان لحظيًا بس أول ما الـ
     // chunk يتحمّل، أغلب الوقت من الكاش بعد أول زيارة).
@@ -646,21 +682,28 @@ function App() {
                         style: { background: 'linear-gradient(135deg,#d4af37,#f0c040)' }
                     }, React.createElement('span', { className: 'text-sm' }, '⚡'), 'إضافة جلسة')
                 ),
-                React.createElement(SessionsCalendar, {
-                    cases, clients: clientsWithExtras,
-                    onOpenCase: (c) => { setSelectedCase(c, 'timeline'); },
-                    onOpenReminders: () => { setRemindersInitialFilter('overdue'); setTab('reminders'); },
-                    onClientAdded: () => { fetchClients(0, clientSearch); },
-                    initialTab: sessionsInitialTab ?? undefined,
-                    externalRefreshSignal: sessionsRefreshSignal,
-                    nav,
-                    onOpenClientProfile: (c) => setSelectedClient(c as MappedClient, true),
-                    // ⚡ NEW (توحيد "المحكمة"/"نوع القضية" مع فورمي القضية —
-                    // 12 أغسطس 2026): نفس props بالظبط اللي AppModals.tsx
-                    // بيبعتها لـNewCaseModal.
-                    countryCourts: COUNTRY_CONFIGS[country]?.courts,
-                    countryCaseTypes: COUNTRY_CONFIGS[country]?.caseTypes,
-                })
+                // ⚡ Suspense مطلوب هنا لأن SessionsCalendar بقى React.lazy فوق.
+                React.createElement(React.Suspense, {
+                        fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                            React.createElement(I.Spin)
+                        )
+                    },
+                    React.createElement(SessionsCalendar, {
+                        cases, clients: clientsWithExtras,
+                        onOpenCase: (c) => { setSelectedCase(c, 'timeline'); },
+                        onOpenReminders: () => { setRemindersInitialFilter('overdue'); setTab('reminders'); },
+                        onClientAdded: () => { fetchClients(0, clientSearch); },
+                        initialTab: sessionsInitialTab ?? undefined,
+                        externalRefreshSignal: sessionsRefreshSignal,
+                        nav,
+                        onOpenClientProfile: (c) => setSelectedClient(c as MappedClient, true),
+                        // ⚡ NEW (توحيد "المحكمة"/"نوع القضية" مع فورمي القضية —
+                        // 12 أغسطس 2026): نفس props بالظبط اللي AppModals.tsx
+                        // بيبعتها لـNewCaseModal.
+                        countryCourts: COUNTRY_CONFIGS[country]?.courts,
+                        countryCaseTypes: COUNTRY_CONFIGS[country]?.caseTypes,
+                    })
+                )
             ),
             // ⚡ FIX (8 أغسطس 2026 — البند 4 من تقرير حالة التنفيذ): casesWithExtras
             // بدل cases الخام — useFeesActions/useInvoicePrinting/FeeCard كانوا
@@ -674,11 +717,25 @@ function App() {
             // مش بس عن طريق الضغط على زرار "الأتعاب". نفس نمط تاب 'team'
             // فوق بالظبط.
             tab === 'fees' && (canViewFees
-                ? React.createElement(FeesTab, { cases: casesWithExtras, clients: clientsWithExtras, showSummaryModal: showFeesSummary, setShowSummaryModal: setShowFeesSummary, country, profile, nav, ensureClientsLoaded, externalRefreshSignal: dataRefreshSignal })
+                // ⚡ Suspense مطلوب هنا لأن FeesTab بقى React.lazy فوق.
+                ? React.createElement(React.Suspense, {
+                        fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                            React.createElement(I.Spin)
+                        )
+                    },
+                    React.createElement(FeesTab, { cases: casesWithExtras, clients: clientsWithExtras, showSummaryModal: showFeesSummary, setShowSummaryModal: setShowFeesSummary, country, profile, nav, ensureClientsLoaded, externalRefreshSignal: dataRefreshSignal })
+                  )
                 : React.createElement('div', { className: 'text-center text-slate-500 text-xs pt-20' }, 'غير مصرح لك بهذا القسم')
             ),
             tab === 'reminders' && React.createElement('div', { className: 'space-y-4 fade-in' },
-                React.createElement(RemindersTab, { initialFilter: remindersInitialFilter, profile, nav, externalRefreshSignal: dataRefreshSignal })
+                // ⚡ Suspense مطلوب هنا لأن RemindersTab بقى React.lazy فوق.
+                React.createElement(React.Suspense, {
+                        fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                            React.createElement(I.Spin)
+                        )
+                    },
+                    React.createElement(RemindersTab, { initialFilter: remindersInitialFilter, profile, nav, externalRefreshSignal: dataRefreshSignal })
+                )
             ),
             tab === 'team' && (isAdmin
                 ? TeamTabContent
