@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { toast } from '../../../../shared/lib/notifications';
-import { logActivity, buildFieldDiff, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
+import { logActivity, buildFieldDiff, buildAddSnapshot, buildDeleteSnapshot, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
 import { showErrorToast } from '../../../../shared/lib/errorReporting';
 import { db } from '../../../../supabaseClient';
 import type { ProfileRow, LawRow, LegalCategoryRow } from '../../../../types';
@@ -119,7 +119,14 @@ export function useAdminLegalLibrary(profile?: ProfileRow | null) {
         const { error } = await db.from('laws').insert({ ...payload, status: 'pending' });
         if (error) throw error;
         toast('✅ تم إضافة القانون — جاهز للمعالجة');
-        logActivity(db, 'إضافة قانون', { userName: _userName, entity_type: 'law', details: payload.title });
+        logActivity(db, 'إضافة قانون', {
+          userName: _userName, entity_type: 'law', details: payload.title,
+          changes: buildAddSnapshot(payload as unknown as Record<string, unknown>, {
+            title: { label: 'العنوان' },
+            law_number: { label: 'رقم القانون' },
+            law_year: { label: 'سنة القانون' },
+          }),
+        });
       }
 
       setShowLawModal(false);
@@ -185,7 +192,14 @@ export function useAdminLegalLibrary(profile?: ProfileRow | null) {
       const { error } = await db.from('laws').delete().eq('id', law.id);
       if (error) throw error;
       toast('🗑️ تم حذف القانون ومواده');
-      logActivity(db, 'حذف قانون', { userName: _userName, entity_type: 'law', entity_id: law.id, details: law.title });
+      logActivity(db, 'حذف قانون', {
+        userName: _userName, entity_type: 'law', entity_id: law.id, details: law.title,
+        changes: buildDeleteSnapshot(law as unknown as Record<string, unknown>, {
+          title: { label: 'العنوان' },
+          law_number: { label: 'رقم القانون' },
+          law_year: { label: 'سنة القانون' },
+        }),
+      });
       setConfirmDeleteLaw(null);
       fetchLaws();
     } catch(e) {
