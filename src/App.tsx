@@ -21,8 +21,6 @@ import AppShell from './app/shell/AppShell';
 import FeesTab from './features/fees/FeesTab';
 import SessionsCalendar from '@/features/calendar/sessions-calendar/SessionsCalendar';
 import RemindersTab from './features/reminders/RemindersTab';
-import ArchiveTab from './features/dashboard/ArchiveTab';
-import LegalDocumentsPage from './pages/LegalDocumentsPage';
 // ⚡ FIX (تقرير تشخيص الديسكتوب، Phase 4، بند 4 — تقسيم حزمة الـ JS، 15
 // أغسطس 2026): AdminPanel وكل الأقسام الإدارية التسعة اللي بيستوردها
 // (~9000 سطر تقريبًا) كانوا بيتحملوا statically ضمن الـ bundle الرئيسي
@@ -31,6 +29,15 @@ import LegalDocumentsPage from './pages/LegalDocumentsPage';
 // Vite يطلعه في chunk منفصل يتحمّل عند الحاجة بس (راجع الاستخدام تحت مع
 // React.Suspense في مكان الرندر).
 const AdminPanel = React.lazy(() => import('./features/admin/AdminPanel'));
+// ⚡ FIX (تحليل bundle build:analyze — 30 أغسطس 2026): ArchiveTab (تاب
+// "الأرشيف") وLegalDocumentsPage (تاب "المستندات القانونية") كانا من
+// أكبر المساهمين في الـchunk الرئيسي (index، ~1MB) لأنهم بيتحمّلوا
+// statically مع فتح التطبيق، رغم إن غالبية المستخدمين مبيدخلوش عليهم
+// فورًا (خصوصًا legalDocs، مقصور أصلًا على حساب واحد بس — راجع
+// canGenerateDocuments تحت). نفس نمط AdminPanel فوق بالظبط: React.lazy
+// + React.Suspense في مكان الرندر تحت.
+const ArchiveTab = React.lazy(() => import('./features/dashboard/ArchiveTab'));
+const LegalDocumentsPage = React.lazy(() => import('./pages/LegalDocumentsPage'));
 
 // ─── Dashboard Components ─────────────────
 import AppHeader from './features/dashboard/AppHeader';
@@ -509,7 +516,16 @@ function App() {
         fetchClients, setSelectedClient, setShowClientModal,
         profile, // ⚡ NEW (مرحلة 3 خطة الصلاحيات): لزرار "موكل جديد" — can_add_clients
     });
-    const DocsTab = React.createElement(ArchiveTab, { cases, clients: clientsWithExtras, nav });
+    // ⚡ Suspense مطلوب هنا لأن ArchiveTab بقى React.lazy فوق — نفس فكرة
+    // AdminPanel بالظبط (fallback سبينر بسيط، بيبان لحظيًا بس أول ما الـ
+    // chunk يتحمّل، أغلب الوقت من الكاش بعد أول زيارة).
+    const DocsTab = React.createElement(React.Suspense, {
+            fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                React.createElement(I.Spin)
+            )
+        },
+        React.createElement(ArchiveTab, { cases, clients: clientsWithExtras, nav })
+    );
 
     const showMenu = showHeaderMenu;
 
@@ -676,15 +692,23 @@ function App() {
             // بيدعم deep linking بالـURL)، مش بس عن طريق الضغط على زرار
             // "توليد مستند"/عنصر القائمة. نفس نمط تاب 'fees' فوق بالظبط.
             tab === 'legalDocs' && (canGenerateDocuments
-                ? React.createElement(LegalDocumentsPage, {
-                    initialCaseId: legalDocsInitialCaseId,
-                    initialCaseType: legalDocsInitialCaseType,
-                    onInitialCaseConsumed: () => { setLegalDocsInitialCaseId(null); setLegalDocsInitialCaseType(null); },
-                    nav,
-                    // ⚡ NEW (26 أغسطس 2026): نفس sendTelegram الممرر لباقي التابز —
-                    // إشعار تيليجرام عند توليد مستند، زي إضافة قضية/جلسة.
-                    sendTelegram,
-                })
+                // ⚡ Suspense مطلوب هنا لأن LegalDocumentsPage بقى React.lazy فوق —
+                // نفس فكرة AdminPanel/ArchiveTab بالظبط.
+                ? React.createElement(React.Suspense, {
+                      fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                          React.createElement(I.Spin)
+                      )
+                  },
+                      React.createElement(LegalDocumentsPage, {
+                          initialCaseId: legalDocsInitialCaseId,
+                          initialCaseType: legalDocsInitialCaseType,
+                          onInitialCaseConsumed: () => { setLegalDocsInitialCaseId(null); setLegalDocsInitialCaseType(null); },
+                          nav,
+                          // ⚡ NEW (26 أغسطس 2026): نفس sendTelegram الممرر لباقي التابز —
+                          // إشعار تيليجرام عند توليد مستند، زي إضافة قضية/جلسة.
+                          sendTelegram,
+                      })
+                  )
                 : React.createElement('div', { className: 'text-center text-slate-500 text-xs pt-20' }, 'غير مصرح لك بهذا القسم')
             ),
             tab === 'admin' && (isAdmin
