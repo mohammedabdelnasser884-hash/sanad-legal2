@@ -29,6 +29,9 @@ test.describe('الموكلين — إضافة', () => {
     const secondName = `اختبار E2E - موكل مكرر - ${Date.now()}`;
     await page.getByTestId('new-client-name').fill(secondName);
     await page.getByTestId('new-client-phone').fill('01111111111');
+    // 🔒 FIX (تحليل لوجز E2E — 30 أغسطس 2026): "العنوان" بقى حقل إجباري في
+    // NewClientModal — راجع تعليقها الكامل في createClient() جوه utils.ts.
+    await page.getByTestId('new-client-address').fill('عنوان تجريبي E2E');
     await page.getByTestId('new-client-national-id').fill(nationalId);
     // ⚡ NEW (طلب مباشر — 12 أغسطس 2026): بيانات التوكيل بقت إجبارية —
     // من غيرها التست هيقف على توست التوكيل قبل ما يوصل خالص لفحص تكرار
@@ -59,6 +62,9 @@ test.describe('الموكلين — إضافة', () => {
     const name = `اختبار E2E - دبل كليك إضافة - ${Date.now()}`;
     await page.getByTestId('new-client-name').fill(name);
     await page.getByTestId('new-client-phone').fill('01222222222');
+    // 🔒 FIX (تحليل لوجز E2E — 30 أغسطس 2026): "العنوان" بقى حقل إجباري في
+    // NewClientModal — راجع تعليقها الكامل في createClient() جوه utils.ts.
+    await page.getByTestId('new-client-address').fill('عنوان تجريبي E2E');
     // ⚠️ FIX: راجع نفس التعليق في dashboard-tab.spec.ts — .slice(0, 14) كانت
     // بتسيب رقم قومي شبه ثابت لمدة ~16-17 دقيقة (تكرار حقيقي بين تشغيلتين
     // قريبتين). آخر 14 خانة بدل الأول.
