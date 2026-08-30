@@ -424,7 +424,7 @@ const SanadLogo = ({size=40, showTagline=false}: {size?:number, showTagline?:boo
     }, React.createElement(SanadMark, {size:size*0.72})),
     React.createElement('div', {style:{display:'flex',flexDirection:'column'}},
       React.createElement('span', {
-        style:{fontSize:size*0.45,fontWeight:900,color:'white',lineHeight:1,fontFamily:'Cairo,sans-serif'}
+        style:{fontSize:size*0.45,fontWeight:900,color:'var(--text-primary)',lineHeight:1,fontFamily:'Cairo,sans-serif'}
       }, 'سَنَد'),
       showTagline && React.createElement('span', {
         style:{fontSize:size*0.19,color:'#D4AF37',fontWeight:700,fontFamily:'Cairo,sans-serif',marginTop:2}
