@@ -59,7 +59,7 @@ function MonthWeekView({ weeks, sessionsMap, tasksMap, cases, clients, onOpenCas
                             className: "px-1.5 h-7 min-w-[34px] rounded-full flex items-center justify-center text-[10.5px] font-black transition-all",
                             style: {
                                 background: isSel ? '#D4AF37' : 'transparent',
-                                color: isSel ? '#0a0f1c' : hasToday ? '#4ade80' : 'white',
+                                color: isSel ? '#0a0f1c' : hasToday ? '#4ade80' : 'var(--text-primary)',
                                 border: !isSel && hasToday ? '1.5px solid #4ade80' : '1.5px solid transparent',
                             }
                         }, `${startDay}-${endDay}`),
