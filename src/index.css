@@ -209,10 +209,10 @@
            مش .text-white بأوباسيتي منفصلة) — ظهر واضح في الحالة الفارغة
            لتبويب الجلسات ("لا توجد جلسات مسجلة" كانت شبه مختفية). بديل
            بدرجة قتامة تتناسب مع نسبة الشفافية الأصلية. ── */
-        html.light [class*="text-white/40"] { color: var(--text-faint) !important; }
-        html.light [class*="text-white/60"] { color: var(--text-muted) !important; }
+        html.light [class*="text-white/40"] { color: var(--text-muted) !important; }
+        html.light [class*="text-white/60"] { color: var(--text-secondary) !important; }
         html.light [class*="text-white/70"],
-        html.light [class*="text-white/80"] { color: var(--text-secondary) !important; }
+        html.light [class*="text-white/80"] { color: var(--text-primary) !important; }
         html.light .text-slate-100    { color: var(--text-primary) !important; }
         html.light .text-slate-200    { color: #1e293b !important; }
         html.light .text-slate-300    { color: var(--text-secondary) !important; }
