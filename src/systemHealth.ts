@@ -199,6 +199,16 @@ export function recordSuccess(key: ServiceKey, label?: string) {
  * label/message: لمفتاح مخصص، ممكن تمرر اسم وعرض بالعربي مفهومين لغير المبرمج.
  */
 export function recordError(key: ServiceKey, rawError?: string, opts?: { label?: string; message?: string }) {
+  // 🔎 FIX (تحليل لوجز E2E — 30 أغسطس 2026): rawError كان بيتسجل بس جوه
+  // localStorage — متاح للمستخدم الحقيقي في المتصفح، لكن مافيش أي طريقة
+  // يوصله بيها حد بيقرا لوجز CI بعد ما التشغيلة تخلص (زي فشل admin-backup.
+  // spec.ts المتكرر: توست عام "تعذّر حفظ النسخة الاحتياطية" من غير أي
+  // تفاصيل، والسبب الحقيقي — رفض RLS/قيد قاعدة بيانات/إلخ — ضايع تمامًا).
+  // console.error بيتسجل تلقائيًا جوه trace.zip بتاع أي تست فاشل (playwright
+  // بيلتقط console الصفحة في الـtrace من غير أي إعداد إضافي)، فيبقى ممكن
+  // نشوف السبب الخام فعليًا بفتح الـtrace (npx playwright show-trace) بدل
+  // ما يفضل مقفول جوه localStorage المتصفح بس.
+  if (rawError) console.error(`[recordError:${key}] ${rawError}`);
   const all = loadAll();
   all[key] = {
     ...all[key],
