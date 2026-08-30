@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from '../../../../shared/lib/notifications';
-import { logActivity, buildFieldDiff, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
+import { logActivity, buildFieldDiff, buildAddSnapshot, buildDeleteSnapshot, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
 import { callAdminAction, db } from '../../../../supabaseClient';
 import { showErrorToast } from '../../../../shared/lib/errorReporting';
 import type { PermissionsMap } from '../../../../shared/lib/permissions';
@@ -106,7 +106,16 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
         permissions: form.permissions,
       });
       toast('✅ تم إنشاء حساب ' + form.full_name);
-      logActivity(db, 'إضافة مستخدم', { userName: _userName, entity_type: 'user', details: `${form.full_name} (${form.role || '—'})` });
+      // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): تسجيل كل الحقول
+      // اللي دخلها المستخدم وقت إنشاء الحساب، مش الاسم والدور بس.
+      logActivity(db, 'إضافة مستخدم', {
+        userName: _userName, entity_type: 'user', details: `${form.full_name} (${form.role || '—'})`,
+        changes: buildAddSnapshot(form as unknown as Record<string, unknown>, {
+          full_name: { label: 'الاسم' },
+          email: { label: 'البريد الإلكتروني' },
+          role: { label: 'الدور' },
+        }),
+      });
       setShowAddUser(false);
       fetchLawyers();
     } catch (e) {
@@ -128,7 +137,14 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
         user_id: user.user_id || null,
       });
       toast('✅ تم حذف المستخدم');
-      logActivity(db, 'حذف مستخدم', { userName: _userName, entity_type: 'user', entity_id: user.id, details: user.full_name || null });
+      logActivity(db, 'حذف مستخدم', {
+        userName: _userName, entity_type: 'user', entity_id: user.id, details: user.full_name || null,
+        changes: buildDeleteSnapshot(user as unknown as Record<string, unknown>, {
+          full_name: { label: 'الاسم' },
+          email: { label: 'البريد الإلكتروني' },
+          role: { label: 'الدور' },
+        }),
+      });
       setConfirmDelete(null);
       fetchLawyers();
     } catch (e) {
