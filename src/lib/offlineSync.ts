@@ -1,7 +1,7 @@
 import { db } from '../supabaseClient';
 import type { Database } from '../database.types';
 import { showSyncIndicator, hideSyncIndicator, toast } from '../shared/lib/notifications';
-import { logActivity, recalcNextHearing } from '../shared/lib/dataAccess';
+import { logActivity, recalcNextHearing, buildDeleteSnapshot, buildAddSnapshot, type FieldDiffMap } from '../shared/lib/dataAccess';
 import { type DbWriteTable, type OfflineQueueItem, dbFrom, stripOfflineSentinels } from './offlineQueue';
 
 // ══════════════════════════════════════════════════════════
@@ -231,15 +231,30 @@ const OFFLINE_ACTIVITY_CONFIG: Partial<Record<DbWriteTable, {
     // مش كل UPDATE هيحمله (ممكن يكون تعديل حقل واحد بس، زي status)، فده
     // best-effort مش مضمون.
     nameField?: string;
+    // ⚡ NEW (سجل النشاط — تغطية أوفلاين، 30 أغسطس 2026): خريطة الحقول
+    // المهمة لكل جدول — بتُستخدم لبناء changes فعلي بدل رسالة عامة
+    // "(أوفلاين)". لسه فيه حد معروف: op.data وقت UPDATE بيحمل بس الحقول
+    // اللي فعلاً اتغيّرت (best-effort — مفيش "قيمة قديمة" محفوظة وقت
+    // القيد نفسه)، ووقت DELETE بيحمل بس اللي الكولر قرر يبعته صراحة قبل
+    // الحذف (شوف useCaseSessions/useRemindersTab/useFeesActions).
+    fields?: FieldDiffMap;
 }>> = {
-    cases: { entity_type: 'case', actionUpdate: 'تعديل قضية', actionDelete: 'حذف قضية', nameField: 'title' },
-    clients: { entity_type: 'client', actionUpdate: 'تعديل موكل', actionDelete: 'حذف موكل', nameField: 'full_name' },
-    case_sessions: { entity_type: 'session', actionUpdate: 'تعديل جلسة', actionDelete: 'حذف جلسة' },
-    reminders: { entity_type: 'reminder', actionUpdate: 'تعديل تذكير', actionDelete: 'حذف تذكير' },
-    case_fees: { entity_type: 'fee', actionUpdate: 'تعديل أتعاب', actionDelete: 'حذف أتعاب' },
-    fee_payments: { entity_type: 'fee', actionUpdate: 'تعديل دفعة أتعاب', actionDelete: 'حذف دفعة أتعاب' },
-    case_notes: { entity_type: 'note', actionUpdate: 'تعديل ملاحظة', actionDelete: 'حذف ملاحظة' },
-    case_parties: { entity_type: 'case', actionUpdate: 'تعديل طرف دعوى', actionDelete: 'حذف طرف دعوى' },
+    cases: { entity_type: 'case', actionUpdate: 'تعديل قضية', actionDelete: 'حذف قضية', nameField: 'title',
+        fields: { title: { label: 'العنوان' }, status: { label: 'الحالة' }, case_type: { label: 'نوع القضية' } } },
+    clients: { entity_type: 'client', actionUpdate: 'تعديل موكل', actionDelete: 'حذف موكل', nameField: 'full_name',
+        fields: { full_name: { label: 'الاسم' }, phone: { label: 'الهاتف' } } },
+    case_sessions: { entity_type: 'session', actionUpdate: 'تعديل جلسة', actionDelete: 'حذف جلسة',
+        fields: { date: { label: 'تاريخ الجلسة' }, location_hall: { label: 'القاعة' } } },
+    reminders: { entity_type: 'reminder', actionUpdate: 'تعديل تذكير', actionDelete: 'حذف تذكير',
+        fields: { title: { label: 'العنوان' }, due_date: { label: 'تاريخ الاستحقاق' } } },
+    case_fees: { entity_type: 'fee', actionUpdate: 'تعديل أتعاب', actionDelete: 'حذف أتعاب',
+        fields: { total_fees: { label: 'إجمالي الأتعاب' }, status: { label: 'الحالة' } } },
+    fee_payments: { entity_type: 'fee', actionUpdate: 'تعديل دفعة أتعاب', actionDelete: 'حذف دفعة أتعاب',
+        fields: { amount: { label: 'المبلغ' }, payment_date: { label: 'تاريخ الدفعة' } } },
+    case_notes: { entity_type: 'note', actionUpdate: 'تعديل ملاحظة', actionDelete: 'حذف ملاحظة',
+        fields: { content: { label: 'نص الملاحظة' } } },
+    case_parties: { entity_type: 'case', actionUpdate: 'تعديل طرف دعوى', actionDelete: 'حذف طرف دعوى',
+        fields: { name: { label: 'الاسم' }, role: { label: 'الصفة' } } },
 };
 
 let __syncQueueRunning = false;
@@ -511,19 +526,33 @@ export async function runOfflineSync(): Promise<void> {
                     const cfg = OFFLINE_ACTIVITY_CONFIG[op.table];
                     if (cfg) {
                         const name = cfg.nameField ? (op.data?.[cfg.nameField] as string | undefined) : undefined;
+                        // ⚡ NEW: بنبني changes من نفس الحقول اللي فعليًا اتبعتت في
+                        // op.data (القيم الجديدة بس — مفيش "قديم" متاح أوفلاين، فبيتعرض
+                        // "— ← القيمة الجديدة" بنفس شكل عمود التغييرات الموحّد).
+                        const changes = cfg.fields
+                            ? buildAddSnapshot(op.data as Record<string, unknown> | undefined, cfg.fields)
+                            : [];
                         logActivity(db, cfg.actionUpdate, {
                             entity_type: cfg.entity_type,
                             entity_id: resolvedOpId,
                             details: name ? `${name} (تعديل أوفلاين)` : 'تعديل أوفلاين',
+                            changes: changes.length > 0 ? changes : null,
                         });
                     }
                 } else if (op.type === 'DELETE') {
                     const cfg = OFFLINE_ACTIVITY_CONFIG[op.table];
                     if (cfg) {
+                        // ⚡ NEW: لو الكولر بعت data مع عملية الحذف (سناب شوت لقطها
+                        // قبل الحذف الفعلي — راجع useCaseSessions/useRemindersTab/
+                        // useFeesActions)، بنستخدمها لبناء نفس شكل "محذوف" الموحّد.
+                        const changes = cfg.fields
+                            ? buildDeleteSnapshot(op.data as Record<string, unknown> | undefined, cfg.fields)
+                            : [];
                         logActivity(db, cfg.actionDelete, {
                             entity_type: cfg.entity_type,
                             entity_id: (op.id as string) || null,
                             details: 'حذف أوفلاين',
+                            changes: changes.length > 0 ? changes : null,
                         });
                     }
                 }
