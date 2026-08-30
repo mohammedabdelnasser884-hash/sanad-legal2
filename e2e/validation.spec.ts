@@ -119,6 +119,9 @@ test.describe('فاليديشن الحقول المطلوبة', () => {
     await page.getByTestId('new-client-button').click();
     await page.getByTestId('new-client-name').fill(clientName);
     await page.getByTestId('new-client-phone').fill('01000000000');
+    // 🔒 FIX (تحليل لوجز E2E — 30 أغسطس 2026): "العنوان" بقى حقل إجباري في
+    // NewClientModal — راجع تعليقها الكامل في createClient() جوه utils.ts.
+    await page.getByTestId('new-client-address').fill('عنوان تجريبي E2E');
     // ⚡ FIX: new-client-national-id بقى حقل إجباري (14 رقم بالظبط) في
     // NewClientModal — من غيره زرار الحفظ كان بيرفض يعمل submit خالص
     // (توست "يرجى إدخال الرقم القومي")، فالموكل ما كانش بيتحفظ أبدًا
