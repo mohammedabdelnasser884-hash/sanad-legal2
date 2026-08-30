@@ -187,7 +187,14 @@ describe('useAdminLegalLibrary', () => {
         file_path: null, file_name: null, status: 'pending',
       });
       expect(toast).toHaveBeenCalledWith('✅ تم إضافة القانون — جاهز للمعالجة');
-      expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'إضافة قانون', { userName: 'أحمد المدير', entity_type: 'law', details: 'قانون العمل' });
+      expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'إضافة قانون', {
+        userName: 'أحمد المدير', entity_type: 'law', details: 'قانون العمل',
+        changes: [
+          { field: 'title', label: 'العنوان', old: '—', new: 'قانون العمل' },
+          { field: 'law_number', label: 'رقم القانون', old: '—', new: '12' },
+          { field: 'law_year', label: 'سنة القانون', old: '—', new: '2003' },
+        ],
+      });
       expect(result.current.showLawModal).toBe(false);
       expect(result.current.savingLaw).toBe(false);
     });
@@ -377,7 +384,12 @@ describe('useAdminLegalLibrary', () => {
       expect(mockDb.removeSpy).toHaveBeenCalledWith('legal-library', ['laws/x.pdf']);
       expect(mockDb.deleteSpy).toHaveBeenCalledWith('laws', 'id', 'l1');
       expect(toast).toHaveBeenCalledWith('🗑️ تم حذف القانون ومواده');
-      expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'حذف قانون', { userName: 'أحمد المدير', entity_type: 'law', entity_id: 'l1', details: 'قانون العمل' });
+      expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'حذف قانون', {
+        userName: 'أحمد المدير', entity_type: 'law', entity_id: 'l1', details: 'قانون العمل',
+        changes: [
+          { field: 'title', label: 'العنوان', old: 'قانون العمل', new: '🗑️ محذوف' },
+        ],
+      });
       expect(result.current.confirmDeleteLaw).toBeNull();
       expect(result.current.savingLaw).toBe(false);
     });
