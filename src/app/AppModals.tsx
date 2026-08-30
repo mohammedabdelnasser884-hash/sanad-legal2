@@ -25,8 +25,21 @@ import UniversalSearchModal from '../shared/modals/UniversalSearchModal';
 const AILegalAssistant = React.lazy(() => import('../features/ai/AILegalAssistant'));
 import AIComingSoonModal from '../shared/modals/AIComingSoonModal';
 import DeleteConfirmModal from '@/shared/modals/DeleteConfirmModal';
-import NewStandaloneSessionModal from '../features/calendar/NewStandaloneSessionModal';
-import CaseDetailView from '../features/cases/CaseDetailView';
+// ⚡ FIX (تحليل bundle، مرحلة 3 — 30 أغسطس 2026): CaseDetailView (تفاصيل
+// القضية) بيسحب معاه statically شجرة اعتماديات ضخمة (SessionsCalendar،
+// StandaloneSessionDetailModal ~1700 سطر، caseSessionLinkingShared
+// ~1000 سطر...) كانت السبب الحقيقي وراء الـ~347kB الثابتة في `index-B3`
+// حتى بعد ما App.tsx حوّل تاب "التقويم" لـReact.lazy (المرحلة 2) —
+// لأن AppModals.tsx (المستورد static من App.tsx) كان بيستورد
+// CaseDetailView statically، يعني نفس شجرة SessionsCalendar كانت بتتحمّل
+// برضو مع فتح التطبيق بغض النظر عن حالة تاب التقويم. الموديل نفسه
+// أصلًا مقصور بشرط (`selectedCase && nav.isOpen('caseDetail') && ...`
+// تحت)، فمفيش داعي يتحمّل قبل ما المستخدم يفتح تفاصيل قضية فعليًا.
+// نفس نمط AILegalAssistant فوق بالظبط (Suspense في مكان الرندر تحت).
+const CaseDetailView = React.lazy(() => import('../features/cases/CaseDetailView'));
+// ⚡ نفس المبدأ: NewStandaloneSessionModal (~930 سطر) موديل مقصور بشرط
+// (`showNewSessionModal && ...` تحت)، فمفيش داعي يتحمّل مع فتح التطبيق.
+const NewStandaloneSessionModal = React.lazy(() => import('../features/calendar/NewStandaloneSessionModal'));
 
 interface AppModalsProps {
     // ── بيانات أساسية ──
@@ -296,7 +309,15 @@ function AppModals({
             countryCaseTypes: COUNTRY_CONFIGS[country]?.caseTypes,
             openNewClientModal,
         }),
-        showNewSessionModal && React.createElement(NewStandaloneSessionModal, {
+        // ⚡ Suspense مطلوب هنا لأن NewStandaloneSessionModal بقى React.lazy فوق —
+        // نفس فكرة AILegalAssistant بالظبط (fallback أوفرلاي بسيط).
+        showNewSessionModal && React.createElement(React.Suspense, {
+                fallback: React.createElement('div', {
+                    className: 'fixed inset-0 flex items-center justify-center bg-black/60',
+                    style: { zIndex: 9999 }
+                }, React.createElement(I.Spin))
+            },
+            React.createElement(NewStandaloneSessionModal, {
             onClose: () => setShowNewSessionModal(false),
             // ⚡ FIX (تحليل لوجز E2E — 9 أغسطس 2026): لما الحفظ بيحصل أوفلاين
             // (queued)، مفيش حاجة اتغيرت فعليًا على السيرفر — الريفريش
@@ -322,7 +343,8 @@ function AppModals({
             // أغسطس 2026): نفس props بالظبط اللي فوق بتتبعت لـNewCaseModal.
             countryCourts: COUNTRY_CONFIGS[country]?.courts,
             countryCaseTypes: COUNTRY_CONFIGS[country]?.caseTypes,
-        }),
+            })
+        ),
         showLawyerModal && React.createElement(UserFormModal, { onClose: () => setShowLawyerModal(false), onSave: handleSaveLawyer, loading: savingLawyer }),
         showClientModal && React.createElement(NewClientModal, {
             onClose: () => setShowClientModal(false), onSave: handleSaveClient, loading: savingClient,
@@ -345,7 +367,15 @@ function AppModals({
             initialEditMode: !!selectedClientEditMode,
             onOpenCase: (ca) => { nav.closeModal('clientDetail'); _setSelectedClient(null); setSelectedCase(ca); }
         }),
-        selectedCase && nav.isOpen('caseDetail') && React.createElement(CaseDetailView, {
+        // ⚡ Suspense مطلوب هنا لأن CaseDetailView بقى React.lazy فوق — نفس
+        // فكرة AILegalAssistant/NewStandaloneSessionModal بالظبط.
+        selectedCase && nav.isOpen('caseDetail') && React.createElement(React.Suspense, {
+                fallback: React.createElement('div', {
+                    className: 'fixed inset-0 flex items-center justify-center bg-black/60',
+                    style: { zIndex: 9999 }
+                }, React.createElement(I.Spin))
+            },
+            React.createElement(CaseDetailView, {
             caseData: selectedCase,
             client: clients.find((cl) => cl.id === selectedCase?.client_id) || null,
             clients,
@@ -410,7 +440,8 @@ function AppModals({
             // فورم تعديل القضية تلقائيًا بعد ما مودال الموكل يتقفل (حفظ أو
             // إلغاء أو ✕) — راجع التعليق في CaseDetailView.tsx.
             clientProfileOpen: !!(selectedClient && nav.isOpen('clientDetail')),
-        }),
+            })
+        ),
     );
 }
 
