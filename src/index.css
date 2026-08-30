@@ -229,7 +229,15 @@
         html.light .text-slate-300    { color: var(--text-secondary) !important; }
         html.light .text-slate-400    { color: var(--text-secondary) !important; }
         html.light .text-slate-500    { color: var(--text-muted) !important; }
-        html.light .text-slate-600    { color: var(--text-faint) !important; }
+        /* ── FIX (فحص تباين الوضع النهاري، 30 أغسطس 2026): كانت هذه القاعدة
+           بتحوّل text-slate-600 لـ--text-faint (#cbd5e1) اللي شبه مختفي فعليًا
+           فوق خلفية فاتحة (تباين ~1.3:1) — بينما في الوضع الليلي نفس الكلاس
+           بيفضل بلونه الافتراضي من Tailwind (#475569) اللي مقروء بوضوح
+           (تباين ~4.2:1). الكلاس ده مستخدم على نطاق واسع لنصوص مساعدة/فرعية
+           (تلميحات، طوابع زمنية، رسائل "لا توجد بيانات")، مش لعناصر يُقصد
+           إخفاؤها. الحل: تحويله لـ--text-muted بدل --text-faint عشان يفضل
+           بنفس الوزن البصري المقروء في الوضعين. ── */
+        html.light .text-slate-600    { color: var(--text-muted) !important; }
 
         /* Gold accent — remap to dark gold on light bg */
         html.light .text-premium-gold { color: var(--gold) !important; }
