@@ -4,6 +4,18 @@ import { IconDevices, IconLockSm } from './icons';
 import { formatArDate, formatArNumber } from '../../shared/ui/arabicLocale';
 import type { ProfileRow, BackupRow } from '../../types';
 import type { ActiveSession } from './sessions/hooks/useAdminSessions';
+import type { PendingFileRestore } from './backup/hooks/useAdminBackup';
+
+// ── شريط تقدم بسيط بالنسبة المئوية (نفس شكل ProgressBar في BackupSection) ──
+function ProgressBar({ percent }: { percent: number }) {
+  const clamped = Math.max(0, Math.min(100, percent));
+  return React.createElement('div', { className: "w-full h-1.5 rounded-full bg-white/10 overflow-hidden" },
+    React.createElement('div', {
+      className: "h-full rounded-full bg-gradient-to-r from-[#C9A84C] to-[#C9A84C]/70 transition-all duration-300",
+      style: { width: `${clamped}%` }
+    })
+  );
+}
 
 // تأكيدات مرتبطة بقسم مفتوح حاليًا (أمان / نسخ احتياطي / جلسات) — بتترندر
 // جوه الـ overlay/scroll div بتاع القسم بنفس الموضع بالظبط زي الأصل في AdminPanel.tsx
@@ -20,13 +32,19 @@ interface AdminPanelSectionConfirmsProps {
   setConfirmLock: (u: ProfileRow | null) => void;
   handleToggleLock: (user: ProfileRow) => void;
 
-  // تأكيد استعادة نسخة احتياطية
+  // تأكيد استعادة نسخة احتياطية (من القايمة المخزنة في قاعدة البيانات)
   confirmRestore: BackupRow | null;
   setConfirmRestore: (b: BackupRow | null) => void;
   restoreConfirmText: string;
   setRestoreConfirmText: (v: string) => void;
   restoringBackup: boolean;
+  restoreProgressPercent: number;
   handleRestoreBackup: (backup: BackupRow) => void;
+
+  // تأكيد استعادة نسخة مرفوعة من الجهاز (نفس حقل التأكيد restoreConfirmText فوق)
+  pendingFileRestore: PendingFileRestore | null;
+  setPendingFileRestore: (p: PendingFileRestore | null) => void;
+  handleRestoreFromFile: () => void;
 
   // تأكيد إنهاء جميع الجلسات
   confirmTerminateAll: boolean;
@@ -41,7 +59,8 @@ export function AdminPanelSectionConfirms(props: AdminPanelSectionConfirmsProps)
   const {
     confirmSignOut, setConfirmSignOut, handleSignOutAllDevices, saving,
     confirmLock, setConfirmLock, handleToggleLock,
-    confirmRestore, setConfirmRestore, restoreConfirmText, setRestoreConfirmText, restoringBackup, handleRestoreBackup,
+    confirmRestore, setConfirmRestore, restoreConfirmText, setRestoreConfirmText, restoringBackup, restoreProgressPercent, handleRestoreBackup,
+    pendingFileRestore, setPendingFileRestore, handleRestoreFromFile,
     confirmTerminateAll, setConfirmTerminateAll, activeSessions, profile, terminatingAll, handleTerminateAllSessions,
   } = props;
 
@@ -177,10 +196,87 @@ export function AdminPanelSectionConfirms(props: AdminPanelSectionConfirmsProps)
             'data-testid': 'admin-backup-restore-confirm-button',
             className: "py-2.5 rounded-xl text-xs font-black bg-[#C9A84C] text-white active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-1"
           },
-            restoringBackup ? React.createElement(React.Fragment, null, React.createElement(I.Spin), "جاري الاستعادة...")
+            restoringBackup ? React.createElement(React.Fragment, null, React.createElement(I.Spin), `جاري الاستعادة... ${restoreProgressPercent}%`)
               : "استعادة الآن"
           )
-        )
+        ),
+
+        // شريط تقدم الاستعادة
+        restoringBackup && React.createElement(ProgressBar, { percent: restoreProgressPercent })
+      )
+    ),
+
+    // تأكيد استعادة نسخة مرفوعة من الجهاز (نفس تصميم مودال الاستعادة فوق)
+    pendingFileRestore && React.createElement('div', {
+      className: "fixed inset-0 z-50 flex items-center justify-center px-4",
+      style: { background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' }
+    },
+      React.createElement('div', {
+        className: "w-full max-w-xs rounded-2xl p-5 space-y-4",
+        style: { background: '#0d1a2e', border: '1px solid rgba(245,158,11,0.3)' }
+      },
+        // أيقونة
+        React.createElement('div', { className: "text-center space-y-2" },
+          React.createElement('div', { className: "w-14 h-14 rounded-2xl bg-[#C9A84C]/15 flex items-center justify-center mx-auto text-2xl" }, "📤"),
+          React.createElement('p', { className: "text-sm font-black text-white" }, "استعادة من ملف مرفوع؟"),
+          React.createElement('p', { className: "text-xs text-slate-500 break-all" }, pendingFileRestore.fileName)
+        ),
+
+        // تحذير عدم توافق النسخة (لو موجود)
+        pendingFileRestore.versionMismatch && React.createElement('div', { className: "p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 space-y-1" },
+          React.createElement('p', { className: "text-[10px] font-black text-amber-400" }, "⚠️ تنبيه"),
+          React.createElement('p', { className: "text-[9px] text-slate-400 leading-relaxed" },
+            "شكل النسخة المرفوعة أقدم أو مختلف عن الشكل الحالي — بعض البيانات ممكن ما تتستعادش بالكامل.")
+        ),
+
+        // تحذير عام
+        React.createElement('div', { className: "p-3 rounded-xl bg-red-500/10 border border-red-500/20 space-y-1" },
+          React.createElement('p', { className: "text-[10px] font-black text-red-400" }, "⚠️ تحذير مهم"),
+          React.createElement('p', { className: "text-[9px] text-slate-400 leading-relaxed" },
+            "ستُستبدل البيانات الحالية بمحتوى الملف. هذه العملية لا يمكن التراجع عنها. يُنصح بإنشاء نسخة احتياطية جديدة أولاً.")
+        ),
+
+        // حقل التأكيد المزدوج — اكتب "استعادة" للمتابعة
+        React.createElement('div', { className: "space-y-1" },
+          React.createElement('p', { className: "text-[9px] text-slate-400 text-center" },
+            'اكتب ', React.createElement('span', { className: "text-red-400 font-black" }, '"استعادة"'), ' للتأكيد:'
+          ),
+          React.createElement('input', {
+            type: 'text', value: restoreConfirmText,
+            onChange: (e: React.ChangeEvent<HTMLInputElement>) => setRestoreConfirmText(e.target.value),
+            placeholder: 'استعادة',
+            'data-testid': 'admin-backup-restore-file-confirm-input',
+            className: 'w-full p-2 text-center text-xs rounded-xl border border-red-500/30 bg-red-500/5 text-white placeholder-slate-600',
+            style: { fontFamily: 'Cairo,sans-serif' }
+          })
+        ),
+
+        // معلومات الملف
+        React.createElement('div', { className: "flex justify-between text-[10px] text-slate-500 px-1" },
+          React.createElement('span', null, formatArNumber(pendingFileRestore.rowsCount) + " سجل"),
+          React.createElement('span', null, pendingFileRestore.sizeKb + " KB")
+        ),
+
+        // أزرار
+        React.createElement('div', { className: "grid grid-cols-2 gap-2" },
+          React.createElement('button', {
+            onClick: () => { setPendingFileRestore(null); setRestoreConfirmText(''); },
+            'data-testid': 'admin-backup-restore-file-cancel',
+            className: "py-2.5 rounded-xl text-xs font-black bg-white/8 text-slate-300 active:scale-95 transition-transform"
+          }, "إلغاء"),
+          React.createElement('button', {
+            onClick: handleRestoreFromFile,
+            disabled: restoringBackup || restoreConfirmText.trim() !== 'استعادة',
+            'data-testid': 'admin-backup-restore-file-confirm-button',
+            className: "py-2.5 rounded-xl text-xs font-black bg-[#C9A84C] text-white active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-1"
+          },
+            restoringBackup ? React.createElement(React.Fragment, null, React.createElement(I.Spin), `جاري الاستعادة... ${restoreProgressPercent}%`)
+              : "استعادة الآن"
+          )
+        ),
+
+        // شريط تقدم الاستعادة
+        restoringBackup && React.createElement(ProgressBar, { percent: restoreProgressPercent })
       )
     ),
 
