@@ -266,6 +266,12 @@ export function useAdminBackup(profile?: ProfileRow | null) {
   const performRestoreSteps = async (
     snapshot: BackupSnapshot | null,
     onProgress: (percent: number) => void,
+    // ⚠️ لازم string مضمون (مش string|null) — الدالة دي منفصلة عن
+    // handleRestoreBackup/handleRestoreFromFile، فـ TypeScript مش بيقدر يتتبع
+    // إن فحص `if (!tenantId) return;` في الدالتين المنادية ضامن إن tenantId
+    // مش null هنا. تمرير القيمة كباراميتر بيفرض الضمان ده صراحةً بدل الاعتماد
+    // على تتبع النطاق (closure narrowing) اللي مش بيعدي حدود الدالة.
+    tenantIdSafe: string,
   ): Promise<{ restoredTables: number; failed: boolean }> => {
     const totalSteps = RESTORE_DELETE_ORDER.length + RESTORE_INSERT_ORDER.length + 2; // +2: profiles و activity_log
     let completedSteps = 0;
@@ -285,7 +291,7 @@ export function useAdminBackup(profile?: ProfileRow | null) {
         // تحت (نفس السلوك الحالي، بدون أي تغيير فعلي في المنطق وقت التشغيل).
         await (dynFrom(table) as unknown as ReturnType<typeof _typedClientsFrom>)
           .delete()
-          .eq('tenant_id', tenantId);
+          .eq('tenant_id', tenantIdSafe);
       } catch (e) {
         failed = true;
       }
@@ -366,7 +372,7 @@ export function useAdminBackup(profile?: ProfileRow | null) {
     let failed = false;
 
     try {
-      ({ restoredTables, failed } = await performRestoreSteps(snapshot, setRestoreProgressPercent));
+      ({ restoredTables, failed } = await performRestoreSteps(snapshot, setRestoreProgressPercent, tenantId));
     } finally {
       setRestoringBackup(false);
       setConfirmRestore(null);
@@ -430,7 +436,7 @@ export function useAdminBackup(profile?: ProfileRow | null) {
     let restoredTables = 0;
     let failed = false;
     try {
-      ({ restoredTables, failed } = await performRestoreSteps(pendingFileRestore.snapshot, setRestoreProgressPercent));
+      ({ restoredTables, failed } = await performRestoreSteps(pendingFileRestore.snapshot, setRestoreProgressPercent, tenantId));
     } finally {
       setRestoringBackup(false);
       setPendingFileRestore(null);
