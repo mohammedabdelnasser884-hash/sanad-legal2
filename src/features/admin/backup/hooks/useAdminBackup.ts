@@ -16,6 +16,13 @@ export interface BackupSnapshot {
   tables: Record<string, unknown[]>;
 }
 
+// ── نسخة شكل الـ snapshot الحالية (نفس القيمة المستخدمة في handleCreateBackup) —
+// بنستخدمها للتحقق من ملف مرفوع من الجهاز: لو الرقم الرئيسي (قبل النقطة) مختلف،
+// يبقى شكل الجداول ممكن يكون اتغيّر من ساعتها (عمود اتضاف/اتشال)، فبنحذّر
+// المستخدم بدل ما نستعيد بصمت على أساس افتراضات ممكن تبقى غلط.
+const CURRENT_SNAPSHOT_VERSION = '1.1';
+const CURRENT_SNAPSHOT_MAJOR = CURRENT_SNAPSHOT_VERSION.split('.')[0];
+
 // ── حجم الصفحة لجلب كل صفوف الجدول عند التصدير (تجنب حد الـ 1000 صف الافتراضي في Supabase) ──
 const FETCH_PAGE_SIZE = 1000;
 // ── حجم الدفعة عند إعادة الإدخال وقت الاستعادة (تجنب حمولة request ضخمة دفعة واحدة) ──
@@ -80,6 +87,19 @@ async function fetchAllRows(table: BackupTableName, columns: string): Promise<un
   return all;
 }
 
+// ── شكل نسخة مرفوعة من الجهاز، لسه معلّقة قبل تأكيد المستخدم ──
+// (نفس بيانات BackupSnapshot لكن مع اسم الملف الأصلي بدل معرّف backups.id،
+// لأنها لسه مش صف في قاعدة البيانات).
+export interface PendingFileRestore {
+  fileName: string;
+  snapshot: BackupSnapshot;
+  rowsCount: number;
+  sizeKb: number;
+  // true لو النسخة المرفوعة رقمها الرئيسي (major) مختلف عن نسخة الشكل الحالية —
+  // مش مانع للاستعادة، بس بيتعرض كتحذير في مودال التأكيد (راجع CURRENT_SNAPSHOT_MAJOR)
+  versionMismatch: boolean;
+}
+
 export function useAdminBackup(profile?: ProfileRow | null) {
   const _userName = profile?.full_name || null;
   const tenantId = profile?.tenant_id ?? null;
@@ -87,9 +107,15 @@ export function useAdminBackup(profile?: ProfileRow | null) {
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [creatingBackup, setCreatingBackup] = useState(false);
   const [backupProgress, setBackupProgress] = useState('');
+  // نسبة تقدم رقمية (0-100) — حساب بسيط: خطوة/إجمالي الخطوات (جداول)، مش حجم البيانات
+  const [backupProgressPercent, setBackupProgressPercent] = useState(0);
   const [confirmRestore, setConfirmRestore] = useState<BackupRow | null>(null);
   const [restoreConfirmText, setRestoreConfirmText] = useState('');
   const [restoringBackup, setRestoringBackup] = useState(false);
+  const [restoreProgressPercent, setRestoreProgressPercent] = useState(0);
+  // ── رفع نسخة من الجهاز ──
+  const [pendingFileRestore, setPendingFileRestore] = useState<PendingFileRestore | null>(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   // 🔒 FIX (تشخيص لوجز CI — 4 أغسطس 2026): كانت بتعمل select('*') وده
   // بيجيب عمود data كمان (اللي فيه نسخة JSON كاملة من كل جداول المكتب —
@@ -113,9 +139,13 @@ export function useAdminBackup(profile?: ProfileRow | null) {
   // ── إنشاء نسخة احتياطية ──
   const handleCreateBackup = async () => {
     setCreatingBackup(true);
+    setBackupProgressPercent(0);
     // profiles بتتضاف بعد الحلقة (مش فيها paging؛ حسابات المكتب عادة قليلة العدد نسبياً ومش محتاجة صفحات)
     const tables: BackupTableName[] = [...BACKUP_TABLES, 'profiles'];
-    const snapshot: BackupSnapshot = { version: '1.1', created_at: new Date().toISOString(), tables: {} };
+    // +1 عشان خطوة "الحفظ" الأخيرة بعد التصدير (راجع setBackupProgress('جاري الحفظ...') تحت)
+    const totalSteps = tables.length + 1;
+    let completedSteps = 0;
+    const snapshot: BackupSnapshot = { version: CURRENT_SNAPSHOT_VERSION, created_at: new Date().toISOString(), tables: {} };
 
     // client_portal_pins فيها عمود pin القديم (نص صريح، لسه موجود لحد
     // ما يتحذف نهائيًا من قاعدة البيانات) — النسخة الاحتياطية لازم
@@ -135,6 +165,8 @@ export function useAdminBackup(profile?: ProfileRow | null) {
         snapshot.tables[table] = [];
         incomplete = true;
       }
+      completedSteps++;
+      setBackupProgressPercent(Math.round((completedSteps / totalSteps) * 100));
     }
 
     setBackupProgress('جاري الحفظ...');
@@ -169,6 +201,8 @@ export function useAdminBackup(profile?: ProfileRow | null) {
       return;
     }
 
+    completedSteps++;
+    setBackupProgressPercent(Math.round((completedSteps / totalSteps) * 100));
     setCreatingBackup(false);
     setBackupProgress('');
     // 🔎 FIX (تشخيص لوجز E2E — 26 أغسطس 2026): هذا الفرع (`error` من
@@ -225,53 +259,44 @@ export function useAdminBackup(profile?: ProfileRow | null) {
   //    - activity_log: سجل تدقيق قانوني — طمس الإدخالات اللي حصلت بعد
   //      تاريخ النسخة الاحتياطية (بما فيها إدخالات الاستعادة نفسها لاحقاً) غير مقبول
   //      من الناحية القانونية/المحاسبية، فبيتم فقط استكمال أي صفوف قديمة ناقصة.
-  const handleRestoreBackup = async (backup: BackupRow) => {
-    if (restoreConfirmText.trim() !== 'استعادة') {
-      toast('❌ اكتب "استعادة" في حقل التأكيد أولاً', true);
-      return;
-    }
-    if (!tenantId) {
-      toast('❌ تعذر تحديد المكتب الحالي — لا يمكن الاستعادة بأمان', true);
-      return;
-    }
-    setRestoringBackup(true);
-    // 🔒 FIX (تشخيص لوجز CI — 4 أغسطس 2026): نفس ملحوظة handleDownloadBackup —
-    // backup.data مش متجاب مع القايمة دلوقتي، فبنجيبه هنا بصف واحد قبل ما نبدأ
-    // أي حذف فعلي (لو فشل الجلب، بنوقف من غير ما نلمس أي بيانات موجودة).
-    const { data: fullBackup, error: fetchErr } = await db.from('backups')
-      .select('data').eq('id', backup.id).single();
-    if (fetchErr || !fullBackup) {
-      setRestoringBackup(false);
-      toast('❌ تعذر جلب بيانات النسخة الاحتياطية — لم يتم حذف أو تعديل أي شيء', true);
-      return;
-    }
-    const snapshot = fullBackup.data as BackupSnapshot | null;
+  // ── الخطوات الفعلية للاستعادة (حذف + إدخال + upsert)، مستقلة عن مصدر
+  // الـ snapshot (نسخة من القايمة أو ملف مرفوع من الجهاز) عشان تتستخدم من
+  // الاتنين من غير تكرار كود. بترجع عدد الجداول اللي نجحت + هل فيه فشل جزئي،
+  // وبتنادي onProgress بعد كل خطوة (نسبة 0-100، حساب بسيط: خطوة/إجمالي الخطوات).
+  const performRestoreSteps = async (
+    snapshot: BackupSnapshot | null,
+    onProgress: (percent: number) => void,
+  ): Promise<{ restoredTables: number; failed: boolean }> => {
+    const totalSteps = RESTORE_DELETE_ORDER.length + RESTORE_INSERT_ORDER.length + 2; // +2: profiles و activity_log
+    let completedSteps = 0;
     let restoredTables = 0;
     let failed = false;
+    onProgress(0);
 
-    try {
-      // ١) حذف بيانات المكتب الحالية (أبناء أولاً) من الجداول اللي هنعيد إدخالها بالكامل
-      for (const table of RESTORE_DELETE_ORDER) {
-        try {
-          // ⚠️ table هنا union من عدة جداول، ومعظمها فيه عمود tenant_id مباشر
-          // لكن client_portal_pins لأ (مربوط بالـ tenant عن طريق clients.tenant_id
-          // مش عمود مباشر في جدوله هو) — فـ TypeScript بيحسب تقاطع أعمدة كل
-          // الجداول في RESTORE_DELETE_ORDER فيرفض 'tenant_id' لأنه مش مشترك في
-          // كلها. الكاست هنا موثّق ومقصود: باقي الجداول كلها فعلاً فيها العمود،
-          // وحالة client_portal_pins الوحيدة هتفشل وقت التشغيل وتتلقط في catch
-          // تحت (نفس السلوك الحالي، بدون أي تغيير فعلي في المنطق وقت التشغيل).
-          await (dynFrom(table) as unknown as ReturnType<typeof _typedClientsFrom>)
-            .delete()
-            .eq('tenant_id', tenantId);
-        } catch (e) {
-          failed = true;
-        }
+    // ١) حذف بيانات المكتب الحالية (أبناء أولاً) من الجداول اللي هنعيد إدخالها بالكامل
+    for (const table of RESTORE_DELETE_ORDER) {
+      try {
+        // ⚠️ table هنا union من عدة جداول، ومعظمها فيه عمود tenant_id مباشر
+        // لكن client_portal_pins لأ (مربوط بالـ tenant عن طريق clients.tenant_id
+        // مش عمود مباشر في جدوله هو) — فـ TypeScript بيحسب تقاطع أعمدة كل
+        // الجداول في RESTORE_DELETE_ORDER فيرفض 'tenant_id' لأنه مش مشترك في
+        // كلها. الكاست هنا موثّق ومقصود: باقي الجداول كلها فعلاً فيها العمود،
+        // وحالة client_portal_pins الوحيدة هتفشل وقت التشغيل وتتلقط في catch
+        // تحت (نفس السلوك الحالي، بدون أي تغيير فعلي في المنطق وقت التشغيل).
+        await (dynFrom(table) as unknown as ReturnType<typeof _typedClientsFrom>)
+          .delete()
+          .eq('tenant_id', tenantId);
+      } catch (e) {
+        failed = true;
       }
+      completedSteps++;
+      onProgress(Math.round((completedSteps / totalSteps) * 100));
+    }
 
-      // ٢) إعادة إدخال صفوف النسخة الاحتياطية (آباء أولاً)، على دفعات
-      for (const table of RESTORE_INSERT_ORDER) {
-        const rows = snapshot?.tables?.[table];
-        if (!rows || rows.length === 0) continue;
+    // ٢) إعادة إدخال صفوف النسخة الاحتياطية (آباء أولاً)، على دفعات
+    for (const table of RESTORE_INSERT_ORDER) {
+      const rows = snapshot?.tables?.[table];
+      if (rows && rows.length > 0) {
         try {
           for (let i = 0; i < rows.length; i += INSERT_CHUNK_SIZE) {
             // ⚠️ الكاست هنا مختلف عن اختيار الجدول فوق (اللي بقى متحقق منه
@@ -290,11 +315,14 @@ export function useAdminBackup(profile?: ProfileRow | null) {
           failed = true;
         }
       }
+      completedSteps++;
+      onProgress(Math.round((completedSteps / totalSteps) * 100));
+    }
 
-      // ٣) profiles و activity_log: upsert فقط (بدون حذف) — انظر التعليق أعلى الدالة
-      for (const table of ['profiles', 'activity_log'] as const satisfies readonly BackupTableName[]) {
-        const rows = snapshot?.tables?.[table];
-        if (!rows || rows.length === 0) continue;
+    // ٣) profiles و activity_log: upsert فقط (بدون حذف) — انظر التعليق أعلى handleRestoreBackup
+    for (const table of ['profiles', 'activity_log'] as const satisfies readonly BackupTableName[]) {
+      const rows = snapshot?.tables?.[table];
+      if (rows && rows.length > 0) {
         try {
           for (let i = 0; i < rows.length; i += INSERT_CHUNK_SIZE) {
             // نفس ملاحظة insert فوق — الكاست هنا لشكل الصف (unknown JSON)، مش لاسم الجدول.
@@ -305,6 +333,40 @@ export function useAdminBackup(profile?: ProfileRow | null) {
           restoredTables++;
         } catch (e) { failed = true; }
       }
+      completedSteps++;
+      onProgress(Math.round((completedSteps / totalSteps) * 100));
+    }
+
+    return { restoredTables, failed };
+  };
+
+  const handleRestoreBackup = async (backup: BackupRow) => {
+    if (restoreConfirmText.trim() !== 'استعادة') {
+      toast('❌ اكتب "استعادة" في حقل التأكيد أولاً', true);
+      return;
+    }
+    if (!tenantId) {
+      toast('❌ تعذر تحديد المكتب الحالي — لا يمكن الاستعادة بأمان', true);
+      return;
+    }
+    setRestoringBackup(true);
+    setRestoreProgressPercent(0);
+    // 🔒 FIX (تشخيص لوجز CI — 4 أغسطس 2026): نفس ملحوظة handleDownloadBackup —
+    // backup.data مش متجاب مع القايمة دلوقتي، فبنجيبه هنا بصف واحد قبل ما نبدأ
+    // أي حذف فعلي (لو فشل الجلب، بنوقف من غير ما نلمس أي بيانات موجودة).
+    const { data: fullBackup, error: fetchErr } = await db.from('backups')
+      .select('data').eq('id', backup.id).single();
+    if (fetchErr || !fullBackup) {
+      setRestoringBackup(false);
+      toast('❌ تعذر جلب بيانات النسخة الاحتياطية — لم يتم حذف أو تعديل أي شيء', true);
+      return;
+    }
+    const snapshot = fullBackup.data as BackupSnapshot | null;
+    let restoredTables = 0;
+    let failed = false;
+
+    try {
+      ({ restoredTables, failed } = await performRestoreSteps(snapshot, setRestoreProgressPercent));
     } finally {
       setRestoringBackup(false);
       setConfirmRestore(null);
@@ -318,12 +380,76 @@ export function useAdminBackup(profile?: ProfileRow | null) {
     setTimeout(() => window.location.reload(), 1500);
   };
 
+  // ── اختيار ملف JSON من الجهاز (رفع، بدون استعادة فعلية بعد) ──
+  // بيتحقق إن الملف بشكل BackupSnapshot سليم، وبيحط النتيجة في
+  // pendingFileRestore عشان مودال التأكيد (زي استعادة نسخة من القايمة بالظبط،
+  // نفس شرط كتابة "استعادة") — الاستعادة الفعلية بتحصل في handleRestoreFromFile.
+  const handleFileSelected = async (file: File) => {
+    setUploadingFile(true);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== 'object' || !parsed.tables || typeof parsed.tables !== 'object') {
+        toast('❌ الملف مش نسخة احتياطية سليمة (شكل غير متوقع)', true);
+        return;
+      }
+      const snapshot = parsed as BackupSnapshot;
+      // ⚠️ الملف لازم يكون فيه على الأقل جدول واحد من جداول سند المعروفة —
+      // ده بيمنع قبول أي ملف JSON عشوائي بس عنده مفتاح "tables" بالصدفة
+      // (فحص شكلي بسيط، مش تحقق كامل من كل عمود في كل جدول).
+      const knownTables: string[] = [...BACKUP_TABLES, 'profiles'];
+      const hasKnownTable = Object.keys(snapshot.tables).some(t => knownTables.includes(t));
+      if (!hasKnownTable) {
+        toast('❌ الملف مش نسخة احتياطية من سند — مفيش جداول معروفة جواه', true);
+        return;
+      }
+      const versionMismatch = !snapshot.version || snapshot.version.split('.')[0] !== CURRENT_SNAPSHOT_MAJOR;
+      const rowsCount = Object.values(snapshot.tables).reduce((s: number, t) => s + (Array.isArray(t) ? t.length : 0), 0);
+      const sizeKb = Math.round(text.length / 1024);
+      setPendingFileRestore({ fileName: file.name, snapshot, rowsCount, sizeKb, versionMismatch });
+    } catch (e) {
+      toast('❌ تعذّر قراءة الملف — تأكد إنه ملف JSON سليم من نسخة احتياطية سابقة', true);
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  // ── استعادة فعلية من الملف المرفوع (بعد تأكيد المستخدم بكتابة "استعادة") ──
+  const handleRestoreFromFile = async () => {
+    if (!pendingFileRestore) return;
+    if (restoreConfirmText.trim() !== 'استعادة') {
+      toast('❌ اكتب "استعادة" في حقل التأكيد أولاً', true);
+      return;
+    }
+    if (!tenantId) {
+      toast('❌ تعذر تحديد المكتب الحالي — لا يمكن الاستعادة بأمان', true);
+      return;
+    }
+    setRestoringBackup(true);
+    setRestoreProgressPercent(0);
+    let restoredTables = 0;
+    let failed = false;
+    try {
+      ({ restoredTables, failed } = await performRestoreSteps(pendingFileRestore.snapshot, setRestoreProgressPercent));
+    } finally {
+      setRestoringBackup(false);
+      setPendingFileRestore(null);
+      setRestoreConfirmText('');
+    }
+
+    toast(failed ? `⚠️ تمت الاستعادة جزئياً — راجع البيانات (${restoredTables} جدول نجح)` : `✅ تمت الاستعادة الكاملة — ${restoredTables} جداول`);
+    logActivity(db, 'استعادة نسخة احتياطية من ملف مرفوع', { entity_type: 'backup', details: `ملف ${pendingFileRestore.fileName} — ${restoredTables} جداول${failed ? ' (جزئي)' : ''}`, userName: _userName });
+    setTimeout(() => window.location.reload(), 1500);
+  };
+
   return {
     backups, loadingBackups,
-    creatingBackup, backupProgress,
+    creatingBackup, backupProgress, backupProgressPercent,
     confirmRestore, setConfirmRestore,
     restoreConfirmText, setRestoreConfirmText,
-    restoringBackup,
-    fetchBackups, handleCreateBackup, handleDownloadBackup, handleRestoreBackup
+    restoringBackup, restoreProgressPercent,
+    pendingFileRestore, setPendingFileRestore, uploadingFile,
+    fetchBackups, handleCreateBackup, handleDownloadBackup, handleRestoreBackup,
+    handleFileSelected, handleRestoreFromFile,
   };
 }
