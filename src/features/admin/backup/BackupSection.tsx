@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { I } from '../../../constants';
 import { IconBackup, IconWarning } from '../icons';
 import { formatArDate, formatArTime, formatArNumber } from '../../../shared/ui/arabicLocale';
@@ -8,18 +8,34 @@ interface BackupSectionProps {
   handleCreateBackup: () => void | Promise<void>;
   creatingBackup: boolean;
   backupProgress: string;
+  backupProgressPercent: number;
   fetchBackups: () => void | Promise<void>;
   loadingBackups: boolean;
   backups: BackupRow[];
   handleDownloadBackup: (backup: BackupRow) => void | Promise<void>;
   setConfirmRestore: React.Dispatch<React.SetStateAction<BackupRow | null>>;
+  handleFileSelected: (file: File) => void | Promise<void>;
+  uploadingFile: boolean;
+}
+
+// ── شريط تقدم بسيط بالنسبة المئوية (نفس ألوان القسم الذهبية) ──
+function ProgressBar({ percent }: { percent: number }) {
+  const clamped = Math.max(0, Math.min(100, percent));
+  return React.createElement('div', { className: "w-full h-1.5 rounded-full bg-white/10 overflow-hidden" },
+    React.createElement('div', {
+      className: "h-full rounded-full bg-gradient-to-r from-[#C9A84C] to-[#C9A84C]/70 transition-all duration-300",
+      style: { width: `${clamped}%` }
+    })
+  );
 }
 
 function BackupSection({
-  handleCreateBackup, creatingBackup, backupProgress,
+  handleCreateBackup, creatingBackup, backupProgress, backupProgressPercent,
   fetchBackups, loadingBackups, backups,
   handleDownloadBackup, setConfirmRestore,
+  handleFileSelected, uploadingFile,
 }: BackupSectionProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   return React.createElement('div',{className:"space-y-4"},
 
       // ── هيدر + زر إنشاء ──
@@ -47,12 +63,39 @@ function BackupSection({
           creatingBackup
             ? React.createElement(React.Fragment,null,
                 React.createElement(I.Spin),
-                React.createElement('span',null, backupProgress || 'جاري إنشاء النسخة...')
+                React.createElement('span',null, (backupProgress || 'جاري إنشاء النسخة...') + ` — ${backupProgressPercent}%`)
               )
             : React.createElement(React.Fragment,null,
                 React.createElement('span',{className:"text-base"},"💾"),
                 React.createElement('span',null,"إنشاء نسخة احتياطية الآن")
               )
+        ),
+
+        // شريط تقدم إنشاء النسخة
+        creatingBackup && React.createElement(ProgressBar,{percent: backupProgressPercent}),
+
+        // زر رفع نسخة محفوظة من الجهاز
+        React.createElement('input',{
+          ref: fileInputRef,
+          type:'file',
+          accept:'.json,application/json',
+          className:'hidden',
+          'data-testid': 'admin-backup-upload-input',
+          onChange:(e: React.ChangeEvent<HTMLInputElement>) => {
+            const file = e.target.files?.[0];
+            if (file) handleFileSelected(file);
+            e.target.value = '';
+          }
+        }),
+        React.createElement('button',{
+          onClick: () => fileInputRef.current?.click(),
+          disabled: uploadingFile,
+          'data-testid': 'admin-backup-upload-button',
+          className:"w-full py-2.5 rounded-xl text-[11px] font-bold text-[#C9A84C] bg-white/5 border border-[#C9A84C]/25 active:scale-95 transition-transform disabled:opacity-60 flex items-center justify-center gap-2"
+        },
+          uploadingFile
+            ? React.createElement(React.Fragment,null, React.createElement(I.Spin), React.createElement('span',null,"جاري قراءة الملف..."))
+            : React.createElement(React.Fragment,null, React.createElement('span',{className:"text-sm"},"📤"), React.createElement('span',null,"رفع نسخة محفوظة من الجهاز"))
         ),
 
         // تحذير مهم
