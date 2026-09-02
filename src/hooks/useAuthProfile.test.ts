@@ -300,6 +300,9 @@ describe('useAuthProfile', () => {
     expect(from).not.toHaveBeenCalled();
     expect(result.current.profile).toBeNull();
     expect(result.current.authUser).toBeNull();
+    // ⚠️ حاسم: لو authLoading فضل true هنا، App.tsx هيفضل عالق على
+    // AppLoadingScreen وميوصلش خالص لبوابة isPasswordRecovery.
+    expect(result.current.authLoading).toBe(false);
   });
 
   it('onAuthStateChange: PASSWORD_RECOVERY متبوع بـ SIGNED_OUT (بعد نجاح تحديث الباسورد) → isPasswordRecovery بيرجع false تاني', async () => {
