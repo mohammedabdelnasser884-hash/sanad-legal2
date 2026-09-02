@@ -65,6 +65,22 @@ import type { ProfileRow } from '../../types';
 //  وزرار قائمة الحساب مالهمش تغيير (عندهم اسم إمكاني واضح بالفعل —
 //  نص مرئي "بحث" في الأول، و`aria-label="قائمة الحساب"` في التاني).
 //  صفر تغيير على أي منطق/data-testid موجود.
+//
+//  ⚡ NEW (2 سبتمبر 2026 — ملحق PWA في desktop-experience-plan):
+//  زرار "ثبّت التطبيق" جديد بين البحث والتحديث، `data-testid=
+//  "desktop-header-install"` مستقل. بيستخدم نفس `pwaInstallable`/
+//  `handlePwaInstall` الموجودين فعلاً من `usePwaInstall.ts` (نفس
+//  الـhook المستخدم مع زرار "📲 تثبيت التطبيق" في HeaderMenu.tsx —
+//  صفر تعديل على الـhook أو على زرار HeaderMenu، الاتنين هيفضلوا
+//  شغالين مع بعض). الزرار مشروط بـ`pwaInstallable === true` (نفس
+//  شرط ظهور نسخة HeaderMenu) فمش هيظهر خالص إلا لو المتصفح فعليًا
+//  بيسمح بالتثبيت دلوقتي، وبيختفي تلقائيًا بعد التثبيت (نفس منطق
+//  الـhook: `pwa-installed` بيصفّر `pwaInstallable`). الاتنين props
+//  اختياريين (`?`) بنفس نمط باقي props الملف — لو مش متمررين، الزرار
+//  ببساطة ما بيتعرضش، صفر كسر لأي استخدام قديم للمكوّن. اللون الذهبي
+//  (بدل الرمادي الشفاف المستخدم في بحث/تحديث/قائمة) مقصود — Call to
+//  Action بصري واضح، نفس درجة الذهبي المستخدم في HeaderMenu.tsx
+//  لنفس الزرار (`rgba(212,175,55,0.12)` خلفية / `#D4AF37` نص).
 // ─────────────────────────────────────────────────────────
 
 export interface DesktopHeaderProps {
@@ -75,9 +91,13 @@ export interface DesktopHeaderProps {
     fetchCases: (page?: number, filter?: string) => void | Promise<void>;
     casesFilter: string;
     loadingCases: boolean;
+    /** اختياري — لو متوفر ومعاه pwaInstallable=true، بيظهر زرار
+     *  "ثبّت التطبيق" ذهبي بين البحث والتحديث (راجع تعليق NEW فوق). */
+    pwaInstallable?: boolean;
+    handlePwaInstall?: () => void | Promise<void>;
 }
 
-function DesktopHeader({ profile, setShowMenu, setShowSearch, isAdmin, fetchCases, casesFilter, loadingCases }: DesktopHeaderProps) {
+function DesktopHeader({ profile, setShowMenu, setShowSearch, isAdmin, fetchCases, casesFilter, loadingCases, pwaInstallable, handlePwaInstall }: DesktopHeaderProps) {
     return React.createElement('header', {
         'data-testid': 'desktop-header',
         'aria-label': 'ترويسة سطح المكتب',
@@ -124,6 +144,15 @@ function DesktopHeader({ profile, setShowMenu, setShowSearch, isAdmin, fetchCase
                 // ⚡ NEW (سبتمبر 2026): تلميح اختصار Cmd/Ctrl+K — ديسكتوب بس
                 // (مفيش لوحة مفاتيح فعلية على الموبايل يستفيد بيها).
                 React.createElement('kbd', { className: 'text-[9px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-500 font-mono' }, '⌘K')
+            ),
+            pwaInstallable && handlePwaInstall && React.createElement('button', {
+                onClick: () => handlePwaInstall(),
+                'data-testid': 'desktop-header-install',
+                className: 'h-10 rounded-xl border flex items-center gap-2 px-3.5 active:scale-95 transition-transform text-sm font-bold',
+                style: { background: 'rgba(212,175,55,0.12)', borderColor: 'rgba(212,175,55,0.35)', color: '#D4AF37' },
+            },
+                React.createElement('span', { className: 'text-base leading-none' }, '📲'),
+                React.createElement('span', null, 'ثبّت التطبيق')
             ),
             React.createElement('button', {
                 onClick: () => fetchCases(0, casesFilter),
