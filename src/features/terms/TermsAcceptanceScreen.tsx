@@ -24,6 +24,17 @@ function TermsAcceptanceScreen({ profile, onAccepted }: TermsAcceptanceScreenPro
 
   const handleConfirm = async () => {
     if (!agreed || saving) return;
+    // ⚠️ FIX (CI، 2 سبتمبر 2026): profile.user_id نوعه string | null في
+    // ProfileRow، بينما terms_acceptances.user_id إلزامي (NOT NULL).
+    // عمليًا الشاشة دي مش بتتعرض إلا لمستخدم مسجّل دخوله فعليًا (auth
+    // مطلوب قبلها في App.tsx)، فـuser_id المفروض يكون موجود دايمًا هنا؛
+    // لكن TypeScript مش عارف الضمان ده، فبنتحقق صراحةً بدل ما نعمل cast
+    // أعمى (زي `as string`) يخفي المشكلة لو حصل يومًا سيناريو فعلي فيه
+    // profile بدون user_id.
+    if (!profile.user_id) {
+      setErr('تعذر تحديد هوية المستخدم، حاول تسجيل الخروج والدخول تاني.');
+      return;
+    }
     setSaving(true);
     setErr('');
     const { error } = await db.from('terms_acceptances').insert({
