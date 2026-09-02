@@ -8,12 +8,15 @@ import {
     useUniversalSearch,
     MIN_CHARS,
 } from './hooks/useUniversalSearch';
+import { useVoiceSearch } from './hooks/useVoiceSearch';
 import type {
     SearchCaseResult,
     SearchClientResult,
     SearchSessionResult,
     SearchNoteResult,
     SearchDocResult,
+    SearchFeeResult,
+    SearchReminderResult,
     QuickFilter,
 } from './hooks/useUniversalSearch';
 // ⚡ NEW (خطة تفكيك الأعمدة القديمة، المرحلة B.3 — 6 أغسطس 2026): نفس
@@ -39,7 +42,7 @@ interface UniversalSearchModalProps {
 function UniversalSearchModal({ cases, clients, onClose, onOpenCase, onOpenClient }: UniversalSearchModalProps) {
     const {
         q, setQ,
-        dbDocs, dbSessions, dbNotes,
+        dbDocs, dbSessions, dbNotes, dbFees, dbReminders,
         searching, searched,
         viewingDoc, setViewingDoc,
         activeFilter, setActiveFilter,
@@ -47,7 +50,14 @@ function UniversalSearchModal({ cases, clients, onClose, onOpenCase, onOpenClien
         query, matchedCases, matchedClients,
         show, totalResults, hasResults,
         highlight, fmtNum,
+        recentSearches, clearRecentSearches,
     } = useUniversalSearch();
+
+    // ⚡ NEW (بحث صوتي، سبتمبر 2026): بيحط النص المتعرَّف عليه مباشرة في
+    // صندوق البحث الموجود — نفس مسار setQ العادي، فالـdebounce/الفلاتر
+    // شغالين زي بالظبط لو المستخدم كتب بإيده.
+    const { isSupported: voiceSupported, listening: voiceListening, voiceError, toggle: toggleVoice } =
+        useVoiceSearch({ onTranscript: (text) => { setQ(text); setActiveFilter('all'); } });
 
     // ⚡ B.3: index واحد لصفوف case_parties لكل القضايا المطابقة في نتيجة
     // البحث الحالية — نداء واحد (case_id = id بتاع كل قضية).
@@ -82,9 +92,18 @@ function UniversalSearchModal({ cases, clients, onClose, onOpenCase, onOpenClien
                         onChange: (e: React.ChangeEvent<HTMLInputElement>) => { setQ(e.target.value); setActiveFilter('all'); },
                         maxLength: 100,
                         placeholder: 'ابحث في كل شيء — قضايا، جلسات، ملاحظات...',
-                        className: 'w-full p-3 pr-10 text-xs rounded-2xl border border-premium-gold/20 bg-premium-bg text-white placeholder-slate-500 transition-colors',
+                        className: `w-full p-3 pr-10 ${voiceSupported ? 'pl-10' : ''} text-xs rounded-2xl border border-premium-gold/20 bg-premium-bg text-white placeholder-slate-500 transition-colors`,
                         style: { fontFamily: 'Cairo,sans-serif' }
-                    })
+                    }),
+                    // ⚡ زرار المايك (بحث صوتي) — بيختفي تلقائيًا لو المتصفح مش بيدعم
+                    // Web Speech API (زي Firefox) بدل ما يبان زرار معطّل يلخبط حد.
+                    voiceSupported && React.createElement('button', {
+                        type: 'button',
+                        onClick: toggleVoice,
+                        'data-testid': 'universal-search-voice-btn',
+                        'aria-label': voiceListening ? 'إيقاف البحث الصوتي' : 'ابدأ البحث الصوتي',
+                        className: `absolute left-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full transition-all ${voiceListening ? 'text-red-400 animate-pulse' : 'text-slate-500 hover:text-premium-gold'}`
+                    }, React.createElement(I.Mic, { className: 'w-4 h-4' }))
                 ),
                 React.createElement('button', {
                     onClick: onClose,
@@ -93,15 +112,19 @@ function UniversalSearchModal({ cases, clients, onClose, onOpenCase, onOpenClien
                 }, React.createElement(I.X))
             ),
 
+            voiceError && React.createElement('p', { className: 'text-[10px] text-red-400 mt-2 text-center' }, voiceError),
+
             // ── فلاتر سريعة ──
             query.length >= MIN_CHARS && searched && React.createElement('div', { className: 'flex gap-1.5 mt-3 overflow-x-auto no-scrollbar pb-0.5' },
                 [
-                    { key: 'all',      label: 'الكل',        count: totalResults },
-                    { key: 'cases',    label: '⚖️ القضايا',   count: matchedCases.length },
-                    { key: 'clients',  label: '👤 الموكلين',  count: matchedClients.length },
-                    { key: 'sessions', label: '🗓 الجلسات',   count: dbSessions.length },
-                    { key: 'notes',    label: '📝 الملاحظات', count: dbNotes.length },
-                    { key: 'docs',     label: '📁 المستندات', count: dbDocs.length },
+                    { key: 'all',       label: 'الكل',        count: totalResults },
+                    { key: 'cases',     label: '⚖️ القضايا',   count: matchedCases.length },
+                    { key: 'clients',   label: '👤 الموكلين',  count: matchedClients.length },
+                    { key: 'sessions',  label: '🗓 الجلسات',   count: dbSessions.length },
+                    { key: 'notes',     label: '📝 الملاحظات', count: dbNotes.length },
+                    { key: 'docs',      label: '📁 المستندات', count: dbDocs.length },
+                    { key: 'fees',      label: '💰 الأتعاب',   count: dbFees.length },
+                    { key: 'reminders', label: '⏰ التذكيرات', count: dbReminders.length },
                 ].map((f: QuickFilter) => (f.count > 0 || f.key === 'all') && React.createElement('button', {
                     key: f.key,
                     onClick: () => setActiveFilter(f.key),
@@ -118,7 +141,7 @@ function UniversalSearchModal({ cases, clients, onClose, onOpenCase, onOpenClien
                 React.createElement('div', { className: 'text-5xl' }, '🔍'),
                 React.createElement('p', { className: 'text-white font-black' }, 'البحث الشامل'),
                 React.createElement('p', { className: 'text-slate-500 text-xs leading-relaxed' },
-                    'اكتب حرفين أو أكثر للبحث في القضايا والجلسات والملاحظات والمستندات'
+                    'اكتب حرفين أو أكثر للبحث في القضايا والجلسات والملاحظات والمستندات والأتعاب والتذكيرات'
                 ),
                 React.createElement('div', { className: 'flex justify-center gap-2 flex-wrap mt-4' },
                     ['رقم القضية', 'اسم الموكل', 'اسم المحكمة', 'نوع القضية', 'وصف جلسة'].map((hint: string) =>
@@ -126,6 +149,25 @@ function UniversalSearchModal({ cases, clients, onClose, onOpenCase, onOpenClien
                             key: hint, onClick: () => setQ(hint),
                             className: 'text-[10px] px-3 py-1.5 bg-white/5 border border-white/10 text-slate-400 rounded-xl hover:bg-white/10 active:scale-95'
                         }, hint)
+                    )
+                ),
+                // ⚡ NEW (بحث أخير محفوظ محليًا، سبتمبر 2026): آخر 5 عمليات بحث ناجحة
+                // (نتيجة واحدة على الأقل) — اختصار سريع بدل إعادة الكتابة.
+                recentSearches.length > 0 && React.createElement('div', { className: 'mt-6 space-y-2' },
+                    React.createElement('div', { className: 'flex items-center justify-center gap-2' },
+                        React.createElement('p', { className: 'text-[10px] text-slate-600 font-black' }, 'عمليات بحث أخيرة'),
+                        React.createElement('button', {
+                            onClick: clearRecentSearches,
+                            className: 'text-[9px] text-slate-600 hover:text-red-400 underline'
+                        }, 'مسح')
+                    ),
+                    React.createElement('div', { className: 'flex justify-center gap-2 flex-wrap' },
+                        recentSearches.map((term: string) =>
+                            React.createElement('button', {
+                                key: term, onClick: () => setQ(term),
+                                className: 'text-[10px] px-3 py-1.5 bg-premium-gold/10 border border-premium-gold/20 text-premium-gold rounded-xl hover:bg-premium-gold/20 active:scale-95'
+                            }, term)
+                        )
                     )
                 )
             ),
@@ -290,6 +332,62 @@ function UniversalSearchModal({ cases, clients, onClose, onOpenCase, onOpenClien
                         )
                     );
                 })
+            ),
+
+            // ⚡ NEW (تغطية الأتعاب، سبتمبر 2026)
+            !searching && show.fees && dbFees.length > 0 && React.createElement('div', { className: 'space-y-3' },
+                React.createElement('div', { className: 'flex items-center gap-2' },
+                    React.createElement('span', { className: 'w-1 h-3 bg-yellow-400 rounded-full' }),
+                    React.createElement('p', { className: 'text-[10px] font-black text-yellow-400' }, 'الأتعاب'),
+                    React.createElement('span', { className: 'text-[9px] text-slate-500' }, dbFees.length + ' نتيجة')
+                ),
+                dbFees.map((fee: SearchFeeResult) => {
+                    const linkedCase = cases.find((c: MappedCase) => c.id === fee.case_id);
+                    const remaining = (fee.total_fees || 0) - (fee.paid_fees || 0);
+                    return React.createElement('div', {
+                        key: fee.id,
+                        onClick: () => { if (linkedCase) { onOpenCase(linkedCase); onClose(); } },
+                        className: 'bg-premium-card border border-white/5 rounded-2xl p-4 active:scale-[0.98] transition-all cursor-pointer hover:border-yellow-500/20'
+                    },
+                        React.createElement('div', { className: 'flex items-start gap-3' },
+                            React.createElement('div', { className: 'w-7 h-7 rounded-lg bg-yellow-500/10 flex items-center justify-center text-yellow-400 shrink-0' }, '💰'),
+                            React.createElement('div', { className: 'flex-1 min-w-0' },
+                                React.createElement('p', { className: 'text-[11px] font-black text-white truncate' }, highlight(fee.client_name || fee.case_title || '—')),
+                                fee.case_title && React.createElement('p', { className: 'text-[9px] text-slate-500 truncate' }, highlight(fee.case_title)),
+                                React.createElement('p', { className: 'text-[9px] text-yellow-300 mt-0.5' },
+                                    'المتبقي: ' + remaining.toLocaleString('ar-EG') + (fee.status ? ' — ' + fee.status : '')
+                                ),
+                                fee.notes && React.createElement('p', { className: 'text-[9px] text-slate-500 mt-0.5 line-clamp-1' }, highlight(fee.notes))
+                            )
+                        )
+                    );
+                })
+            ),
+
+            // ⚡ NEW (تغطية التذكيرات، سبتمبر 2026)
+            !searching && show.reminders && dbReminders.length > 0 && React.createElement('div', { className: 'space-y-3' },
+                React.createElement('div', { className: 'flex items-center gap-2' },
+                    React.createElement('span', { className: 'w-1 h-3 bg-rose-400 rounded-full' }),
+                    React.createElement('p', { className: 'text-[10px] font-black text-rose-400' }, 'التذكيرات'),
+                    React.createElement('span', { className: 'text-[9px] text-slate-500' }, dbReminders.length + ' نتيجة')
+                ),
+                dbReminders.map((r: SearchReminderResult) =>
+                    React.createElement('div', {
+                        key: r.id,
+                        className: 'bg-premium-card border border-white/5 rounded-2xl p-4 hover:border-rose-500/20 transition-all'
+                    },
+                        React.createElement('div', { className: 'flex items-start gap-3' },
+                            React.createElement('div', { className: 'w-7 h-7 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-400 shrink-0' }, r.done ? '✅' : '⏰'),
+                            React.createElement('div', { className: 'flex-1 min-w-0' },
+                                React.createElement('p', { className: 'text-[11px] font-black text-white truncate' }, highlight(r.title || '—')),
+                                r.due_date && React.createElement('p', { className: 'text-[9px] text-slate-500 mt-0.5' },
+                                    formatArDate(r.due_date, { year: 'numeric', month: 'short', day: 'numeric' })
+                                ),
+                                r.notes && React.createElement('p', { className: 'text-[9px] text-slate-500 mt-0.5 line-clamp-1' }, highlight(r.notes))
+                            )
+                        )
+                    )
+                )
             ),
 
             // لا نتائج
