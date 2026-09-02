@@ -11,12 +11,44 @@ interface LoginScreenProps {
     onLogin: (user: { id: string; email?: string | null }) => void;
 }
 
+// ⚡ NEW (Phase 4 — خطة استعادة/تغيير كلمة المرور، 2 سبتمبر 2026):
+// دومين الـredirect المؤكَّد من الخطة (قسم A.5) — لازم يكون مضاف في
+// Authentication → URL Configuration → Redirect URLs بلوحة Supabase
+// (خطوة يدوية خارج نطاق الكود، راجع A.1 في الخطة).
+const PASSWORD_RESET_REDIRECT_URL = 'https://sanad-nizam.vercel.app/reset-password';
+
 function LoginScreen({onLogin}: LoginScreenProps){
     const [email,setEmail]=useState('');
     const [pass,setPass]=useState('');
     const [showPass,setShowPass]=useState(false);
     const [loading,setLoading]=useState(false);
     const [err,setErr]=useState('');
+
+    // ⚡ NEW (Phase 4): فورم "نسيت كلمة المرور؟" — معزول تمامًا عن
+    // فورم الدخول العادي فوق (state منفصل بالكامل)، بيتفعّل بس لما
+    // المستخدم يدوس على الرابط تحت.
+    const [showForgot,setShowForgot]=useState(false);
+    const [forgotEmail,setForgotEmail]=useState('');
+    const [forgotLoading,setForgotLoading]=useState(false);
+    const [forgotErr,setForgotErr]=useState('');
+    const [forgotSent,setForgotSent]=useState(false);
+
+    const handleForgotSubmit=async(e: React.MouseEvent<HTMLButtonElement>)=>{
+        e.preventDefault();
+        if(!forgotEmail){setForgotErr('يرجى إدخال البريد الإلكتروني');return;}
+        setForgotLoading(true);setForgotErr('');
+        const {error}=await db.auth.resetPasswordForEmail(forgotEmail,{redirectTo:PASSWORD_RESET_REDIRECT_URL});
+        setForgotLoading(false);
+        if(error){
+            // ⚡ الحماية من إساءة الاستخدام (A.4، ✅ تقرر): معتمدين على
+            // حماية Supabase الافتراضية بس دلوقتي (بدون Edge Function
+            // إضافية) — أي رفض منها بيتعرض هنا برسالة عامة.
+            recordError('reset_password_request', error.message);
+            setForgotErr('تعذّر إرسال رابط الاستعادة. تحقق من اتصال الإنترنت وحاول مرة أخرى.');
+            return;
+        }
+        setForgotSent(true);
+    };
 
     const handleLogin=async(e: React.MouseEvent<HTMLButtonElement>)=>{
         e.preventDefault();
@@ -102,6 +134,38 @@ function LoginScreen({onLogin}: LoginScreenProps){
 
             // الفورم
             React.createElement('div',{className:"bg-premium-card border border-white/5 rounded-2xl p-6 shadow-premium-shadow space-y-4"},
+                showForgot
+                    ? React.createElement(React.Fragment,null,
+                        React.createElement('h2',{className:"text-sm font-black text-white mb-2"},"استعادة كلمة المرور"),
+
+                        forgotSent
+                            ? React.createElement('div',{className:"bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-center",'data-testid':'forgot-password-success'},
+                                React.createElement('p',{className:"text-xs font-black text-emerald-400"},"✅ تم إرسال رابط الاستعادة"),
+                                React.createElement('p',{className:"text-[10px] text-slate-400 mt-1"},"تحقق من بريدك الإلكتروني واتبع الرابط لتعيين كلمة مرور جديدة")
+                              )
+                            : React.createElement(React.Fragment,null,
+                                React.createElement('p',{className:"text-[10px] text-slate-500 mb-1"},"أدخل بريدك الإلكتروني وسنرسل لك رابط استعادة كلمة المرور"),
+                                React.createElement(Inp,{label:"البريد الإلكتروني",type:"email",value:forgotEmail,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setForgotEmail(e.target.value),placeholder:"example@law.com",required:true,'data-testid':'forgot-password-email'}),
+                                forgotErr&&React.createElement('div',{className:"bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-[11px] text-rose-400 text-center",'data-testid':'forgot-password-error'},forgotErr),
+                                React.createElement('button',{
+                                    onClick:handleForgotSubmit,
+                                    disabled:forgotLoading,
+                                    className:"w-full py-3 bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg rounded-xl font-black text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-60",
+                                    'data-testid':'forgot-password-submit'
+                                },
+                                    forgotLoading?React.createElement(I.Spin):null,
+                                    forgotLoading?'جاري الإرسال...':'إرسال رابط الاستعادة'
+                                )
+                              ),
+
+                        React.createElement('button',{
+                            type:"button",
+                            onClick:()=>{setShowForgot(false);setForgotSent(false);setForgotErr('');setForgotEmail('');},
+                            className:"w-full text-center text-[10px] text-slate-500 hover:text-premium-gold transition-colors mt-2",
+                            'data-testid':'forgot-password-back'
+                        },"الرجوع لتسجيل الدخول")
+                      )
+                    : React.createElement(React.Fragment,null,
                 React.createElement('h2',{className:"text-sm font-black text-white mb-2"},"تسجيل الدخول"),
 
                 React.createElement(Inp,{label:"البريد الإلكتروني",type:"email",value:email,onChange:(e: React.ChangeEvent<HTMLInputElement>) =>setEmail(e.target.value),placeholder:"example@law.com",required:true,'data-testid':'login-email'}),
@@ -129,6 +193,13 @@ function LoginScreen({onLogin}: LoginScreenProps){
                     )
                 ),
 
+                React.createElement('button',{
+                    type:"button",
+                    onClick:()=>setShowForgot(true),
+                    className:"block text-[10px] text-slate-500 hover:text-premium-gold transition-colors",
+                    'data-testid':'login-forgot-password-link'
+                },"نسيت كلمة المرور؟"),
+
                 err&&React.createElement('div',{className:"bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-[11px] text-rose-400 text-center",'data-testid':'login-error'},err),
 
                 React.createElement('button',{
@@ -140,6 +211,7 @@ function LoginScreen({onLogin}: LoginScreenProps){
                     loading?React.createElement(I.Spin):React.createElement(I.Lock),
                     loading?'جاري التحقق...':'دخول إلى سَنَد'
                 )
+                      )
             ),
 
             React.createElement('p',{className:"text-center text-[10px] text-slate-600 mt-6"},
