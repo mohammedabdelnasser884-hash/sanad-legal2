@@ -138,38 +138,31 @@ function ResetPasswordScreen() {
         setStage('password');
     };
 
-    // ── رسائل خطأ Supabase Auth المعروفة عند تحديث الباسورد ──
-    // ⚠️ FIX (2 سبتمبر 2026 — ملاحظة المستخدم): كان أي خطأ راجع من
-    // updateUser، حتى لو رسالة واضحة زي "نفس الباسورد القديم"، بيتحول
-    // لرسالة عامة "تحقق من اتصال الإنترنت" — مضلِّلة تمامًا لمستخدم
-    // نتّه شغال 100%. دلوقتي بنفحص نص الخطأ الخام (إنجليزي، جايّ من
-    // GoTrue مباشرة) ونطلّع رسالة عربية دقيقة للحالات المعروفة، ونسيب
-    // الرسالة العامة بس للأخطاء الفعلية غير المعروفة (شبكة/سيرفر).
-    function friendlyUpdatePasswordError(message: string | undefined): string {
-        const m = (message || '').toLowerCase();
-        if (m.includes('different from the old password')) {
-            return 'الباسورد الجديد لازم يكون مختلف عن الباسورد القديم. اختار باسورد تاني.';
-        }
-        if (m.includes('password') && m.includes('at least')) {
-            return 'الباسورد قصير جدًا. اختار باسورد أطول.';
-        }
-        if (m.includes('session') || m.includes('jwt') || m.includes('expired')) {
-            return 'انتهت صلاحية الجلسة. اطلب لينك استعادة جديد من شاشة الدخول.';
-        }
-        return 'تعذّر تحديث كلمة المرور. تحقق من اتصال الإنترنت وحاول مرة أخرى، أو اطلب لينك استعادة جديد.';
-    }
-
+    // ⚠️ FIX (2 سبتمبر 2026 — إغلاق ثغرة تخطي شاشة الكود): كان هنا
+    // نداء مباشر لـdb.auth.updateUser من المتصفح — يعني مرحلة "تأكيد
+    // الكود" كانت بتتحكم في الشاشة بس (stage==='password')، من غير ما
+    // السيرفر يتأكد فعليًا إن الكود اتأكد قبل قبول تغيير الباسورد. أي
+    // حد معاه جلسة الـrecovery (access token) كان يقدر يغيّر الباسورد
+    // بنداء مباشر من غير ما يمر على الكود خالص. دلوقتي التغيير بيتم
+    // فقط عن طريق password-reset-otp (action:set_password)، اللي
+    // بيرفض تمامًا لو مفيش كود متأكَّد حديث لنفس المستخدم — شوف
+    // actionSetPassword في الإيدج فانكشن.
     const handleSave = async (e: React.MouseEvent<HTMLButtonElement>) => {
         e.preventDefault();
         if (!isValid || loading) return;
         setLoading(true);
         setErr('');
 
-        const { error } = await db.auth.updateUser({ password: newPass });
-        if (error) {
+        const { data, error } = await db.functions.invoke('password-reset-otp', { body: { action: 'set_password', password: newPass } });
+        if (error || data?.error) {
             setLoading(false);
-            recordError('reset_password', error.message);
-            setErr(friendlyUpdatePasswordError(error.message));
+            if (data?.error) {
+                setErr(data.error);
+            } else {
+                const serverMessage = await getEdgeFunctionErrorMessage(error as EdgeFunctionError);
+                recordError('reset_password', (error as EdgeFunctionError)?.message);
+                setErr(looksArabicUserMessage(serverMessage) ? (serverMessage as string) : 'تعذّر تحديث كلمة المرور. تحقق من اتصال الإنترنت وحاول مرة أخرى، أو اطلب لينك استعادة جديد.');
+            }
             return;
         }
 
