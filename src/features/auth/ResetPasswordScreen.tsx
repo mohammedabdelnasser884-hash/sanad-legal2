@@ -3,6 +3,7 @@ import { db } from '../../supabaseClient';
 import { recordError } from '../../systemHealth';
 import { I, SanadMark } from '../../constants';
 import { Inp } from '@/shared/ui/Inp';
+import { getEdgeFunctionErrorMessage, looksArabicUserMessage, type EdgeFunctionError } from '@/shared/lib/edgeFunctionErrors';
 
 // ─────────────────────────────────────────────────────────
 //  ResetPasswordScreen — Phase 3 (خطة استعادة/تغيير كلمة المرور،
@@ -17,14 +18,19 @@ import { Inp } from '@/shared/ui/Inp';
 //  الإيميل لحظة الطلب — لكن لو اللينك اتحول/اتفتح من جهاز/متصفح
 //  تاني بعد فترة، مفيش أي تأكيد إضافي وقت التغيير الفعلي. دلوقتي
 //  أول ما الشاشة تفتح (isPasswordRecovery=true) بنبعت تلقائيًا كود
-//  6 أرقام منفصل تمامًا (عبر db.auth.signInWithOtp، قناة "Magic
-//  Link/Email OTP" في Supabase — مختلفة عن قناة الـrecovery اللي
-//  استُهلكت فعلاً بمجرد الدخول باللينك) على نفس إيميل المستخدم،
-//  ولازم يدخّله صح قبل ما فورم الباسورد الجديد يظهر أصلاً. الكود ده
-//  بيتأكد بـdb.auth.verifyOtp(type:'email') وليه نفس مدة صلاحية
-//  اللينك الأصلي (إعداد "Email OTP Expiration" في Supabase — 15
-//  دقيقة). فالنتيجة: تأكيدين مستقلّين لملكية نفس صندوق الإيميل قبل
-//  السماح بتغيير الباسورد، مش تأكيد واحد بس.
+//  6 أرقام منفصل تمامًا على نفس إيميل المستخدم، ولازم يدخّله صح
+//  قبل ما فورم الباسورد الجديد يظهر أصلاً.
+//
+//  ⚠️ تعديل عن الخطة الأصلية: كان المفروض نستخدم
+//  db.auth.signInWithOtp/verifyOtp (آلية Supabase المدمجة)، لكن ده
+//  بيتطلب تعديل قالب إيميل "Magic Link" عشان يعرض {{ .Token }} —
+//  وده مقفول في لوحة Supabase على الخطة المجانية بدون توصيل Custom
+//  SMTP. بدل ما نوقف على القيد ده، بنولّد الكود ونبعته إحنا بنفسنا
+//  عن طريق إيدج فانكشن جديدة (password-reset-otp) بتستخدم Resend
+//  مباشرة وبتخزّن الـhash بتاعه في جدول password_reset_otps —
+//  مستقل تمامًا عن نظام إيميلات Supabase وقوالبه المقفولة. نفس
+//  مدة الصلاحية (15 دقيقة) ونفس فكرة "تأكيدين مستقلّين لملكية
+//  الإيميل" زي الخطة الأصلية بالظبط.
 //
 //  ⚠️ بعد نجاح db.auth.updateUser، بنعمل db.auth.signOut() فورًا —
 //  ده بيطلق onAuthStateChange بـsession:null، واللي useAuthProfile
@@ -61,19 +67,24 @@ function ResetPasswordScreen() {
 
     const isValid = newPass.length >= 8 && newPass === confirmPass;
 
-    // بعت كود 6 أرقام جديد على targetEmail. بيتنادى مرة تلقائيًا لما
-    // الشاشة تفتح، وبعد كده بس لما المستخدم يدوس "إعادة إرسال".
-    const sendOtp = async (targetEmail: string) => {
+    // بعت كود 6 أرقام جديد (عبر إيدج فانكشن password-reset-otp، شوف
+    // شرح الملاحظة فوق). بيتنادى مرة تلقائيًا لما الشاشة تفتح، وبعد
+    // كده بس لما المستخدم يدوس "إعادة إرسال". targetEmail مستخدمة
+    // هنا بس لعرضها في الرسالة — الإيميل الفعلي بيتاخد من الجلسة
+    // نفسها جوه الفانكشن، مش من أي حاجة بنبعتها إحنا.
+    const sendOtp = async (_targetEmail: string) => {
         setSendLoading(true);
         setSendErr('');
-        const { error } = await db.auth.signInWithOtp({
-            email: targetEmail,
-            options: { shouldCreateUser: false },
-        });
+        const { data, error } = await db.functions.invoke('password-reset-otp', { body: { action: 'send' } });
         setSendLoading(false);
-        if (error) {
-            recordError('reset_password_otp_send', error.message);
-            setSendErr('تعذّر إرسال كود التحقق. تحقق من اتصال الإنترنت، أو اطلب لينك استعادة جديد.');
+        if (error || data?.error) {
+            if (data?.error) {
+                setSendErr(data.error);
+            } else {
+                const serverMessage = await getEdgeFunctionErrorMessage(error as EdgeFunctionError);
+                recordError('reset_password_otp_send', (error as EdgeFunctionError)?.message);
+                setSendErr(looksArabicUserMessage(serverMessage) ? (serverMessage as string) : 'تعذّر إرسال كود التحقق. تحقق من اتصال الإنترنت، أو اطلب لينك استعادة جديد.');
+            }
             return;
         }
         setResendCooldown(RESEND_COOLDOWN_SECONDS);
@@ -112,11 +123,16 @@ function ResetPasswordScreen() {
         setOtpLoading(true);
         setOtpErr('');
 
-        const { error } = await db.auth.verifyOtp({ email, token: otpCode, type: 'email' });
+        const { data, error } = await db.functions.invoke('password-reset-otp', { body: { action: 'verify', code: otpCode } });
         setOtpLoading(false);
-        if (error) {
-            recordError('reset_password_otp_verify', error.message);
-            setOtpErr('الكود غير صحيح أو منتهي الصلاحية. تأكد من آخر كود وصلك، أو اطلب كود جديد.');
+        if (error || data?.error) {
+            if (data?.error) {
+                setOtpErr(data.error);
+            } else {
+                const serverMessage = await getEdgeFunctionErrorMessage(error as EdgeFunctionError);
+                recordError('reset_password_otp_verify', (error as EdgeFunctionError)?.message);
+                setOtpErr(looksArabicUserMessage(serverMessage) ? (serverMessage as string) : 'الكود غير صحيح أو منتهي الصلاحية. تأكد من آخر كود وصلك، أو اطلب كود جديد.');
+            }
             return;
         }
         setStage('password');
