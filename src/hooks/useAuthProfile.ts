@@ -49,6 +49,14 @@ export function useAuthProfile() {
     const [profile,    setProfile]    = useState<ProfileRow | null>(null);
     const [authUser,   setAuthUser]   = useState<{ id: string; email?: string | null } | null>(null);
     const [authLoading,setAuthLoading]= useState(true);
+    // ⚡ NEW (Phase 2 — خطة استعادة كلمة المرور، 2 سبتمبر 2026): لما المستخدم
+    // يدوس على لينك استعادة الباسورد الجاي بالإيميل، Supabase بيكتشف الجلسة
+    // تلقائيًا (detectSessionInUrl) ويطلق onAuthStateChange بحدث خاص
+    // ('PASSWORD_RECOVERY') قبل أي حدث تاني. الحدث ده لازم يتلقَط لوحده
+    // (تحت) ومنعملوش loadProfile العادي عشان منسجلش المستخدم دخول تلقائي
+    // قبل ما يحط باسورد جديد — بدل كده بنضبط isPasswordRecovery=true
+    // عشان App.tsx يعرض شاشة "حط باسورد جديد" بدل التطبيق العادي.
+    const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
     // 🔒 FIX (تحليل race condition — 17 أغسطس 2026): loadProfile بيتنادى
     // من onAuthStateChange، واللي ممكن يطلق أكتر من نداء متتالي بسرعة
@@ -151,6 +159,14 @@ export function useAuthProfile() {
             else setAuthLoading(false);
         });
         const { data: listener } = db.auth.onAuthStateChange((_event, session) => {
+            // ⚡ NEW (Phase 2): لازم يتفحص الأول وقبل أي حاجة تانية — لو
+            // الحدث ده PASSWORD_RECOVERY، نوقف هنا تمامًا (مانديش
+            // loadProfile خالص) ونضبط العلم بس. صفر تغيير على أي مسار
+            // تاني (login/logout/refresh) تحت الشرط ده.
+            if (_event === 'PASSWORD_RECOVERY') {
+                setIsPasswordRecovery(true);
+                return;
+            }
             if (session?.user) loadProfile(session.user);
             else {
                 // 🔒 نفس فيكس الـrace condition فوق — لازم نصفّر الـref هنا
@@ -159,6 +175,11 @@ export function useAuthProfile() {
                 latestRequestedUserId.current = null;
                 setProfile(null);
                 setAuthUser(null);
+                // ⚡ NEW (Phase 2): تسجيل الخروج (زي اللي بيحصل تلقائيًا في
+                // نهاية ResetPasswordScreen بعد نجاح تحديث الباسورد) لازم
+                // يصفّر العلم ده كمان، وإلا هيفضل isPasswordRecovery=true
+                // عالق حتى بعد الرجوع لشاشة الدخول العادية.
+                setIsPasswordRecovery(false);
             }
         });
         return () => listener.subscription.unsubscribe();
@@ -176,5 +197,5 @@ export function useAuthProfile() {
         if (profile !== null) setAuthLoading(false);
     }, [profile]);
 
-    return { profile, setProfile, authUser, setAuthUser, authLoading, loadProfile };
+    return { profile, setProfile, authUser, setAuthUser, authLoading, loadProfile, isPasswordRecovery };
 }
