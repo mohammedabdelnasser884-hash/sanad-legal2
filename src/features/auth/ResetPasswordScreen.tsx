@@ -138,6 +138,27 @@ function ResetPasswordScreen() {
         setStage('password');
     };
 
+    // ── رسائل خطأ Supabase Auth المعروفة عند تحديث الباسورد ──
+    // ⚠️ FIX (2 سبتمبر 2026 — ملاحظة المستخدم): كان أي خطأ راجع من
+    // updateUser، حتى لو رسالة واضحة زي "نفس الباسورد القديم"، بيتحول
+    // لرسالة عامة "تحقق من اتصال الإنترنت" — مضلِّلة تمامًا لمستخدم
+    // نتّه شغال 100%. دلوقتي بنفحص نص الخطأ الخام (إنجليزي، جايّ من
+    // GoTrue مباشرة) ونطلّع رسالة عربية دقيقة للحالات المعروفة، ونسيب
+    // الرسالة العامة بس للأخطاء الفعلية غير المعروفة (شبكة/سيرفر).
+    function friendlyUpdatePasswordError(message: string | undefined): string {
+        const m = (message || '').toLowerCase();
+        if (m.includes('different from the old password')) {
+            return 'الباسورد الجديد لازم يكون مختلف عن الباسورد القديم. اختار باسورد تاني.';
+        }
+        if (m.includes('password') && m.includes('at least')) {
+            return 'الباسورد قصير جدًا. اختار باسورد أطول.';
+        }
+        if (m.includes('session') || m.includes('jwt') || m.includes('expired')) {
+            return 'انتهت صلاحية الجلسة. اطلب لينك استعادة جديد من شاشة الدخول.';
+        }
+        return 'تعذّر تحديث كلمة المرور. تحقق من اتصال الإنترنت وحاول مرة أخرى، أو اطلب لينك استعادة جديد.';
+    }
+
     const handleSave = async (e: React.MouseEvent<HTMLButtonElement>) => {
         e.preventDefault();
         if (!isValid || loading) return;
@@ -148,7 +169,7 @@ function ResetPasswordScreen() {
         if (error) {
             setLoading(false);
             recordError('reset_password', error.message);
-            setErr('تعذّر تحديث كلمة المرور. تحقق من اتصال الإنترنت وحاول مرة أخرى، أو اطلب لينك استعادة جديد.');
+            setErr(friendlyUpdatePasswordError(error.message));
             return;
         }
 
