@@ -3,7 +3,7 @@
 //  الإصدار: 2.0  |  Offline + Push Notifications
 // ══════════════════════════════════════════════════════════════
 
-const SW_VERSION   = 'sanad-v2.3';
+const SW_VERSION   = 'sanad-v2.4';
 const STATIC_CACHE = SW_VERSION + '-static';
 const DATA_CACHE   = SW_VERSION + '-data';
 
