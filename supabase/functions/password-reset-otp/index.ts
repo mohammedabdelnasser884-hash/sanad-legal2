@@ -6,8 +6,18 @@
 //  verifyOtp لأن قالب إيميل "Magic Link" في Supabase مقفول
 //  التعديل على الخطة المجانية بدون Custom SMTP — فمش قادرين نوري
 //  {{ .Token }} للمستخدم من غير توصيل SMTP خاص. الحل: نولّد الكود
-//  ونبعته إحنا بنفسنا عبر Resend، ونخزّن الـhash بتاعه في
-//  password_reset_otps للتحقق لاحقًا.
+//  ونبعته إحنا بنفسنا، ونخزّن الـhash بتاعه في password_reset_otps
+//  للتحقق لاحقًا.
+//
+//  ⚡ تعديل (2 سبتمبر 2026 — قيد Resend): جرّبنا الأول إرسال الكود
+//  عبر Resend API بإيميل التجربة onboarding@resend.dev، لكن اتضح إن
+//  الإيميل ده بيبعت بس لإيميل صاحب حساب Resend نفسه (قيد أمان من
+//  Resend لحماية سمعة الدومين، موثّق في docs.resend.com) — يعني
+//  الميزة كانت هتشتغل للمطوّر بس ومش لأي حساب تاني في المكتب. بدل ما
+//  نحتاج دومين مدفوع للتحقق، استبدلنا الإرسال بـ**Gmail SMTP**
+//  (denomailer) — مجاني بالكامل، بيبعت لأي حد، وبيستخدم حساب Gmail
+//  عادي + App Password (مش باسورد الحساب الحقيقي). حد Gmail اليومي
+//  (~500 إيميل/يوم لحساب مجاني) كافي جدًا لمكتب صغير/متوسط.
 //
 //  action: send         { }        → يولّد كود جديد ويبعته على إيميل
 //                                     المستخدم (من جلسة الـrecovery نفسها)
@@ -27,8 +37,12 @@
 //
 //  ⚡ self-contained (بلا استيراد من ../_shared/) بنفس نمط
 //  office-login/saas-admin — عشان يتوافق مع النشر من لوحة Supabase
-//  (ملف واحد لكل فانكشن).
+//  (ملف واحد لكل فانكشن). الاستثناء الوحيد: استيراد denomailer من
+//  deno.land (مكتبة SMTP خفيفة، نفس الطريقة الموثّقة رسميًا في
+//  أمثلة Supabase Edge Functions لإرسال إيميلات عبر SMTP).
 // ══════════════════════════════════════════════════════
+
+import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -53,11 +67,18 @@ function json(data: unknown, status = 200) {
 const SUPABASE_URL     = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY         = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const RESEND_API_KEY   = Deno.env.get('RESEND_API_KEY');
-// لو مالكش دومين موثّق في Resend لسه، سيب القيمة الافتراضية دي —
-// بتشتغل فورًا للتجربة. لما توثّق دومين بتاعك، غيّرها لـ secret
-// RESEND_FROM_EMAIL بإيميل من الدومين بتاعك (مثلاً noreply@sanad...).
-const RESEND_FROM_EMAIL = Deno.env.get('RESEND_FROM_EMAIL') || 'Sanad <onboarding@resend.dev>';
+
+// ── إعدادات Gmail SMTP (مجانية بالكامل) ──
+// SMTP_USER: إيميل Gmail بتاع المكتب/المشروع (نفس الإيميل اللي عملت
+// عليه App Password). SMTP_PASS: الكود المكوّن من 16 حرف من
+// myaccount.google.com/apppasswords (مش باسورد الحساب نفسه).
+// SMTP_HOST/SMTP_PORT ليهم قيمة افتراضية لـGmail، فمش لازم تتحطّ إلا
+// لو غيّرت مزوّد الإيميل لاحقًا (مثلاً لدومين خاص).
+const SMTP_HOST = Deno.env.get('SMTP_HOST') || 'smtp.gmail.com';
+const SMTP_PORT = Number(Deno.env.get('SMTP_PORT') || '465');
+const SMTP_USER = Deno.env.get('SMTP_USER');
+const SMTP_PASS = Deno.env.get('SMTP_PASS');
+const SMTP_FROM = Deno.env.get('SMTP_FROM') || (SMTP_USER ? `سَنَد <${SMTP_USER}>` : '');
 
 const OTP_TTL_MINUTES     = 15; // نفس مدة صلاحية اللينك (Email OTP Expiration)
 const RESEND_COOLDOWN_SEC = 45;
@@ -106,17 +127,21 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 async function sendCodeEmail(email: string, code: string) {
-  if (!RESEND_API_KEY) throw new Error('RESEND_API_KEY غير مضبوط في إعدادات المشروع');
+  if (!SMTP_USER || !SMTP_PASS) throw new Error('SMTP_USER/SMTP_PASS غير مضبوطين في إعدادات المشروع (Edge Function secrets)');
 
-  const r = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
+  const client = new SMTPClient({
+    connection: {
+      hostname: SMTP_HOST,
+      port: SMTP_PORT,
+      tls: true,
+      auth: { username: SMTP_USER, password: SMTP_PASS },
     },
-    body: JSON.stringify({
-      from: RESEND_FROM_EMAIL,
-      to: [email],
+  });
+
+  try {
+    await client.send({
+      from: SMTP_FROM,
+      to: email,
       subject: 'كود تأكيد استعادة كلمة المرور — سَنَد',
       html: `
         <div style="font-family:sans-serif;direction:rtl;text-align:right;max-width:420px;margin:0 auto">
@@ -134,12 +159,11 @@ async function sendCodeEmail(email: string, code: string) {
           </p>
         </div>
       `,
-    }),
-  });
-
-  if (!r.ok) {
-    const errBody = await r.json().catch(() => ({}));
-    throw new Error(errBody?.message || `Resend rejected the request (status ${r.status})`);
+    });
+  } finally {
+    // ⚠️ لازم نقفل الاتصال دايمًا (حتى لو send فشلت) وإلا الفانكشن
+    // ممكن تعلّق لحد الـtimeout بدل ما ترجع رد فورًا.
+    await client.close();
   }
 }
 
