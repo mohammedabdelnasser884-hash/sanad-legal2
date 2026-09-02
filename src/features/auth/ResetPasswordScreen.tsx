@@ -26,8 +26,9 @@ import { getEdgeFunctionErrorMessage, looksArabicUserMessage, type EdgeFunctionE
 //  بيتطلب تعديل قالب إيميل "Magic Link" عشان يعرض {{ .Token }} —
 //  وده مقفول في لوحة Supabase على الخطة المجانية بدون توصيل Custom
 //  SMTP. بدل ما نوقف على القيد ده، بنولّد الكود ونبعته إحنا بنفسنا
-//  عن طريق إيدج فانكشن جديدة (password-reset-otp) بتستخدم Resend
-//  مباشرة وبتخزّن الـhash بتاعه في جدول password_reset_otps —
+//  عن طريق إيدج فانكشن جديدة (password-reset-otp) بتستخدم Gmail
+//  SMTP (مجاني بالكامل، بلا حاجة لدومين) وبتخزّن الـhash بتاعه في
+//  جدول password_reset_otps —
 //  مستقل تمامًا عن نظام إيميلات Supabase وقوالبه المقفولة. نفس
 //  مدة الصلاحية (15 دقيقة) ونفس فكرة "تأكيدين مستقلّين لملكية
 //  الإيميل" زي الخطة الأصلية بالظبط.
