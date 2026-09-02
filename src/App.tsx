@@ -6,6 +6,8 @@ import { isAdminRole, checkPermission } from './shared/lib/permissions';
 import type { DeleteConfirmState } from '@/features/cases/hooks/useCaseActions';
 import type { MappedCase, MappedClient } from './hooks/useAppData';
 import LoginScreen from './pages/Login/LoginScreen';
+// ⚡ NEW (Phase 3 — خطة استعادة/تغيير كلمة المرور، 2 سبتمبر 2026)
+import ResetPasswordScreen from './features/auth/ResetPasswordScreen';
 import HeaderMenu from './app/HeaderMenu';
 import ExitConfirmModal from './app/ExitConfirmModal';
 import CommandDock from './app/CommandDock';
@@ -82,7 +84,7 @@ import TermsAcceptanceScreen from './features/terms/TermsAcceptanceScreen';
 import { useTermsAcceptance } from './features/terms/useTermsAcceptance';
 
 function App() {
-    const { profile, setProfile, authUser, setAuthUser, authLoading, loadProfile } = useAuthProfile();
+    const { profile, setProfile, authUser, setAuthUser, authLoading, loadProfile, isPasswordRecovery } = useAuthProfile();
 
     // ⚡ NEW (خطة إقرار الشروط والأحكام، Phase 3): لازم يتنادى هنا (unconditionally)
     // مع باقي الـhooks، مش بعد أي return شرطي تحت — قاعدة Rules of Hooks.
@@ -506,6 +508,14 @@ function App() {
     //  Loading screen
     // ─────────────────────────────────────────────────────────
     if (authLoading) return React.createElement(AppLoadingScreen);
+
+    // ⚡ NEW (Phase 3 — خطة استعادة/تغيير كلمة المرور، 2 سبتمبر 2026):
+    // لازم يتفحص قبل بوابة "!authUser || !profile" تحت — في مسار
+    // PASSWORD_RECOVERY، useAuthProfile عمدًا مابيحمّلش profile ولا
+    // authUser (راجع تعليقات useAuthProfile.ts)، فلو الشرط ده مكانش
+    // هنا الأول، المستخدم كان هيوصل لـLoginScreen العادية بدل شاشة
+    // "حط باسورد جديد" — بالظبط المشكلة اللي الخطة استهدفت تفاديها.
+    if (isPasswordRecovery) return React.createElement(ResetPasswordScreen);
 
     if (!authUser || !profile) return React.createElement(LoginScreen, { onLogin: (u) => loadProfile(u) });
 
