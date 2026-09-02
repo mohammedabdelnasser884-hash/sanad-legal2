@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { I } from '../constants';
 import { toast } from '@/shared/lib/notifications';
+import ChangeMyPasswordModal from '../features/account/ChangeMyPasswordModal';
+import type { ProfileRow } from '../types';
 
 // امتداد نوع Window محلي لخاصية __requestPushPermission (بتتضاف فعليًا من main.tsx
 // وقت التشغيل) — نفس نمط __dbWrite/__pendingSubscription المُعرّف هناك، بس
@@ -20,13 +22,21 @@ interface HeaderMenuProps {
   toggleTheme: () => void;
   handlePwaInstall: () => void | Promise<void>;
   handleLogout: () => void | Promise<void>;
+  profile: ProfileRow | null;
 }
 
 function HeaderMenu({
   showMenu, setShowHeaderMenu, darkMode, toggleTheme, handlePwaInstall,
-  handleLogout,
+  handleLogout, profile,
 }: HeaderMenuProps) {
-  return showMenu && createPortal(
+  // ⚡ NEW (Phase B1 — خطة تغيير كلمة المرور الذاتي، 2 سبتمبر 2026):
+  // state محلي لفتح/قفل ChangeMyPasswordModal. مقصود إنه محلي هنا
+  // (مش في App.tsx) عشان الميزة دي مستقلة تمامًا ومعزولة، ومفيش أي
+  // حاجة تانية في التطبيق محتاجة تعرف حالتها.
+  const [showChangePassword, setShowChangePassword] = useState(false);
+
+  return React.createElement(React.Fragment, null,
+        showMenu && createPortal(
             React.createElement(React.Fragment, null,
                 React.createElement('div', {
                     onClick: () => setShowHeaderMenu(false),
@@ -66,6 +76,13 @@ function HeaderMenu({
                         className: 'w-full h-10 rounded-xl border flex items-center gap-3 px-3 active:scale-[0.98] transition-all text-sm font-bold',
                         style: { background: 'rgba(212,175,55,0.12)', borderColor: 'rgba(212,175,55,0.35)', color: '#D4AF37' }
                     }, React.createElement('span', { className: 'text-base' }, '📲'), React.createElement('span', null, 'تثبيت التطبيق')),
+                    // ⚡ NEW (Phase B1 — خطة تغيير كلمة المرور الذاتي، 2 سبتمبر 2026)
+                    profile && React.createElement('button', {
+                        onClick: () => { setShowChangePassword(true); setShowHeaderMenu(false); },
+                        'data-testid': 'header-menu-change-password',
+                        className: 'w-full h-10 rounded-xl border flex items-center gap-3 px-3 active:scale-[0.98] transition-all text-sm font-bold',
+                        style: { background: 'rgba(148,163,184,0.10)', borderColor: 'rgba(148,163,184,0.25)', color: '#cbd5e1' }
+                    }, React.createElement(I.Lock), React.createElement('span', null, 'تغيير كلمة المرور')),
                     React.createElement('div', { className: 'h-px bg-white/10 my-0.5' }),
                     React.createElement('button', {
                         onClick: () => { handleLogout(); setShowHeaderMenu(false); },
@@ -74,7 +91,12 @@ function HeaderMenu({
                 )
             ),
             document.body
-        );
+        ),
+        showChangePassword && profile && React.createElement(ChangeMyPasswordModal, {
+            profile,
+            onClose: () => setShowChangePassword(false),
+        })
+    );
 }
 
 export default HeaderMenu;
