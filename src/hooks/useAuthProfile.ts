@@ -165,6 +165,13 @@ export function useAuthProfile() {
             // تاني (login/logout/refresh) تحت الشرط ده.
             if (_event === 'PASSWORD_RECOVERY') {
                 setIsPasswordRecovery(true);
+                // ⚠️ ضروري: authLoading ماكانش هيتقفل تاني في المسار ده
+                // أبدًا (الشرط `if (profile !== null) setAuthLoading(false)`
+                // تحت معتمد على تحميل profile فعليًا، وده أصلًا اللي
+                // بنتفاداه هنا عمدًا) — من غيرها التطبيق هيفضل عالق على
+                // AppLoadingScreen للأبد بدل ما يوصل لبوابة isPasswordRecovery
+                // في App.tsx.
+                setAuthLoading(false);
                 return;
             }
             if (session?.user) loadProfile(session.user);
