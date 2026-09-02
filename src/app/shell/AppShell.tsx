@@ -93,11 +93,17 @@ export interface AppShellProps {
     fetchCases?: (page?: number, filter?: string) => void | Promise<void>;
     casesFilter?: string;
     loadingCases?: boolean;
+    /** ⚡ NEW (2 سبتمبر 2026 — ملحق PWA): تمرير مباشر لـDesktopHeader
+     *  (راجع تعليق NEW في DesktopHeader.tsx) — اختياري زي باقي props
+     *  الهيدر، صفر تأثير لو مش متمررين. */
+    pwaInstallable?: boolean;
+    handlePwaInstall?: () => void | Promise<void>;
 }
 
 function AppShell({
     children, className, tab, setTab, isAdmin, canGenerateDocuments, onAIClick,
     profile, setShowMenu, setShowSearch, fetchCases, casesFilter, loadingCases,
+    pwaInstallable, handlePwaInstall,
 }: AppShellProps) {
     // ⚠️ نفس className ونفس data-testid الموجودين بالظبط حاليًا في
     // App.tsx (`h-full flex flex-col bg-premium-bg` + `data-testid="app-shell"`)
@@ -125,6 +131,8 @@ function AppShell({
             fetchCases: fetchCases as (page?: number, filter?: string) => void | Promise<void>,
             casesFilter: casesFilter as string,
             loadingCases: loadingCases as boolean,
+            pwaInstallable,
+            handlePwaInstall,
         }),
         children,
         canShowSidebar && React.createElement(DesktopSidebar, {
