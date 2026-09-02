@@ -171,6 +171,37 @@ interface RawCaseSearchRow {
     updated_at: string | null;
 }
 
+// ══════════════════════════════════════════════════════════════
+//  بحث إملائي متسامح (pg_trgm) — مرحلة 1 توسيع، سبتمبر 2026
+//  ⚠️ ده تصحيح إملائي حقيقي (حرف زيادة/ناقص/مقلوب) عبر RPC بيستخدم
+//  word_similarity على مستوى قاعدة البيانات — مختلف عن imatchOrClause
+//  فوق (تنويعات حروف بس). النطاق محدود عمدًا على الموكلين/عنوان
+//  القضية/أطراف الدعوى (migration sql-migrations-phase10). الدوال دي
+//  لازم تكون موجودة فعليًا في قاعدة البيانات (بعد تشغيل الـmigration)
+//  وإلا db.rpc() هيرجّع error بهدوء وهنكمل بالنتايج التقليدية بس —
+//  مفيش كسر لو الـmigration لسه ما اتشغلتش.
+// ══════════════════════════════════════════════════════════════
+const FUZZY_THRESHOLD = 0.3;
+
+// شكل الصف الراجع من db.rpc('search_clients_fuzzy', ...) — نفس أعمدة
+// SearchClientResult زائد similarity (بنستخدمها للترتيب بس، مش بتتعرض).
+interface FuzzyClientRow extends SearchClientResult {
+    similarity: number;
+}
+
+// شكل الصف الراجع من db.rpc('search_cases_fuzzy', ...) — نفس أعمدة
+// RawCaseSearchRow زائد similarity.
+interface FuzzyCaseRow extends RawCaseSearchRow {
+    similarity: number;
+}
+
+// شكل الصف الراجع من db.rpc('search_case_parties_fuzzy', ...)
+interface FuzzyPartyRow {
+    case_id: string | null;
+    name: string | null;
+    similarity: number;
+}
+
 export function useUniversalSearch() {
     const [q, setQ]                     = useState('');
     const [dbDocs, setDbDocs]           = useState<SearchDocResult[]>([]);
@@ -216,7 +247,7 @@ export function useUniversalSearch() {
             setSearching(true);
             try {
                 const pattern = `%${trimmed}%`;
-                const [{ data: docs }, { data: sessions }, { data: notes }, { data: casesRes }, { data: clientsRes }, { data: partyMatches }, { data: feesRes }, { data: remindersRes }] = await Promise.all([
+                const [{ data: docs }, { data: sessions }, { data: notes }, { data: casesRes }, { data: clientsRes }, { data: partyMatches }, { data: feesRes }, { data: remindersRes }, { data: fuzzyClientsRaw }, { data: fuzzyCasesRaw }, { data: fuzzyPartiesRaw }] = await Promise.all([
                     db.from('case_documents')
                         .select('id,case_id,file_name,category,created_at')
                         .ilike('file_name', pattern)
@@ -292,16 +323,31 @@ export function useUniversalSearch() {
                         ].join(','))
                         .order('due_date', { ascending: false })
                         .limit(LIMIT),
+                    // مرحلة 1 توسيع (سبتمبر 2026): بحث إملائي متسامح حقيقي عبر pg_trgm —
+                    // نداءات RPC منفصلة، بتترجع بهدوء [] لو الـmigration لسه ما اتشغلتش
+                    // (catch محلي هنا بدل ما يكسر باقي البحث كله).
+                    db.rpc('search_clients_fuzzy', { p_query: trimmed, p_threshold: FUZZY_THRESHOLD, p_limit: LIMIT })
+                        .then(r => r, () => ({ data: null, error: null })),
+                    db.rpc('search_cases_fuzzy', { p_query: trimmed, p_threshold: FUZZY_THRESHOLD, p_limit: LIMIT })
+                        .then(r => r, () => ({ data: null, error: null })),
+                    db.rpc('search_case_parties_fuzzy', { p_query: trimmed, p_threshold: FUZZY_THRESHOLD, p_limit: LIMIT })
+                        .then(r => r, () => ({ data: null, error: null })),
                 ]);
                 // مرحلة 9 (تكملة): معرّفات القضايا اللي طابق اسم طرف فيها البحث، ومش
                 // موجودة أصلًا ضمن casesRes (اللي جاية من تطابق title/court/plaintiff/defendant
                 // مباشرة) — من غير ده هتتكرر بيانات القضية نفسها مرتين في النتيجة.
+                // ⚡ مرحلة 1 توسيع: بضيف كمان case_id بتوع أطراف الدعوى اللي طلعوا من
+                // البحث الإملائي المتسامح (fuzzyPartiesRaw) لنفس السبب بالظبط.
+                const fuzzyPartyRows = (fuzzyPartiesRaw || []) as FuzzyPartyRow[];
                 const existingCaseIds = new Set((casesRes || []).map((r: RawCaseSearchRow) => r.id));
-                const extraCaseIds = Array.from(new Set(
-                    ((partyMatches || []) as RawPartySearchRow[])
+                const extraCaseIds = Array.from(new Set([
+                    ...((partyMatches || []) as RawPartySearchRow[])
                         .map(p => p.case_id)
-                        .filter((id): id is string => !!id && !existingCaseIds.has(id))
-                ));
+                        .filter((id): id is string => !!id && !existingCaseIds.has(id)),
+                    ...fuzzyPartyRows
+                        .map(p => p.case_id)
+                        .filter((id): id is string => !!id && !existingCaseIds.has(id)),
+                ]));
 
                 let extraCasesRes: RawCaseSearchRow[] = [];
                 if (extraCaseIds.length > 0) {
@@ -312,10 +358,22 @@ export function useUniversalSearch() {
                     extraCasesRes = extraData || [];
                 }
 
+                // ⚡ مرحلة 1 توسيع: نتايج pg_trgm (قضايا بعنوان قريب مش تطابق حرفي/تنويع
+                // حروف) — بندمجها هنا بعد استبعاد أي قضية موجودة أصلًا فوق.
+                const mergedCaseIdsSoFar = new Set([...existingCaseIds, ...extraCasesRes.map(r => r.id)]);
+                const fuzzyExtraCases = ((fuzzyCasesRaw || []) as FuzzyCaseRow[])
+                    .filter(r => !mergedCaseIdsSoFar.has(r.id));
+
+                // ⚡ مرحلة 1 توسيع: نتايج pg_trgm للموكلين — بندمجها بعد استبعاد أي
+                // موكل موجود أصلًا في clientsRes (تطابق حرفي/imatch سبقهم).
+                const existingClientIds = new Set((clientsRes || []).map((c: SearchClientResult) => c.id));
+                const fuzzyExtraClients = ((fuzzyClientsRaw || []) as FuzzyClientRow[])
+                    .filter(c => !existingClientIds.has(c.id));
+
                 setDbDocs(docs || []);
                 setDbSessions(sessions || []);
                 setDbNotes(notes || []);
-                setDbCases([...(casesRes || []), ...extraCasesRes].map((r: RawCaseSearchRow) => ({
+                setDbCases([...(casesRes || []), ...extraCasesRes, ...fuzzyExtraCases].map((r: RawCaseSearchRow) => ({
                     id: r.id,
                     title: r.title || '—',
                     number: r.case_number_official || '—',
@@ -333,7 +391,7 @@ export function useUniversalSearch() {
                     circuit_number: r.circuit_number || null,
                     updated_at: r.updated_at || null,
                 })));
-                setDbClients(clientsRes || []);
+                setDbClients([...(clientsRes || []), ...fuzzyExtraClients]);
                 setDbFees(feesRes || []);
                 setDbReminders(remindersRes || []);
                 setSearched(true);
@@ -342,7 +400,8 @@ export function useUniversalSearch() {
                 // بنحفظ العبارة بس لما فعلاً في نتيجة واحدة على الأقل — مفيش فايدة
                 // من اقتراح بحث قبلي كان "لا توجد نتائج".
                 const anyResults = (docs?.length || 0) + (sessions?.length || 0) + (notes?.length || 0)
-                    + (casesRes?.length || 0) + (extraCasesRes.length || 0) + (clientsRes?.length || 0)
+                    + (casesRes?.length || 0) + (extraCasesRes.length || 0) + (fuzzyExtraCases.length || 0)
+                    + (clientsRes?.length || 0) + (fuzzyExtraClients.length || 0)
                     + (feesRes?.length || 0) + (remindersRes?.length || 0) > 0;
                 if (anyResults) {
                     setRecentSearches(prev => saveRecentSearch(trimmed, prev));
