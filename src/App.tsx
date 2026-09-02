@@ -188,6 +188,21 @@ function App() {
         }).catch(() => {/* استخدم SA كافتراضي */});
     }, [profile]);
 
+    // ⚡ NEW (اختصار لوحة مفاتيح للبحث الشامل، سبتمبر 2026 — مرحلة 1):
+    // Cmd/Ctrl+K يفتح البحث الشامل من أي مكان في التطبيق، زي أي تطبيق
+    // ديسكتوب محترم (VS Code, Linear, إلخ). e.preventDefault() لازم عشان
+    // بعض المتصفحات (Chrome) بتستخدم نفس الاختصار لفوكس شريط العنوان.
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault();
+                setShowSearch(true);
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [setShowSearch]);
+
     // ── Hooks ─────────────────────────────────────────────────
     const { healthErrors, setHealthErrors }                     = useHealthMonitor(profile);
     const { handlePwaInstall }                          = usePwaInstall();
