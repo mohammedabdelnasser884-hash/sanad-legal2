@@ -7,7 +7,7 @@
 --  الخطة المجانية بدون Custom SMTP، فمش قادرين نستخدم آلية
 --  signInWithOtp/verifyOtp المدمجة في Supabase عشان نوري الكود
 --  للمستخدم جوه الإيميل. الحل: نولّد الكود ونبعته إحنا بنفسنا
---  (عبر Resend، شوف supabase/functions/password-reset-otp) ونخزّن
+--  (عبر Gmail SMTP، شوف supabase/functions/password-reset-otp) ونخزّن
 --  الـhash بتاعه هنا للتحقق لاحقًا — من غير أي اعتماد على قوالب
 --  إيميل Supabase نفسها.
 --
