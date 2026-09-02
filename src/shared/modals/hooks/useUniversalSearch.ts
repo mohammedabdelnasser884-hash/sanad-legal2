@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../../../supabaseClient';
-import { ilikeOrClause, normalizeArabicDigits } from '../../lib/sanitize';
+import { imatchOrClause, normalizeArabicDigits } from '../../lib/sanitize';
 import type { Json } from '../../../database.types';
 
 // ── مدة الانتظار قبل ما نبعت الـ query للـ DB (ms) ──
@@ -85,11 +85,62 @@ export interface SearchNoteResult {
     created_at: string | null;
 }
 
-// شكل عنصر الفلتر السريع (الكل/القضايا/الموكلين/الجلسات/الملاحظات/المستندات)
+// شكل نتيجة بحث الأتعاب — نفس الأعمدة المُختارة فعليًا في
+// db.from('case_fees').select('id,case_id,case_title,client_name,notes,receiver,total_fees,paid_fees,status').
+// (مرحلة 1 — توسيع البحث الشامل ليغطي الأتعاب، سبتمبر 2026)
+export interface SearchFeeResult {
+    id: string;
+    case_id: string | null;
+    case_title: string | null;
+    client_name: string | null;
+    notes: string | null;
+    receiver: string | null;
+    total_fees: number | null;
+    paid_fees: number | null;
+    status: string | null;
+}
+
+// شكل نتيجة بحث التذكيرات — نفس الأعمدة المُختارة فعليًا في
+// db.from('reminders').select('id,title,notes,due_date,done').
+// (مرحلة 1 — توسيع البحث الشامل ليغطي التذكيرات، سبتمبر 2026)
+export interface SearchReminderResult {
+    id: string;
+    title: string | null;
+    notes: string | null;
+    due_date: string | null;
+    done: boolean | null;
+}
+
+// شكل عنصر الفلتر السريع (الكل/القضايا/الموكلين/الجلسات/الملاحظات/المستندات/الأتعاب/التذكيرات)
 export interface QuickFilter {
     key: string;
     label: string;
     count: number;
+}
+
+// ── بحث أخير محفوظ محليًا (مرحلة 1) ──
+// مفيش أي استدعاء DB هنا — localStorage بس، آخر 5 عمليات بحث ناجحة (نتيجة
+// واحدة على الأقل) لكل جهاز/متصفح، عشان يبانوا كاقتراحات سريعة في حالة
+// الشاشة الفاضية قبل ما المستخدم يكتب أي حاجة.
+const RECENT_SEARCHES_KEY = 'sanad:recentSearches';
+const MAX_RECENT_SEARCHES = 5;
+
+function loadRecentSearches(): string[] {
+    try {
+        const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === 'string') : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveRecentSearch(term: string, current: string[]): string[] {
+    const trimmed = term.trim();
+    if (!trimmed) return current;
+    const next = [trimmed, ...current.filter(s => s !== trimmed)].slice(0, MAX_RECENT_SEARCHES);
+    try { localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next)); } catch { /* localStorage غير متاح — تجاهل */ }
+    return next;
 }
 
 // شكل الصف الخام اللي بيرجع من db.from('case_parties').select('case_id')
@@ -127,10 +178,13 @@ export function useUniversalSearch() {
     const [dbNotes, setDbNotes]         = useState<SearchNoteResult[]>([]);
     const [dbCases, setDbCases]         = useState<SearchCaseResult[]>([]);
     const [dbClients, setDbClients]     = useState<SearchClientResult[]>([]);
+    const [dbFees, setDbFees]           = useState<SearchFeeResult[]>([]);
+    const [dbReminders, setDbReminders] = useState<SearchReminderResult[]>([]);
     const [searching, setSearching]     = useState(false);
     const [searched, setSearched]       = useState(false); // هل اتعمل search واحد على الأقل؟
     const [viewingDoc, setViewingDoc]   = useState<SearchDocResult | null>(null);
     const [activeFilter, setActiveFilter] = useState('all');
+    const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches());
     const inputRef  = useRef<HTMLInputElement>(null);
     const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -148,6 +202,8 @@ export function useUniversalSearch() {
             setDbNotes([]);
             setDbCases([]);
             setDbClients([]);
+            setDbFees([]);
+            setDbReminders([]);
             setSearched(false);
             setSearching(false);
             if (timerRef.current) clearTimeout(timerRef.current);
@@ -160,7 +216,7 @@ export function useUniversalSearch() {
             setSearching(true);
             try {
                 const pattern = `%${trimmed}%`;
-                const [{ data: docs }, { data: sessions }, { data: notes }, { data: casesRes }, { data: clientsRes }, { data: partyMatches }] = await Promise.all([
+                const [{ data: docs }, { data: sessions }, { data: notes }, { data: casesRes }, { data: clientsRes }, { data: partyMatches }, { data: feesRes }, { data: remindersRes }] = await Promise.all([
                     db.from('case_documents')
                         .select('id,case_id,file_name,category,created_at')
                         .ilike('file_name', pattern)
@@ -168,11 +224,13 @@ export function useUniversalSearch() {
                         .limit(LIMIT),
                     db.from('case_sessions')
                         .select('id,case_id,session_date,description,result,next_action')
-                        // FIX: فاصلة أو قوس في نص البحث كان بيكسر صياغة فلتر .or()
+                        // مرحلة 1 (سبتمبر 2026): imatchOrClause بدل ilikeOrClause — تسامح مع
+                        // تنويعات الحروف العربية الشائعة (همزات/تاء مربوطة/ألف مقصورة)، مش
+                        // بس تطابق حرفي. نفس فكرة الفصل الآمن للفاصلة/الأقواس زي قبل كده.
                         .or([
-                            ilikeOrClause('description', trimmed),
-                            ilikeOrClause('result', trimmed),
-                            ilikeOrClause('next_action', trimmed),
+                            imatchOrClause('description', trimmed),
+                            imatchOrClause('result', trimmed),
+                            imatchOrClause('next_action', trimmed),
                         ].join(','))
                         .order('session_date', { ascending: false })
                         .limit(LIMIT),
@@ -185,10 +243,10 @@ export function useUniversalSearch() {
                     db.from('cases')
                         .select('id,title,case_number_official,court_name,case_type,status,client_id,next_hearing,court_floor,court_hall,session_hall,secretary_hall,secretary_name,court_level,circuit_number,updated_at')
                         .or([
-                            ilikeOrClause('title', trimmed),
-                            ilikeOrClause('case_number_official', trimmed),
-                            ilikeOrClause('court_name', trimmed),
-                            ilikeOrClause('case_type', trimmed),
+                            imatchOrClause('title', trimmed),
+                            imatchOrClause('case_number_official', trimmed),
+                            imatchOrClause('court_name', trimmed),
+                            imatchOrClause('case_type', trimmed),
                         ].join(','))
                         .order('created_at', { ascending: false })
                         .limit(LIMIT),
@@ -196,10 +254,10 @@ export function useUniversalSearch() {
                     db.from('clients')
                         .select('id,full_name,phone,email,national_id,contact_info,cr_number,notes,type')
                         .or([
-                            ilikeOrClause('full_name', trimmed),
-                            ilikeOrClause('phone', trimmed),
-                            ilikeOrClause('email', trimmed),
-                            ilikeOrClause('national_id', trimmed),
+                            imatchOrClause('full_name', trimmed),
+                            imatchOrClause('phone', trimmed),
+                            imatchOrClause('email', trimmed),
+                            imatchOrClause('national_id', trimmed),
                         ].join(','))
                         .order('created_at', { ascending: false })
                         .limit(LIMIT),
@@ -211,6 +269,28 @@ export function useUniversalSearch() {
                         .select('case_id')
                         .ilike('name', pattern)
                         .not('case_id', 'is', null)
+                        .limit(LIMIT),
+                    // مرحلة 1 (سبتمبر 2026): تغطية الأتعاب — عنوان القضية/اسم الموكل/
+                    // اسم المستلم/الملاحظات المخزّنة على سجل الأتعاب نفسه.
+                    db.from('case_fees')
+                        .select('id,case_id,case_title,client_name,notes,receiver,total_fees,paid_fees,status')
+                        .is('deleted_at', null)
+                        .or([
+                            imatchOrClause('case_title', trimmed),
+                            imatchOrClause('client_name', trimmed),
+                            imatchOrClause('receiver', trimmed),
+                            imatchOrClause('notes', trimmed),
+                        ].join(','))
+                        .order('created_at', { ascending: false })
+                        .limit(LIMIT),
+                    // مرحلة 1 (سبتمبر 2026): تغطية التذكيرات — العنوان والملاحظات.
+                    db.from('reminders')
+                        .select('id,title,notes,due_date,done')
+                        .or([
+                            imatchOrClause('title', trimmed),
+                            imatchOrClause('notes', trimmed),
+                        ].join(','))
+                        .order('due_date', { ascending: false })
                         .limit(LIMIT),
                 ]);
                 // مرحلة 9 (تكملة): معرّفات القضايا اللي طابق اسم طرف فيها البحث، ومش
@@ -254,7 +334,19 @@ export function useUniversalSearch() {
                     updated_at: r.updated_at || null,
                 })));
                 setDbClients(clientsRes || []);
+                setDbFees(feesRes || []);
+                setDbReminders(remindersRes || []);
                 setSearched(true);
+
+                // ── بحث أخير محفوظ (مرحلة 1) ──
+                // بنحفظ العبارة بس لما فعلاً في نتيجة واحدة على الأقل — مفيش فايدة
+                // من اقتراح بحث قبلي كان "لا توجد نتائج".
+                const anyResults = (docs?.length || 0) + (sessions?.length || 0) + (notes?.length || 0)
+                    + (casesRes?.length || 0) + (extraCasesRes.length || 0) + (clientsRes?.length || 0)
+                    + (feesRes?.length || 0) + (remindersRes?.length || 0) > 0;
+                if (anyResults) {
+                    setRecentSearches(prev => saveRecentSearch(trimmed, prev));
+                }
             } catch (e) {
                 console.error('[Search]', e);
             } finally {
@@ -284,19 +376,23 @@ export function useUniversalSearch() {
 
     // ── فلتر النوع ──
     const show = {
-        cases:    activeFilter === 'all' || activeFilter === 'cases',
-        clients:  activeFilter === 'all' || activeFilter === 'clients',
-        sessions: activeFilter === 'all' || activeFilter === 'sessions',
-        notes:    activeFilter === 'all' || activeFilter === 'notes',
-        docs:     activeFilter === 'all' || activeFilter === 'docs',
+        cases:     activeFilter === 'all' || activeFilter === 'cases',
+        clients:   activeFilter === 'all' || activeFilter === 'clients',
+        sessions:  activeFilter === 'all' || activeFilter === 'sessions',
+        notes:     activeFilter === 'all' || activeFilter === 'notes',
+        docs:      activeFilter === 'all' || activeFilter === 'docs',
+        fees:      activeFilter === 'all' || activeFilter === 'fees',
+        reminders: activeFilter === 'all' || activeFilter === 'reminders',
     };
 
     const totalResults =
-        (show.cases    ? matchedCases.length    : 0) +
-        (show.clients  ? matchedClients.length  : 0) +
-        (show.sessions ? dbSessions.length      : 0) +
-        (show.notes    ? dbNotes.length         : 0) +
-        (show.docs     ? dbDocs.length          : 0);
+        (show.cases     ? matchedCases.length    : 0) +
+        (show.clients   ? matchedClients.length  : 0) +
+        (show.sessions  ? dbSessions.length      : 0) +
+        (show.notes     ? dbNotes.length         : 0) +
+        (show.docs      ? dbDocs.length          : 0) +
+        (show.fees      ? dbFees.length          : 0) +
+        (show.reminders ? dbReminders.length     : 0);
 
     const hasResults = totalResults > 0;
 
@@ -312,9 +408,15 @@ export function useUniversalSearch() {
         );
     };
 
+    // ── مسح البحث الأخير المحفوظ (localStorage) ──
+    const clearRecentSearches = () => {
+        try { localStorage.removeItem(RECENT_SEARCHES_KEY); } catch { /* تجاهل */ }
+        setRecentSearches([]);
+    };
+
     return {
         q, setQ,
-        dbDocs, dbSessions, dbNotes, dbCases, dbClients,
+        dbDocs, dbSessions, dbNotes, dbCases, dbClients, dbFees, dbReminders,
         searching, searched,
         viewingDoc, setViewingDoc,
         activeFilter, setActiveFilter,
@@ -322,5 +424,6 @@ export function useUniversalSearch() {
         query, matchedCases, matchedClients,
         show, totalResults, hasResults,
         highlight, fmtNum,
+        recentSearches, clearRecentSearches,
     };
 }
