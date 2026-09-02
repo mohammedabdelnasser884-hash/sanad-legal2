@@ -9,9 +9,15 @@
 //  ونبعته إحنا بنفسنا عبر Resend، ونخزّن الـhash بتاعه في
 //  password_reset_otps للتحقق لاحقًا.
 //
-//  action: send   { }        → يولّد كود جديد ويبعته على إيميل
-//                               المستخدم (من جلسة الـrecovery نفسها)
-//  action: verify { code }   → يتحقق من الكود المدخل
+//  action: send         { }        → يولّد كود جديد ويبعته على إيميل
+//                                     المستخدم (من جلسة الـrecovery نفسها)
+//  action: verify       { code }   → يتحقق من الكود المدخل
+//  action: set_password { password } → يغيّر الباسورد فعليًا (عبر Admin
+//                                     API بصلاحية service_role) — يترفض
+//                                     تمامًا لو مفيش كود متأكَّد (consumed_at)
+//                                     حديث لنفس المستخدم. ده اللي بيقفل
+//                                     ثغرة تخطي شاشة الكود عن طريق نداء
+//                                     مباشر لـdb.auth.updateUser من المتصفح.
 //
 //  ⚠️ الاتنين محتاجين Authorization header بجلسة recovery صالحة
 //  (نفس الجلسة اللي Supabase بتفتحها لما المستخدم يدوس لينك
@@ -210,6 +216,77 @@ async function actionVerify(req: Request, code: string) {
   return json({ success: true });
 }
 
+// ── تغيير الباسورد الفعلي — لازم كود متأكَّد (consumed_at) حديث ──
+// ⚡ NEW (2 سبتمبر 2026 — إغلاق ثغرة تخطي واجهة الكود): قبل كده كان
+// الفرونت إند بينده على db.auth.updateUser مباشرة من المتصفح — يعني
+// مرحلة "تأكيد الكود" كانت بتتحكم في الشاشة بس، من غير ما السيرفر
+// يتأكد فعليًا إن الكود اتأكد قبل قبول تغيير الباسورد. أي حد معاه
+// جلسة الـrecovery (access token) كان يقدر يغيّر الباسورد بنداء
+// مباشر من غير ما يمر على الكود خالص. دلوقتي تغيير الباسورد بيتم من
+// هنا بس (بصلاحية service_role عبر Admin API)، وبيترفض تمامًا لو
+// مفيش صف OTP متأكَّد (consumed_at) لنفس المستخدم خلال آخر
+// SET_PASSWORD_WINDOW_MINUTES دقيقة.
+const SET_PASSWORD_WINDOW_MINUTES = 10;
+
+function mapAdminPasswordError(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes('different from the old password')) {
+    return 'الباسورد الجديد لازم يكون مختلف عن الباسورد القديم. اختار باسورد تاني.';
+  }
+  if (m.includes('password') && m.includes('at least')) {
+    return 'الباسورد قصير جدًا. اختار باسورد أطول.';
+  }
+  return 'تعذّر تحديث كلمة المرور. حاول مرة أخرى، أو اطلب لينك استعادة جديد.';
+}
+
+async function actionSetPassword(req: Request, password: string) {
+  const caller = await getCallerUser(req);
+  if ('error' in caller) return json({ error: caller.error }, caller.status);
+
+  if (!password || password.length < 8) {
+    return json({ error: 'الباسورد لازم يكون 8 أحرف على الأقل' }, 400);
+  }
+
+  // ── الشرط الأهم: لازم كود متأكَّد حديثًا لنفس المستخدم ──
+  const rows = await rest(
+    `password_reset_otps?user_id=eq.${caller.id}&select=*&order=created_at.desc&limit=1`,
+  );
+  const otpRow = Array.isArray(rows) ? rows[0] : null;
+
+  if (!otpRow || !otpRow.consumed_at) {
+    return json({ error: 'لازم تأكيد كود التحقق أولًا قبل تعيين باسورد جديد' }, 403);
+  }
+  const minutesSinceVerified = (Date.now() - new Date(otpRow.consumed_at).getTime()) / 60000;
+  if (minutesSinceVerified > SET_PASSWORD_WINDOW_MINUTES) {
+    return json({ error: 'انتهت مهلة تأكيد الكود — أعد طلب كود جديد وتأكيده مرة أخرى' }, 410);
+  }
+
+  // ── تغيير الباسورد فعليًا عبر Admin API بصلاحية service_role ──
+  // (مش عبر GoTrue self-service /auth/v1/user، عشان محدش يقدر يستدعي
+  // نفس المسار مباشرة من المتصفح ويتخطى الشرط اللي فوق).
+  const adminRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${caller.id}`, {
+    method: 'PUT',
+    headers: {
+      apikey: SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ password }),
+  });
+  const adminData = await adminRes.json().catch(() => ({}));
+  if (!adminRes.ok) {
+    const rawMsg = adminData?.msg || adminData?.message || adminData?.error_description || String(adminRes.status);
+    console.error('actionSetPassword admin update failed:', rawMsg);
+    return json({ error: mapAdminPasswordError(rawMsg) }, adminRes.status);
+  }
+
+  // نجح التغيير — نمسح صف الكود عشان مايتقدرش يُستخدم تاني لتغيير
+  // باسورد إضافي من غير ما يعدّي على كود جديد.
+  await rest(`password_reset_otps?id=eq.${otpRow.id}`, 'DELETE').catch(() => {});
+
+  return json({ success: true });
+}
+
 // ── Main handler ──────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
@@ -218,10 +295,11 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json().catch(() => ({})) as Record<string, string>;
-    const { action, code } = body;
+    const { action, code, password } = body;
 
     if (action === 'send') return await actionSend(req);
     if (action === 'verify') return await actionVerify(req, code);
+    if (action === 'set_password') return await actionSetPassword(req, password);
 
     return json({ error: `action غير معروف: ${action}` }, 400);
   } catch (e) {
