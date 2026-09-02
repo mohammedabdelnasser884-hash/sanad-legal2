@@ -70,6 +70,56 @@ export function ilikeOrClause(column: string, term: string): string {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  buildArabicTolerantPattern / imatchOrClause — بحث "شامل" مرحلة 1
+//  (تحسين البحث الموجود بدون AI، سبتمبر 2026)
+//  ⚠️ المشكلة: ilike بيقارن حرف بحرف. لو المستخدم كتب "أحمد" والمخزّن
+//  في القاعدة "احمد" (من غير همزة) — أو العكس — أو كتب "منوره" والمخزّن
+//  "منورة"، أو "قضيه" / "قضية"، فمطابقة ilike العادية بتفشل تمامًا رغم
+//  إن الكلمتين "نفس الكلمة" فعليًا من وجهة نظر أي حد بيقرا عربي. الاختلاف
+//  ده شائع جدًا (لوحة مفاتيح، إعدادات تصحيح تلقائي مختلفة، عادة كتابة
+//  الشخص) ومش "خطأ إملائي" بقدر ما هو تنويع في نفس الحرف.
+//  الحل: بدل ما نقارن حرف-بحرف، بنبني regex بيعامل كل مجموعة حروف
+//  متكافئة (الهمزات إلخ) كأنها حرف واحد، ونستخدم عامل PostgREST
+//  `imatch` (~* — regex غير حساس لحالة الأحرف) بدل `ilike`. النطاق هنا
+//  محدود عمدًا لتنويعات الحروف الشائعة فعلاً في الكتابة العربية — مش
+//  تصحيح أخطاء إملائية عامة (حرف زيادة/ناقص/مقلوب)، ده يحتاج pg_trgm
+//  على مستوى قاعدة البيانات ومش داخل نطاق التحسين ده.
+// ══════════════════════════════════════════════════════════════
+const ARABIC_LETTER_CLASSES: [RegExp, string][] = [
+    [/[اأإآ]/g, '[اأإآ]'],   // الألف بأشكال الهمزة المختلفة
+    [/[ةه]/g, '[ةه]'],       // تاء مربوطة / هاء آخر الكلمة
+    [/[يى]/g, '[يى]'],       // ياء / ألف مقصورة
+];
+
+// حروف بتحمل معنى خاص جوه regex — لازم تتهرّب قبل بناء النمط، وإلا
+// المستخدم لو كتب مثلاً "." أو "*" هيتفسّر كجزء من صياغة الـregex نفسها
+// مش كنص حرفي بيدور عليه.
+function escapeRegexLiteral(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function buildArabicTolerantPattern(term: string): string {
+    const normalized = normalizeArabicDigits(term);
+    const escaped = escapeRegexLiteral(normalized);
+    let pattern = '';
+    for (const ch of escaped) {
+        const cls = ARABIC_LETTER_CLASSES.find(([re]) => new RegExp(re.source).test(ch));
+        pattern += cls ? cls[1] : ch;
+    }
+    return pattern;
+}
+
+// بناء شرط `imatch` (regex غير حساس لحالة الأحرف) آمن للاستخدام جوه
+// .or() بتاع PostgREST — نفس فكرة ilikeOrClause تمامًا (تهريب الفاصلة/
+// الأقواس عشان مايتفسروش كصياغة فلتر) لكن بالنمط المتسامح مع تنويعات
+// الحروف العربية بدل تطابق حرفي.
+export function imatchOrClause(column: string, term: string): string {
+    const pattern = buildArabicTolerantPattern(term);
+    const escaped = pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return `${column}.imatch."${escaped}"`;
+}
+
+// ══════════════════════════════════════════════════════════════
 //  escapeTelegramHtml — تهريب نص قبل دمجه في رسالة Telegram بصيغة
 //  parse_mode: 'HTML'. تيليجرام بيدعم مجموعة محدودة من التاجز
 //  (<b>, <i>, <a>...) وبيرفض الرسالة كلها لو فيه < أو > أو & غير
