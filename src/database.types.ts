@@ -1808,6 +1808,30 @@ export interface Database {
           created_at?: string
         }
         Relationships: []
+      },
+      terms_acceptances: {
+        Row: {
+          id: string
+          user_id: string
+          tenant_id: string | null
+          terms_version: string
+          accepted_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          tenant_id?: string | null
+          terms_version: string
+          accepted_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          tenant_id?: string | null
+          terms_version?: string
+          accepted_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {
