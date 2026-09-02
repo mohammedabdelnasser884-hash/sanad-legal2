@@ -76,9 +76,17 @@ import { useThemeMode } from './hooks/useThemeMode';
 import { useNavbarHeightVar } from './hooks/useNavbarHeightVar';
 import { useDbConnectivity } from './hooks/useDbConnectivity';
 import { useInitialDataSync } from './hooks/useInitialDataSync';
+// ⚡ NEW (خطة إقرار الشروط والأحكام، Phase 3 — 2 سبتمبر 2026): بوابة
+// إجبارية بعد اللوجن مباشرة، قبل أي محتوى تاني في التطبيق.
+import TermsAcceptanceScreen from './features/terms/TermsAcceptanceScreen';
+import { useTermsAcceptance } from './features/terms/useTermsAcceptance';
 
 function App() {
     const { profile, setProfile, authUser, setAuthUser, authLoading, loadProfile } = useAuthProfile();
+
+    // ⚡ NEW (خطة إقرار الشروط والأحكام، Phase 3): لازم يتنادى هنا (unconditionally)
+    // مع باقي الـhooks، مش بعد أي return شرطي تحت — قاعدة Rules of Hooks.
+    const { needsAcceptance, markAccepted } = useTermsAcceptance(profile);
 
     // ── Navigation ────────────────────────────────────────────
     const nav = useNavigation();
@@ -500,6 +508,12 @@ function App() {
     if (authLoading) return React.createElement(AppLoadingScreen);
 
     if (!authUser || !profile) return React.createElement(LoginScreen, { onLogin: (u) => loadProfile(u) });
+
+    // ⚡ NEW (خطة إقرار الشروط والأحكام، Phase 3): لسه بيتحقق من terms_acceptances
+    if (needsAcceptance === null) return React.createElement(AppLoadingScreen);
+
+    // ⚡ NEW: لسه ماوافقش على CURRENT_TERMS_VERSION — يمنع أي وصول لباقي التطبيق
+    if (needsAcceptance) return React.createElement(TermsAcceptanceScreen, { profile, onAccepted: markAccepted });
 
     // ─────────────────────────────────────────────────────────
     //  Render
