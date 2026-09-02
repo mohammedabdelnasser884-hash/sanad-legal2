@@ -120,7 +120,10 @@ function DesktopHeader({ profile, setShowMenu, setShowSearch, isAdmin, fetchCase
                 className: 'h-10 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 px-3.5 active:scale-95 transition-transform text-slate-300 text-sm font-bold hover:bg-white/10',
             },
                 React.createElement(I.Search),
-                React.createElement('span', null, 'بحث')
+                React.createElement('span', null, 'بحث'),
+                // ⚡ NEW (سبتمبر 2026): تلميح اختصار Cmd/Ctrl+K — ديسكتوب بس
+                // (مفيش لوحة مفاتيح فعلية على الموبايل يستفيد بيها).
+                React.createElement('kbd', { className: 'text-[9px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-500 font-mono' }, '⌘K')
             ),
             React.createElement('button', {
                 onClick: () => fetchCases(0, casesFilter),
