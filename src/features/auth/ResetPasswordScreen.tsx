@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../../supabaseClient';
 import { recordError } from '../../systemHealth';
 import { I, SanadMark } from '../../constants';
@@ -12,6 +12,20 @@ import { Inp } from '@/shared/ui/Inp';
 //  إيميل+باسورد: باسورد جديد + تأكيد بس (المستخدم أصلًا معروف من
 //  جلسة الـrecovery نفسها).
 //
+//  ⚡ NEW (Phase 4 — تحقق إضافي بعد اللينك، 2 سبتمبر 2026):
+//  الدخول باللينك بس (recovery token) بيثبت إن المستخدم فتح
+//  الإيميل لحظة الطلب — لكن لو اللينك اتحول/اتفتح من جهاز/متصفح
+//  تاني بعد فترة، مفيش أي تأكيد إضافي وقت التغيير الفعلي. دلوقتي
+//  أول ما الشاشة تفتح (isPasswordRecovery=true) بنبعت تلقائيًا كود
+//  6 أرقام منفصل تمامًا (عبر db.auth.signInWithOtp، قناة "Magic
+//  Link/Email OTP" في Supabase — مختلفة عن قناة الـrecovery اللي
+//  استُهلكت فعلاً بمجرد الدخول باللينك) على نفس إيميل المستخدم،
+//  ولازم يدخّله صح قبل ما فورم الباسورد الجديد يظهر أصلاً. الكود ده
+//  بيتأكد بـdb.auth.verifyOtp(type:'email') وليه نفس مدة صلاحية
+//  اللينك الأصلي (إعداد "Email OTP Expiration" في Supabase — 15
+//  دقيقة). فالنتيجة: تأكيدين مستقلّين لملكية نفس صندوق الإيميل قبل
+//  السماح بتغيير الباسورد، مش تأكيد واحد بس.
+//
 //  ⚠️ بعد نجاح db.auth.updateUser، بنعمل db.auth.signOut() فورًا —
 //  ده بيطلق onAuthStateChange بـsession:null، واللي useAuthProfile
 //  بيعامله كـlogout عادي (profile/authUser/isPasswordRecovery كلهم
@@ -20,7 +34,24 @@ import { Inp } from '@/shared/ui/Inp';
 //  props أو تنسيق إضافي مطلوب من الملف ده لـApp.tsx.
 // ─────────────────────────────────────────────────────────
 
+const RESEND_COOLDOWN_SECONDS = 45;
+
 function ResetPasswordScreen() {
+    // stage: 'loading' لحد ما نجيب إيميل المستخدم من جلسة الـrecovery
+    // ونبعت أول كود، 'otp' لحد ما يتأكد الكود، 'password' بعد كده.
+    const [stage, setStage] = useState<'loading' | 'otp' | 'password'>('loading');
+    const [email, setEmail] = useState('');
+
+    // ── OTP stage ──
+    const [otpCode, setOtpCode] = useState('');
+    const [otpErr, setOtpErr] = useState('');
+    const [otpLoading, setOtpLoading] = useState(false);
+    const [sendErr, setSendErr] = useState('');
+    const [sendLoading, setSendLoading] = useState(false);
+    const [resendCooldown, setResendCooldown] = useState(0);
+    const otpSentOnce = useRef(false);
+
+    // ── Password stage ──
     const [newPass, setNewPass] = useState('');
     const [confirmPass, setConfirmPass] = useState('');
     const [showPass, setShowPass] = useState(false);
@@ -29,6 +60,68 @@ function ResetPasswordScreen() {
     const [done, setDone] = useState(false);
 
     const isValid = newPass.length >= 8 && newPass === confirmPass;
+
+    // بعت كود 6 أرقام جديد على targetEmail. بيتنادى مرة تلقائيًا لما
+    // الشاشة تفتح، وبعد كده بس لما المستخدم يدوس "إعادة إرسال".
+    const sendOtp = async (targetEmail: string) => {
+        setSendLoading(true);
+        setSendErr('');
+        const { error } = await db.auth.signInWithOtp({
+            email: targetEmail,
+            options: { shouldCreateUser: false },
+        });
+        setSendLoading(false);
+        if (error) {
+            recordError('reset_password_otp_send', error.message);
+            setSendErr('تعذّر إرسال كود التحقق. تحقق من اتصال الإنترنت، أو اطلب لينك استعادة جديد.');
+            return;
+        }
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    };
+
+    // أول ما الشاشة تفتح: هات إيميل المستخدم من جلسة الـrecovery
+    // الحالية (متاح فعلاً من غير أي نداء تسجيل دخول إضافي) وابعت
+    // أول كود تلقائيًا. useRef عشان مانبعتش الكود مرتين (React
+    // StrictMode بينادي الـeffect مرتين في وضع التطوير).
+    useEffect(() => {
+        if (otpSentOnce.current) return;
+        otpSentOnce.current = true;
+        db.auth.getSession().then(({ data }) => {
+            const em = data.session?.user?.email;
+            if (!em) {
+                setSendErr('تعذّر التعرّف على حسابك. اطلب لينك استعادة جديد من شاشة الدخول.');
+                setStage('otp');
+                return;
+            }
+            setEmail(em);
+            setStage('otp');
+            sendOtp(em);
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // عدّاد إعادة الإرسال
+    useEffect(() => {
+        if (resendCooldown <= 0) return;
+        const t = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+        return () => clearTimeout(t);
+    }, [resendCooldown]);
+
+    const handleVerifyOtp = async (e: React.MouseEvent<HTMLButtonElement>) => {
+        e.preventDefault();
+        if (otpCode.length !== 6 || otpLoading) return;
+        setOtpLoading(true);
+        setOtpErr('');
+
+        const { error } = await db.auth.verifyOtp({ email, token: otpCode, type: 'email' });
+        setOtpLoading(false);
+        if (error) {
+            recordError('reset_password_otp_verify', error.message);
+            setOtpErr('الكود غير صحيح أو منتهي الصلاحية. تأكد من آخر كود وصلك، أو اطلب كود جديد.');
+            return;
+        }
+        setStage('password');
+    };
 
     const handleSave = async (e: React.MouseEvent<HTMLButtonElement>) => {
         e.preventDefault();
@@ -49,6 +142,94 @@ function ResetPasswordScreen() {
         setDone(true);
         setTimeout(() => { db.auth.signOut(); }, 1500);
     };
+
+    const otpStageContent = React.createElement(React.Fragment, null,
+        React.createElement('div', { className: "flex items-center gap-2 mb-1" },
+            React.createElement(I.Shield, { className: "w-4 h-4 text-premium-gold" }),
+            React.createElement('h2', { className: "text-sm font-black text-white" }, "تأكيد هويتك")
+        ),
+        React.createElement('p', { className: "text-[11px] text-slate-400 leading-relaxed" },
+            email
+                ? `بعتنالك كود مكوّن من 6 أرقام على ${email}. أدخله هنا قبل ما تقدر تحط باسورد جديد.`
+                : "جاري إرسال كود التحقق..."
+        ),
+
+        React.createElement(Inp, {
+            label: "كود التحقق",
+            type: "text",
+            value: otpCode,
+            onChange: (e: React.ChangeEvent<HTMLInputElement>) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6)),
+            placeholder: "------",
+            inputMode: "numeric",
+            maxLength: 6,
+            autoFocus: true,
+            className: "w-full p-3 text-center text-lg tracking-[0.5em] rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600",
+            'data-testid': 'reset-password-otp-input',
+        }),
+
+        otpErr && React.createElement('div', { className: "bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-[11px] text-rose-400 text-center", 'data-testid': 'reset-password-otp-error' }, otpErr),
+        sendErr && React.createElement('div', { className: "bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-[11px] text-rose-400 text-center", 'data-testid': 'reset-password-otp-send-error' }, sendErr),
+
+        React.createElement('button', {
+            onClick: handleVerifyOtp,
+            disabled: otpLoading || otpCode.length !== 6,
+            className: "w-full py-3 bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg rounded-xl font-black text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-60",
+            'data-testid': 'reset-password-otp-submit',
+        },
+            otpLoading ? React.createElement(I.Spin) : React.createElement(I.Shield),
+            otpLoading ? 'جاري التأكيد...' : 'تأكيد الكود'
+        ),
+
+        React.createElement('button', {
+            type: "button",
+            onClick: () => email && resendCooldown === 0 && !sendLoading && sendOtp(email),
+            disabled: resendCooldown > 0 || sendLoading || !email,
+            className: "w-full text-center text-[11px] text-slate-400 hover:text-premium-gold transition-colors disabled:opacity-50 disabled:hover:text-slate-400",
+            'data-testid': 'reset-password-otp-resend',
+        },
+            sendLoading ? 'جاري الإرسال...' : resendCooldown > 0 ? `إعادة الإرسال بعد ${resendCooldown} ثانية` : 'لم يصلك الكود؟ إعادة الإرسال'
+        )
+    );
+
+    const passwordStageContent = React.createElement(React.Fragment, null,
+        React.createElement(Inp, {
+            label: "كلمة المرور الجديدة", type: showPass ? "text" : "password", value: newPass,
+            onChange: (e: React.ChangeEvent<HTMLInputElement>) => setNewPass(e.target.value),
+            placeholder: "8+ أحرف على الأقل", required: true, 'data-testid': 'reset-password-new'
+        }),
+        React.createElement('div', null,
+            React.createElement('label', { className: "block text-[10px] font-bold text-slate-400 mb-1.5" }, "تأكيد كلمة المرور"),
+            React.createElement('div', { className: "relative" },
+                React.createElement('input', {
+                    type: showPass ? 'text' : 'password',
+                    value: confirmPass,
+                    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setConfirmPass(e.target.value),
+                    placeholder: "أعد كتابة كلمة المرور الجديدة",
+                    className: "w-full p-3 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600 pl-10",
+                    style: { fontFamily: 'Cairo,sans-serif' },
+                    'data-testid': 'reset-password-confirm'
+                }),
+                React.createElement('button', {
+                    type: "button",
+                    onClick: () => setShowPass(!showPass),
+                    className: "absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-premium-gold transition-colors"
+                }, React.createElement(I.Eye))
+            ),
+            confirmPass && newPass !== confirmPass && React.createElement('p', { className: "text-[9px] text-red-400 mt-1" }, "كلمتا المرور غير متطابقتين")
+        ),
+
+        err && React.createElement('div', { className: "bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-[11px] text-rose-400 text-center", 'data-testid': 'reset-password-error' }, err),
+
+        React.createElement('button', {
+            onClick: handleSave,
+            disabled: loading || !isValid,
+            className: "w-full py-3 bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg rounded-xl font-black text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-60",
+            'data-testid': 'reset-password-submit'
+        },
+            loading ? React.createElement(I.Spin) : React.createElement(I.Lock),
+            loading ? 'جاري التحديث...' : 'تحديث كلمة المرور'
+        )
+    );
 
     return React.createElement('div',{className:"h-full flex flex-col items-center justify-center px-6 bg-premium-bg relative overflow-hidden"},
         React.createElement('div',{className:"absolute top-0 left-0 w-64 h-64 rounded-full bg-amber-500/5 blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none"}),
@@ -72,52 +253,16 @@ function ResetPasswordScreen() {
             ),
 
             React.createElement('div',{className:"bg-premium-card border border-white/5 rounded-2xl p-6 shadow-premium-shadow space-y-4"},
-                React.createElement('h2',{className:"text-sm font-black text-white mb-2"},"تعيين كلمة مرور جديدة"),
+                stage === 'password' && React.createElement('h2',{className:"text-sm font-black text-white mb-2"},"تعيين كلمة مرور جديدة"),
 
                 done
                     ? React.createElement('div',{className:"bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-center",'data-testid':'reset-password-success'},
                         React.createElement('p',{className:"text-xs font-black text-emerald-400"},"✅ تم تحديث كلمة المرور بنجاح"),
                         React.createElement('p',{className:"text-[10px] text-slate-400 mt-1"},"جاري تحويلك لشاشة الدخول...")
                       )
-                    : React.createElement(React.Fragment, null,
-                        React.createElement(Inp,{
-                            label:"كلمة المرور الجديدة",type:showPass?"text":"password",value:newPass,
-                            onChange:(e: React.ChangeEvent<HTMLInputElement>)=>setNewPass(e.target.value),
-                            placeholder:"8+ أحرف على الأقل",required:true,'data-testid':'reset-password-new'
-                        }),
-                        React.createElement('div',null,
-                            React.createElement('label',{className:"block text-[10px] font-bold text-slate-400 mb-1.5"},"تأكيد كلمة المرور"),
-                            React.createElement('div',{className:"relative"},
-                                React.createElement('input',{
-                                    type:showPass?'text':'password',
-                                    value:confirmPass,
-                                    onChange:(e: React.ChangeEvent<HTMLInputElement>)=>setConfirmPass(e.target.value),
-                                    placeholder:"أعد كتابة كلمة المرور الجديدة",
-                                    className:"w-full p-3 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600 pl-10",
-                                    style:{fontFamily:'Cairo,sans-serif'},
-                                    'data-testid':'reset-password-confirm'
-                                }),
-                                React.createElement('button',{
-                                    type:"button",
-                                    onClick:()=>setShowPass(!showPass),
-                                    className:"absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-premium-gold transition-colors"
-                                },React.createElement(I.Eye))
-                            ),
-                            confirmPass && newPass!==confirmPass && React.createElement('p',{className:"text-[9px] text-red-400 mt-1"},"كلمتا المرور غير متطابقتين")
-                        ),
-
-                        err&&React.createElement('div',{className:"bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-[11px] text-rose-400 text-center",'data-testid':'reset-password-error'},err),
-
-                        React.createElement('button',{
-                            onClick:handleSave,
-                            disabled:loading||!isValid,
-                            className:"w-full py-3 bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg rounded-xl font-black text-sm shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-60",
-                            'data-testid':'reset-password-submit'
-                        },
-                            loading?React.createElement(I.Spin):React.createElement(I.Lock),
-                            loading?'جاري التحديث...':'تحديث كلمة المرور'
-                        )
-                      )
+                    : stage === 'otp'
+                        ? otpStageContent
+                        : passwordStageContent
             ),
 
             React.createElement('p',{className:"text-center text-[10px] text-slate-600 mt-6"},
