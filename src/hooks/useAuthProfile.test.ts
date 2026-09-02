@@ -284,6 +284,37 @@ describe('useAuthProfile', () => {
     expect(unsubscribeSpy).toHaveBeenCalledTimes(1);
   });
 
+  // ══════════════════════════════════════════════════════════════════
+  // ✅ NEW (Phase 2 — خطة استعادة كلمة المرور، 2 سبتمبر 2026): حدث
+  // PASSWORD_RECOVERY لازم يتلقَط لوحده — من غير أي loadProfile عادي
+  // (يعني من غير تسجيل دخول تلقائي)، وبيضبط isPasswordRecovery=true.
+  // ══════════════════════════════════════════════════════════════════
+  it('onAuthStateChange: PASSWORD_RECOVERY → isPasswordRecovery بيبقى true، ومفيش أي نداء لـ loadProfile (db.from) خالص', async () => {
+    const { result } = renderHook(() => useAuthProfile());
+    await waitFor(() => expect(result.current.authLoading).toBe(false));
+    from.mockClear();
+    await act(async () => {
+      authChangeListeners.forEach((cb) => cb('PASSWORD_RECOVERY', { user: USER }));
+    });
+    expect(result.current.isPasswordRecovery).toBe(true);
+    expect(from).not.toHaveBeenCalled();
+    expect(result.current.profile).toBeNull();
+    expect(result.current.authUser).toBeNull();
+  });
+
+  it('onAuthStateChange: PASSWORD_RECOVERY متبوع بـ SIGNED_OUT (بعد نجاح تحديث الباسورد) → isPasswordRecovery بيرجع false تاني', async () => {
+    const { result } = renderHook(() => useAuthProfile());
+    await waitFor(() => expect(result.current.authLoading).toBe(false));
+    await act(async () => {
+      authChangeListeners.forEach((cb) => cb('PASSWORD_RECOVERY', { user: USER }));
+    });
+    expect(result.current.isPasswordRecovery).toBe(true);
+    await act(async () => {
+      authChangeListeners.forEach((cb) => cb('SIGNED_OUT', null));
+    });
+    expect(result.current.isPasswordRecovery).toBe(false);
+  });
+
   it('loadProfile(null) مباشرة (عبر setProfile اليدوي في onAuthStateChange) بترجّع authUser/profile null من غير نداء db.from — نفس اختبار SIGNED_OUT بس بيتأكد إنه مش بيعدي بـ user فاضي لـ loadProfile نفسها', async () => {
     getSessionResult = { data: { session: null } };
     const { result } = renderHook(() => useAuthProfile());
