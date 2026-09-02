@@ -38,8 +38,11 @@ const invoke = vi.fn((_fn: string, _opts: unknown) => (invokeImpl ? invokeImpl()
 let setSessionResult: { error: { message: string } | null } = { error: null };
 const setSession = vi.fn((..._args: unknown[]) => Promise.resolve(setSessionResult));
 
+let resetPasswordResult: { error: { message: string } | null } = { error: null };
+const resetPasswordForEmail = vi.fn((..._args: unknown[]) => Promise.resolve(resetPasswordResult));
+
 vi.mock('../../supabaseClient', () => ({
-  db: { functions: { invoke: (...a: [string, unknown]) => invoke(...a) }, auth: { setSession: (...a: unknown[]) => setSession(...a) } },
+  db: { functions: { invoke: (...a: [string, unknown]) => invoke(...a) }, auth: { setSession: (...a: unknown[]) => setSession(...a), resetPasswordForEmail: (...a: unknown[]) => resetPasswordForEmail(...a) } },
 }));
 
 const logActivity = vi.fn();
@@ -68,8 +71,10 @@ describe('LoginScreen (تدفق تكاملي مع office-login)', () => {
     invokeResult = { data: null, error: null };
     invokeImpl = null;
     setSessionResult = { error: null };
+    resetPasswordResult = { error: null };
     invoke.mockClear();
     setSession.mockClear();
+    resetPasswordForEmail.mockClear();
     logActivity.mockClear();
     recordError.mockClear();
   });
@@ -209,5 +214,62 @@ describe('LoginScreen (تدفق تكاملي مع office-login)', () => {
     fillAndSubmit('lawyer@sanad.test', 'secret123');
     await waitFor(() => expect(onLogin).toHaveBeenCalledTimes(1));
     expect(screen.queryByText('بيانات الدخول غير صحيحة. تحقق من الإيميل وكلمة السر.')).toBeNull();
+  });
+
+  // ══════════════════════════════════════════════════════════════════
+  // ✅ NEW (Phase 4 — خطة استعادة/تغيير كلمة المرور، 2 سبتمبر 2026):
+  // رابط "نسيت كلمة المرور؟" وفورم الاستعادة المصغّر.
+  // ══════════════════════════════════════════════════════════════════
+  describe('نسيت كلمة المرور؟', () => {
+    it('الدوس على الرابط بيعرض فورم الاستعادة (إيميل بس) ويخفي فورم الدخول', () => {
+      const onLogin = vi.fn();
+      render(React.createElement(LoginScreen, { onLogin }));
+      fireEvent.click(screen.getByTestId('login-forgot-password-link'));
+      expect(screen.getByText('استعادة كلمة المرور')).toBeTruthy();
+      expect(screen.queryByPlaceholderText('••••••••')).toBeNull();
+    });
+
+    it('إرسال الفورم بإيميل صحيح → resetPasswordForEmail بيتنادى بالإيميل وredirectTo الصحيح، ورسالة نجاح بتتعرض', async () => {
+      const onLogin = vi.fn();
+      render(React.createElement(LoginScreen, { onLogin }));
+      fireEvent.click(screen.getByTestId('login-forgot-password-link'));
+      fireEvent.change(screen.getByTestId('forgot-password-email'), { target: { value: 'lawyer@sanad.test' } });
+      fireEvent.click(screen.getByTestId('forgot-password-submit'));
+
+      await waitFor(() => expect(screen.getByTestId('forgot-password-success')).toBeTruthy());
+      expect(resetPasswordForEmail).toHaveBeenCalledWith('lawyer@sanad.test', { redirectTo: 'https://sanad-nizam.vercel.app/reset-password' });
+    });
+
+    it('إرسال الفورم من غير إيميل → رسالة تحقق محلية، من غير أي نداء لـ resetPasswordForEmail', () => {
+      const onLogin = vi.fn();
+      render(React.createElement(LoginScreen, { onLogin }));
+      fireEvent.click(screen.getByTestId('login-forgot-password-link'));
+      fireEvent.click(screen.getByTestId('forgot-password-submit'));
+      expect(screen.getByTestId('forgot-password-error').textContent).toBe('يرجى إدخال البريد الإلكتروني');
+      expect(resetPasswordForEmail).not.toHaveBeenCalled();
+    });
+
+    it('resetPasswordForEmail بترجع error → رسالة عامة موحّدة، والخام يتسجل عبر recordError بس', async () => {
+      resetPasswordResult = { error: { message: 'rate limited' } };
+      const onLogin = vi.fn();
+      render(React.createElement(LoginScreen, { onLogin }));
+      fireEvent.click(screen.getByTestId('login-forgot-password-link'));
+      fireEvent.change(screen.getByTestId('forgot-password-email'), { target: { value: 'lawyer@sanad.test' } });
+      fireEvent.click(screen.getByTestId('forgot-password-submit'));
+
+      await waitFor(() => expect(screen.getByTestId('forgot-password-error')).toBeTruthy());
+      expect(screen.getByTestId('forgot-password-error').textContent).toBe('تعذّر إرسال رابط الاستعادة. تحقق من اتصال الإنترنت وحاول مرة أخرى.');
+      expect(recordError).toHaveBeenCalledWith('reset_password_request', 'rate limited');
+    });
+
+    it('زرار "الرجوع لتسجيل الدخول" بيرجّع فورم الدخول العادي ويصفّر حالة فورم الاستعادة', () => {
+      const onLogin = vi.fn();
+      render(React.createElement(LoginScreen, { onLogin }));
+      fireEvent.click(screen.getByTestId('login-forgot-password-link'));
+      fireEvent.change(screen.getByTestId('forgot-password-email'), { target: { value: 'lawyer@sanad.test' } });
+      fireEvent.click(screen.getByTestId('forgot-password-back'));
+      expect(screen.getByText('تسجيل الدخول')).toBeTruthy();
+      expect(screen.getByPlaceholderText('••••••••')).toBeTruthy();
+    });
   });
 });
