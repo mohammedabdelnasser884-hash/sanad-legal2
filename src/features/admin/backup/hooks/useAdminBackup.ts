@@ -16,6 +16,122 @@ export interface BackupSnapshot {
   tables: Record<string, unknown[]>;
 }
 
+// ── ضغط الـ snapshot قبل الحفظ في backups.data (3 سبتمبر 2026) ──
+// المشكلة: مع تراكم بيانات المكتب، حجم الـ JSON الكامل (كل الجداول) بيكبر —
+// آخر نسخة كانت ~1.5 ميجا/2877 صف — والحفظ بيبعته كتلة واحدة (طلب واحد)
+// لقاعدة البيانات. على شبكة موبايل بطيئة/متذبذبة، الطلب الكبير ده كان
+// بيفشل بـ "TypeError: Failed to fetch" (خطأ شبكة خام، مش استثناء من
+// Supabase نفسه) عند آخر خطوة بالظبط (بعد ما التصدير كله نجح ووصل 92%).
+// الحل: نضغط الـ JSON بصيغة gzip قبل الحفظ (عبر CompressionStream المدمجة
+// في المتصفح، من غير أي مكتبة خارجية جديدة) — بيقلل حجم الطلب بشكل كبير
+// لبيانات نصية عربية متكررة زي دي، وبالتالي بيقلل احتمال فشل الشبكة.
+// متوافق للخلف: النسخ القديمة المخزّنة قبل التعديل ده (من غير علامة
+// __compressed) بتتقرا زي ما هي عادي، بدون أي تحويل.
+interface CompressedBackupPayload {
+  __compressed: true;
+  version: string;
+  created_at: string;
+  gzip_b64: string;
+}
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000; // تجنب تجاوز حد آرجيومنتس String.fromCharCode.apply مع مصفوفات كبيرة
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function readAllChunks(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  const reader = stream.getReader();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) chunks.push(value);
+  }
+  const total = chunks.reduce((s, c) => s + c.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { result.set(c, offset); offset += c.length; }
+  return result;
+}
+
+// بيرجع snapshot مضغوط لو المتصفح بيدعم CompressionStream، وإلا بيرجع
+// الـ snapshot الخام زي ما هو (fallback آمن — نفس السلوك القديم قبل التعديل).
+async function compressSnapshotForStorage(snapshot: BackupSnapshot): Promise<BackupSnapshot | CompressedBackupPayload> {
+  if (typeof CompressionStream === 'undefined') return snapshot;
+  try {
+    const json = JSON.stringify(snapshot);
+    const cs = new CompressionStream('gzip');
+    const writer = cs.writable.getWriter();
+    void writer.write(new TextEncoder().encode(json));
+    void writer.close();
+    const compressedBytes = await readAllChunks(cs.readable);
+    return {
+      __compressed: true,
+      version: snapshot.version,
+      created_at: snapshot.created_at,
+      gzip_b64: uint8ToBase64(compressedBytes),
+    };
+  } catch (e) {
+    return snapshot; // أي فشل في الضغط نفسه (مش شبكة) — نرجع للسلوك القديم بدل ما نوقف الباك أب كله
+  }
+}
+
+// بيفك ضغط أي شكل مخزّن (مضغوط أو خام قديم) ويرجع BackupSnapshot صالح، أو
+// null لو الشكل مش معروف/فشل الفك (نتعامل معاه كخطأ قراءة في الاستدعاء).
+async function decompressStoredBackupData(raw: unknown): Promise<BackupSnapshot | null> {
+  if (!raw || typeof raw !== 'object') return null;
+  if ((raw as { __compressed?: unknown }).__compressed === true) {
+    const payload = raw as CompressedBackupPayload;
+    try {
+      const bytes = base64ToUint8(payload.gzip_b64);
+      const ds = new DecompressionStream('gzip');
+      const writer = ds.writable.getWriter();
+      void writer.write(bytes);
+      void writer.close();
+      const decompressedBytes = await readAllChunks(ds.readable);
+      const json = new TextDecoder().decode(decompressedBytes);
+      return JSON.parse(json) as BackupSnapshot;
+    } catch (e) {
+      return null;
+    }
+  }
+  return raw as BackupSnapshot;
+}
+
+// بيعيد محاولة حفظ الباك أب مرة إضافية لو الطلب الأول فشل بخطأ شبكة خام
+// (استثناء، مش رد فيه error من Supabase نفسه) — بعد فاصل قصير، عشان
+// نتحمّل انقطاعة شبكة عابرة (زي اللي كانت بتحصل عند 92% على شبكة موبايل).
+async function insertBackupWithRetry(
+  payload: Database['public']['Tables']['backups']['Insert'],
+  maxAttempts = 2,
+): Promise<{ error: unknown }> {
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const { error } = await db.from('backups').insert([payload]);
+      return { error };
+    } catch (e) {
+      lastErr = e;
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 // ── نسخة شكل الـ snapshot الحالية (نفس القيمة المستخدمة في handleCreateBackup) —
 // بنستخدمها للتحقق من ملف مرفوع من الجهاز: لو الرقم الرئيسي (قبل النقطة) مختلف،
 // يبقى شكل الجداول ممكن يكون اتغيّر من ساعتها (عمود اتضاف/اتشال)، فبنحذّر
@@ -175,16 +291,19 @@ export function useAdminBackup(profile?: ProfileRow | null) {
     let error: unknown = null;
     try {
       totalRows = Object.values(snapshot.tables).reduce((s: number, t: unknown[])=>s+t.length, 0);
+      // sizeKb بيفضل بيمثّل الحجم المنطقي (قبل الضغط) — ده اللي المستخدم بيفهمه
+      // كـ"حجم النسخة"، مش حجم النقل الفعلي بعد الضغط.
       sizeKb = Math.round(JSON.stringify(snapshot).length / 1024);
+      const storedData = await compressSnapshotForStorage(snapshot);
 
-      ({ error } = await db.from('backups').insert([{
+      ({ error } = await insertBackupWithRetry({
         created_by: profile?.id,
         created_by_name: profile?.full_name || 'مدير',
         tables_count: tables.length,
         rows_count: totalRows,
         size_kb: sizeKb,
-        data: snapshot,
-      }]));
+        data: storedData,
+      }));
     } catch (e) {
       // ✅ تشخيص فشل admin-backup (26 يوليو 2026): اتأكد إن السبب كان وقت
       // العملية (تصدير + حفظ كل جداول المكتب بالتسلسل على بيانات production
@@ -236,8 +355,10 @@ export function useAdminBackup(profile?: ProfileRow | null) {
       .eq('id', backup.id)
       .single();
     if (error || !fullBackup) { toast('❌ تعذر تنزيل النسخة الاحتياطية', true); return; }
+    const snapshot = await decompressStoredBackupData(fullBackup.data);
+    if (!snapshot) { toast('❌ تعذر قراءة بيانات النسخة الاحتياطية', true); return; }
 
-    const json = JSON.stringify(fullBackup.data, null, 2);
+    const json = JSON.stringify(snapshot, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -367,7 +488,12 @@ export function useAdminBackup(profile?: ProfileRow | null) {
       toast('❌ تعذر جلب بيانات النسخة الاحتياطية — لم يتم حذف أو تعديل أي شيء', true);
       return;
     }
-    const snapshot = fullBackup.data as BackupSnapshot | null;
+    const snapshot = await decompressStoredBackupData(fullBackup.data);
+    if (!snapshot) {
+      setRestoringBackup(false);
+      toast('❌ تعذر قراءة بيانات النسخة الاحتياطية — لم يتم حذف أو تعديل أي شيء', true);
+      return;
+    }
     let restoredTables = 0;
     let failed = false;
 
