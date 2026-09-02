@@ -13,11 +13,16 @@
 //  عبر Resend API بإيميل التجربة onboarding@resend.dev، لكن اتضح إن
 //  الإيميل ده بيبعت بس لإيميل صاحب حساب Resend نفسه (قيد أمان من
 //  Resend لحماية سمعة الدومين، موثّق في docs.resend.com) — يعني
-//  الميزة كانت هتشتغل للمطوّر بس ومش لأي حساب تاني في المكتب. بدل ما
-//  نحتاج دومين مدفوع للتحقق، استبدلنا الإرسال بـ**Gmail SMTP**
-//  (denomailer) — مجاني بالكامل، بيبعت لأي حد، وبيستخدم حساب Gmail
-//  عادي + App Password (مش باسورد الحساب الحقيقي). حد Gmail اليومي
-//  (~500 إيميل/يوم لحساب مجاني) كافي جدًا لمكتب صغير/متوسط.
+//  الميزة كانت هتشتغل للمطوّر بس ومش لأي حساب تاني في المكتب.
+//
+//  ⚡ تعديل تاني (2 سبتمبر 2026 — قيد Supabase Edge Functions):
+//  جرّبنا بعد كده Gmail SMTP عن طريق denomailer، لكن اتضح إن Supabase
+//  بيمنع (أو بيعلّق) الاتصالات الصادرة على SMTP ports (25/465/587)
+//  من الإيدج فانكشنز في أغلب الحالات — موثّق في تجارب وgithub issues
+//  كتير، وده اللي سبب فشل الإرسال ("تعذّر إرسال كود التحقق"). الحل
+//  النهائي: **Brevo** عبر HTTPS API عادي (مش SMTP خالص) — مجاني (300
+//  إيميل/يوم)، ومحتاج بس توثيق الإيميل نفسه (كود بيتبعتلك عليه)
+//  من غير أي دومين أو DNS، وبيبعت لأي مستلم (بعكس قيد Resend).
 //
 //  action: send         { }        → يولّد كود جديد ويبعته على إيميل
 //                                     المستخدم (من جلسة الـrecovery نفسها)
@@ -37,12 +42,9 @@
 //
 //  ⚡ self-contained (بلا استيراد من ../_shared/) بنفس نمط
 //  office-login/saas-admin — عشان يتوافق مع النشر من لوحة Supabase
-//  (ملف واحد لكل فانكشن). الاستثناء الوحيد: استيراد denomailer من
-//  deno.land (مكتبة SMTP خفيفة، نفس الطريقة الموثّقة رسميًا في
-//  أمثلة Supabase Edge Functions لإرسال إيميلات عبر SMTP).
+//  (ملف واحد لكل فانكشن). كل الاتصالات الخارجية (Supabase REST/Auth،
+//  Brevo) عبر fetch/HTTPS عادي — مفيش أي اتصال SMTP/TCP خام.
 // ══════════════════════════════════════════════════════
-
-import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -68,17 +70,14 @@ const SUPABASE_URL     = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY         = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-// ── إعدادات Gmail SMTP (مجانية بالكامل) ──
-// SMTP_USER: إيميل Gmail بتاع المكتب/المشروع (نفس الإيميل اللي عملت
-// عليه App Password). SMTP_PASS: الكود المكوّن من 16 حرف من
-// myaccount.google.com/apppasswords (مش باسورد الحساب نفسه).
-// SMTP_HOST/SMTP_PORT ليهم قيمة افتراضية لـGmail، فمش لازم تتحطّ إلا
-// لو غيّرت مزوّد الإيميل لاحقًا (مثلاً لدومين خاص).
-const SMTP_HOST = Deno.env.get('SMTP_HOST') || 'smtp.gmail.com';
-const SMTP_PORT = Number(Deno.env.get('SMTP_PORT') || '465');
-const SMTP_USER = Deno.env.get('SMTP_USER');
-const SMTP_PASS = Deno.env.get('SMTP_PASS');
-const SMTP_FROM = Deno.env.get('SMTP_FROM') || (SMTP_USER ? `سَنَد <${SMTP_USER}>` : '');
+// ── إعدادات Brevo (مجانية بالكامل، HTTPS API — مفيش SMTP) ──
+// BREVO_API_KEY: من Brevo Dashboard → SMTP & API → API Keys.
+// BREVO_SENDER_EMAIL: الإيميل اللي وثّقته كـ"Sender" في Brevo (نفس
+// الإيميل، لو استخدمت نفس الـGmail من محاولة SMTP قبل كده). لازم
+// يكون موثّق (Verified) في Brevo وإلا الإرسال هيترفض.
+const BREVO_API_KEY      = Deno.env.get('BREVO_API_KEY');
+const BREVO_SENDER_EMAIL = Deno.env.get('BREVO_SENDER_EMAIL');
+const BREVO_SENDER_NAME  = Deno.env.get('BREVO_SENDER_NAME') || 'سَنَد';
 
 const OTP_TTL_MINUTES     = 15; // نفس مدة صلاحية اللينك (Email OTP Expiration)
 const RESEND_COOLDOWN_SEC = 45;
@@ -127,23 +126,22 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 async function sendCodeEmail(email: string, code: string) {
-  if (!SMTP_USER || !SMTP_PASS) throw new Error('SMTP_USER/SMTP_PASS غير مضبوطين في إعدادات المشروع (Edge Function secrets)');
+  if (!BREVO_API_KEY || !BREVO_SENDER_EMAIL) {
+    throw new Error('BREVO_API_KEY/BREVO_SENDER_EMAIL غير مضبوطين في إعدادات المشروع (Edge Function secrets)');
+  }
 
-  const client = new SMTPClient({
-    connection: {
-      hostname: SMTP_HOST,
-      port: SMTP_PORT,
-      tls: true,
-      auth: { username: SMTP_USER, password: SMTP_PASS },
+  const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': BREVO_API_KEY,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
     },
-  });
-
-  try {
-    await client.send({
-      from: SMTP_FROM,
-      to: email,
+    body: JSON.stringify({
+      sender: { name: BREVO_SENDER_NAME, email: BREVO_SENDER_EMAIL },
+      to: [{ email }],
       subject: 'كود تأكيد استعادة كلمة المرور — سَنَد',
-      html: `
+      htmlContent: `
         <div style="font-family:sans-serif;direction:rtl;text-align:right;max-width:420px;margin:0 auto">
           <h2 style="margin-bottom:8px">تأكيد استعادة كلمة المرور</h2>
           <p style="color:#444;line-height:1.6">
@@ -159,11 +157,12 @@ async function sendCodeEmail(email: string, code: string) {
           </p>
         </div>
       `,
-    });
-  } finally {
-    // ⚠️ لازم نقفل الاتصال دايمًا (حتى لو send فشلت) وإلا الفانكشن
-    // ممكن تعلّق لحد الـtimeout بدل ما ترجع رد فورًا.
-    await client.close();
+    }),
+  });
+
+  if (!r.ok) {
+    const errBody = await r.json().catch(() => ({}));
+    throw new Error(errBody?.message || `Brevo rejected the request (status ${r.status})`);
   }
 }
 
