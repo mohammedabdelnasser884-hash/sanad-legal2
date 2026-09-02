@@ -215,7 +215,13 @@ function App() {
 
     // ── Hooks ─────────────────────────────────────────────────
     const { healthErrors, setHealthErrors }                     = useHealthMonitor(profile);
-    const { handlePwaInstall }                          = usePwaInstall();
+    // ⚡ NEW (2 سبتمبر 2026 — ملحق PWA): pwaInstallable مضافة هنا لأول
+    // مرة — كانت الـhook أصلاً بترجّعها لكن App.tsx كان بيستخدم بس
+    // handlePwaInstall (زرار HeaderMenu مش محتاج يعرف الحالة، بس يستدعي
+    // الفعل). زرار desktop-header-install الجديد محتاج الحالة عشان
+    // يقرر يظهر ولا لأ (راجع DesktopHeader.tsx). صفر تعديل على الـhook
+    // نفسه أو على سلوك HeaderMenu الموجود.
+    const { pwaInstallable, handlePwaInstall }          = usePwaInstall();
     const feed                                          = useDashboardFeed(profile);
     const {
         todaySessions, upcomingSessions, missedSessions,
@@ -619,6 +625,9 @@ function App() {
         tab, setTab, isAdmin, canGenerateDocuments, onAIClick: handleAIButtonClick,
         profile, setShowMenu: (v: boolean) => setShowHeaderMenu(v), setShowSearch,
         fetchCases: handleGlobalRefresh, casesFilter, loadingCases: casesLoading,
+        // ⚡ NEW (2 سبتمبر 2026 — ملحق PWA): تمرير لـDesktopHeader عبر
+        // AppShell — راجع تعليقات NEW في AppShell.tsx/DesktopHeader.tsx.
+        pwaInstallable, handlePwaInstall,
     },
 
         // ⚡ H2 (16 أغسطس 2026): AppHeader القديم بقى `lg:hidden` — كان
