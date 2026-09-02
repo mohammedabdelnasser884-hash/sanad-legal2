@@ -623,7 +623,7 @@ function App() {
         }, Header),
 
         // ── Dropdown menu ──
-        React.createElement(HeaderMenu, { showMenu, setShowHeaderMenu, darkMode, toggleTheme, handlePwaInstall, handleLogout }),
+        React.createElement(HeaderMenu, { showMenu, setShowHeaderMenu, darkMode, toggleTheme, handlePwaInstall, handleLogout, profile }),
 
         // ⚡ B4 (14 أغسطس 2026): أضفت `lg:ps-[var(--app-sidebar-w)]` —
         // `ps-` (padding-inline-start) مش `pe-` (تصحيح موثّق في تعليقات
