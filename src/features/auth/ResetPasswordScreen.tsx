@@ -97,7 +97,6 @@ function ResetPasswordScreen() {
             setStage('otp');
             sendOtp(em);
         });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // عدّاد إعادة الإرسال
