@@ -181,7 +181,7 @@ interface RawCaseSearchRow {
 //  وإلا db.rpc() هيرجّع error بهدوء وهنكمل بالنتايج التقليدية بس —
 //  مفيش كسر لو الـmigration لسه ما اتشغلتش.
 // ══════════════════════════════════════════════════════════════
-const FUZZY_THRESHOLD = 0.3;
+const FUZZY_THRESHOLD = 0.4;
 
 // شكل الصف الراجع من db.rpc('search_clients_fuzzy', ...) — نفس أعمدة
 // SearchClientResult زائد similarity (بنستخدمها للترتيب بس، مش بتتعرض).
