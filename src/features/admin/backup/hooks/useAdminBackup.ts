@@ -5,7 +5,7 @@ import { logActivity } from '../../../../shared/lib/dataAccess';
 import { db } from '../../../../supabaseClient';
 import { formatArDate } from '../../../../shared/ui/arabicLocale';
 import type { ProfileRow, BackupRow } from '../../../../types';
-import type { Database } from '../../../../database.types';
+import type { Database, Json } from '../../../../database.types';
 
 // شكل الـ JSON المخزّن فعليًا في عمود backups.data (النوع الحقيقي في قاعدة
 // البيانات هو Json عام، فالواجهة دي بتوصف الشكل الفعلي اللي بيتبني بيه
@@ -98,7 +98,13 @@ async function decompressStoredBackupData(raw: unknown): Promise<BackupSnapshot 
       const bytes = base64ToUint8(payload.gzip_b64);
       const ds = new DecompressionStream('gzip');
       const writer = ds.writable.getWriter();
-      void writer.write(bytes);
+      // ⚠️ كاست ضروري هنا: type lib.dom.d.ts الحديث بيخصّص Uint8Array بـ
+      // generic (Uint8Array<ArrayBufferLike>)، وbase64ToUint8 بيرجّع نسخة
+      // مش مضمون TypeScript إنها Uint8Array<ArrayBuffer> تحديدًا (رغم إنها
+      // فعليًا كذلك وقت التشغيل — atob مبيرجعش SharedArrayBuffer أبدًا)،
+      // فـ BufferSource بيرفضها structurally. كاست type-only، من غير أي
+      // تغيير في السلوك الفعلي وقت التشغيل.
+      void writer.write(bytes as unknown as BufferSource);
       void writer.close();
       const decompressedBytes = await readAllChunks(ds.readable);
       const json = new TextDecoder().decode(decompressedBytes);
@@ -302,7 +308,12 @@ export function useAdminBackup(profile?: ProfileRow | null) {
         tables_count: tables.length,
         rows_count: totalRows,
         size_kb: sizeKb,
-        data: storedData,
+        // كاست type-only ضروري: BackupSnapshot/CompressedBackupPayload معرّفين
+        // بـ interface بخصائص مسمّاة (من غير index signature صريح)، وعمود
+        // data الحقيقي في قاعدة البيانات نوعه Json عام (مطلوب index signature) —
+        // نفس الفجوة النوعية الموصوفة فوق BackupSnapshot، القيمة الفعلية وقت
+        // التشغيل JSON سليم 100% في الحالتين (مضغوطة أو خام).
+        data: storedData as unknown as Json,
       }));
     } catch (e) {
       // ✅ تشخيص فشل admin-backup (26 يوليو 2026): اتأكد إن السبب كان وقت
