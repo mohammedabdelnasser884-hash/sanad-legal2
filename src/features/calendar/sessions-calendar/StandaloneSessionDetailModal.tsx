@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from '../../../shared/lib/notifications';
-import { showErrorToast } from '../../../shared/lib/errorReporting';
-// 🆕 FIX (٤ سبتمبر ٢٠٢٦ — سد فجوة recordSuccess): session_save/session_delete
-// كانوا بيسجلوا فشل فقط (عن طريق showErrorToast) من غير أي تسجيل نجاح
-// مقابل، فلو حصل خطأ مرة وبعدين المستخدم أعاد المحاولة نجح، بانر الخطأ
-// في الرئيسية كان بيفضل معلّق للأبد لحد ما يتقفل يدوي — راجع خطة إعادة
-// تصميم رسائل الأخطاء.
-import { recordSuccess } from '../../../systemHealth';
+import { showErrorToast, reportOperationResult } from '../../../shared/lib/errorReporting';
+// 🔧 FIX (٤ سبتمبر ٢٠٢٦ — سد فجوة recordSuccess، مُرقّى للـOperation Lifecycle):
+// session_save/session_delete كانوا بيسجلوا فشل فقط (عن طريق showErrorToast)
+// من غير أي تسجيل نجاح مقابل — لو حصل خطأ مرة وبعدين المستخدم أعاد
+// المحاولة نجح، بانر الخطأ في الرئيسية كان يفضل معلّق للأبد لحد ما يتقفل
+// يدوي. كانت الحل الأول هنا استدعائين منفصلين (`showErrorToast` +
+// `recordSuccess` يدوي) — دلوقتي مستبدلين بـ`reportOperationResult`
+// (استدعاء واحد بيقرر الحالتين تلقائيًا، راجع `errorReporting.ts`) عشان
+// النجاح والفشل ما يتفصلوش عن بعض تاني بمرور الوقت.
 import { I, loadOfficeSetting } from '../../../constants';
 import { Inp } from '@/shared/ui/Inp';
 import { Sel } from '@/shared/ui/Sel';
@@ -603,15 +605,16 @@ function EditStandaloneModalForm({ session, db, onClose, onSaved, linkedClient =
         // التقييد الناجح في طابور الأوفلاين (offline && queued) — __dbWrite
         // بيرجّع error حقيقي بس لو فشل الاتصال أونلاين، أو لو فشل الحفظ محليًا
         // في IndexedDB نفسها وقت الأوفلاين. يعني الفحص ده وحده كافي للحالتين.
-        if (error) {
+        if (!reportOperationResult('session_save', error, {
+            errorMessage: 'تعذّر حفظ الجلسة. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.',
+            label: 'حفظ الجلسة',
+        })) {
             setSaving(false);
-            showErrorToast('session_save', error, 'تعذّر حفظ الجلسة. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'حفظ الجلسة');
             return;
         }
-        // 🆕 FIX (٤ سبتمبر ٢٠٢٦): تسجيل نجاح الحفظ عشان أي بانر خطأ سابق
-        // لـ"حفظ الجلسة" يختفي فورًا من الرئيسية — بدل ما يفضل معلّق لحد ما
-        // المستخدم يقفله يدوي رغم إن المشكلة اتحلت بالفعل.
-        recordSuccess('session_save');
+        // ✅ نجاح الحفظ + مسح أي بانر خطأ سابق لـ"حفظ الجلسة" حصلوا تلقائيًا
+        // جوه استدعاء reportOperationResult الواحد فوق (نجاح+فشل مربوطين
+        // ببعض دلوقتي، مش استدعائين منفصلين ممكن يتفصلوا بمرور الوقت).
         // 🆕 (خطة حفظ المسودات — 1 أغسطس 2026): نفس قرار NewStandaloneSessionModal.tsx
         // — بيانات الجلسة اتحفظت فعليًا في الداتابيز (أو اتقيّدت في طابور
         // الأوفلاين بأمان لو النت مقطوع) بحلول هنا (مش مجرد الضغط على "حفظ")،
@@ -1269,11 +1272,12 @@ ${PDF_FONT_LINK}
         setDeleting(true);
         try {
             const { error, offline, queued } = await window.__dbWrite({ type: 'DELETE', table: 'case_sessions', id: session.id });
-            if (error) {
-                showErrorToast('session_delete', error, 'تعذّر حذف الجلسة. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'حذف الجلسة');
+            if (!reportOperationResult('session_delete', error, {
+                errorMessage: 'تعذّر حذف الجلسة. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.',
+                label: 'حذف الجلسة',
+            })) {
                 return;
             }
-            recordSuccess('session_delete');
             toast(offline && queued ? '📥 حذف الجلسة محفوظ محلياً — سيُزامن عند عودة الإنترنت' : '✅ تم حذف الجلسة');
             onDone();
             onClose();
