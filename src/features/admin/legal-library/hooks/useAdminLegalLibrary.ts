@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { toast } from '../../../../shared/lib/notifications';
 import { logActivity, buildFieldDiff, buildAddSnapshot, buildDeleteSnapshot, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
 import { showErrorToast } from '../../../../shared/lib/errorReporting';
+import { getEdgeFunctionErrorMessage, type EdgeFunctionError } from '../../../../shared/lib/edgeFunctionErrors';
 import { db } from '../../../../supabaseClient';
 import type { ProfileRow, LawRow, LegalCategoryRow } from '../../../../types';
 
@@ -11,16 +12,6 @@ export interface LawForm {
   law_number: string;
   law_year: string;
   category_id: string;
-}
-
-// شكل خطأ استدعاء edge function (duck-typing زي ما كان الكود بيتحقق منه
-// فعليًا — context ممكن يكون Response حقيقي فيه json()/text())
-interface EdgeFunctionError {
-  message?: string;
-  context?: {
-    json?: () => Promise<{ error?: string } | null>;
-    text?: () => Promise<string>;
-  };
 }
 
 export function useAdminLegalLibrary(profile?: ProfileRow | null) {
@@ -140,19 +131,14 @@ export function useAdminLegalLibrary(profile?: ProfileRow | null) {
 
   // ── المكتبة القانونية: معالجة قانون (استخراج المواد + توليد embeddings) ──
   // ── استخراج رسالة الخطأ الحقيقية من Edge Function (supabase-js بيرجع رسالة عامة بشكل افتراضي) ──
+  // 🔧 توحيد (خطة إعادة تصميم رسائل الأخطاء، P1): بتستخدم دلوقتي المصدر
+  // الموحد `edgeFunctionErrors.ts` بدل نسخة محلية مكررة. الفولباك
+  // ('حدث خطأ غير متوقع') اتحافظ عليه بنفس النص بالظبط لأن `handleProcessLaw`
+  // تحت بيقارن عليه حرفيًا لتمييز فشل غير متوقع عن رسالة الفانكشن نفسها.
   const getFnErrorMessage = async (error: EdgeFunctionError | null | undefined): Promise<string> => {
     if (!error) return '';
-    try {
-      if (error.context && typeof error.context.json === 'function') {
-        const body = await error.context.json();
-        if (body?.error) return body.error;
-      }
-      if (error.context && typeof error.context.text === 'function') {
-        const text = await error.context.text();
-        if (text) return text;
-      }
-    } catch (_) { /* تجاهل */ }
-    return 'حدث خطأ غير متوقع';
+    const extracted = await getEdgeFunctionErrorMessage(error);
+    return extracted || 'حدث خطأ غير متوقع';
   };
 
   const handleProcessLaw = async (law: LawRow) => {
