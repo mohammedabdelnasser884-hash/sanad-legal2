@@ -277,23 +277,50 @@ function DashboardTab({
                     React.createElement('div',{className:"flex-1 min-w-0"},
                         React.createElement('div',{className:"flex items-center gap-2 flex-wrap"},
                             React.createElement('span',{className:"text-[11px] font-black text-rose-400"},
-                                `⚠️ خلل في: ${err.label}`
+                                // 🔧 FIX (٤ سبتمبر ٢٠٢٦): "خلل في: النظام" كان بيوصل
+                                // للمستخدم بدون أي تحديد للعملية الفعلية اللي فشلت —
+                                // كان مربك ومخوّف. err.label دلوقتي دايمًا اسم عملية
+                                // محدد (بعد تعديل systemHealth.ts)، فالعنوان نفسه بقى
+                                // كافي وواضح من غير كلمة "النظام" العامة.
+                                `⚠️ تعذّر: ${err.label}`
                             ),
+                            // 🆕 [جديد] عداد تكرار — لو نفس المشكلة فشلت أكتر من مرة
+                            // ورا بعض بدل ما تظهر كارت لكل مرة (كانت بتظهر مكررة
+                            // ومربكة)، بتتجمع في كارت واحد بعداد واضح.
+                            (err.occurrenceCount && err.occurrenceCount > 1) ? React.createElement('span',{
+                                className:"text-[9px] font-bold text-rose-300/80 bg-rose-500/10 rounded-full px-1.5 py-0.5"
+                            }, `×${err.occurrenceCount}`) : null,
                             err.lastError ? React.createElement('span',{
                                 className:"text-[9px] text-slate-500 font-medium"
                             }, formatTime(err.lastError)) : null
                         ),
                         React.createElement('p',{className:"text-[10px] text-slate-400 mt-1 leading-relaxed"},
-                            err.errorMsg
+                            err.errorMsg,
+                            // 🆕 [جديد] رسالة طمأنينة ثابتة — تتظهر بس لو مش مذكورة
+                            // أصلاً جوه errorMsg (أغلب الرسائل المعروفة فعلاً بتنتهي
+                            // بيها)، عشان كل بانر يسيب المستخدم عارف الخطوة التالية.
+                            (err.errorMsg && !err.errorMsg.includes('تحقق من') && !err.errorMsg.includes('حاول'))
+                                ? ' تحقق من اتصالك بالإنترنت وحاول تاني.'
+                                : ''
                         ),
-                        // ⚡ [جديد] التفاصيل التقنية الخام (نص خطأ Postgres/Supabase
-                        // الحقيقي) — بتظهر بخط صغير رمادي عشان لو المشكلة اتكررت
-                        // تقدر تاخد screenshot وتبعته من غير ما تحتاج توصل
-                        // لأي أدوات مطوّرين (الشغل كله من الموبايل).
-                        err.rawError ? React.createElement('p',{
-                            className:"text-[8px] text-slate-600 mt-1 leading-relaxed break-all",
-                            style:{fontFamily:'monospace',direction:'ltr',textAlign:'right'}
-                        }, err.rawError) : null,
+                        // ⚡ [معدّل ٤ سبتمبر ٢٠٢٦] التفاصيل التقنية الخام (نص خطأ
+                        // Postgres/Supabase الحقيقي) بقت جوه <details> مطوية
+                        // افتراضيًا — كانت قبل كده ظاهرة دايمًا وبتوصّل نص إنجليزي
+                        // تقني (زي "Edge Function returned a non-2xx status code")
+                        // للمستخدم العادي من غير أي داعي، وكانت بتدّي إحساس بخلل
+                        // كبير في النظام كله. لسه موجودة لو احتجناها وقت الدعم، بس
+                        // مش أول حاجة تتشاف.
+                        err.rawError ? React.createElement('details',{
+                            className:"mt-1"
+                        },
+                            React.createElement('summary',{
+                                className:"text-[9px] text-slate-600 cursor-pointer select-none w-fit"
+                            }, 'تفاصيل تقنية'),
+                            React.createElement('p',{
+                                className:"text-[8px] text-slate-600 mt-1 leading-relaxed break-all",
+                                style:{fontFamily:'monospace',direction:'ltr',textAlign:'right'}
+                            }, err.rawError)
+                        ) : null,
                         err.lastSuccess ? React.createElement('p',{
                             className:"text-[9px] text-slate-600 mt-1"
                         }, `آخر عمل ناجح: ${formatTime(err.lastSuccess)}`) : null
