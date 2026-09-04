@@ -2,6 +2,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from '../../../shared/lib/notifications';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
+// 🆕 FIX (٤ سبتمبر ٢٠٢٦ — سد فجوة recordSuccess): session_save/session_delete
+// كانوا بيسجلوا فشل فقط (عن طريق showErrorToast) من غير أي تسجيل نجاح
+// مقابل، فلو حصل خطأ مرة وبعدين المستخدم أعاد المحاولة نجح، بانر الخطأ
+// في الرئيسية كان بيفضل معلّق للأبد لحد ما يتقفل يدوي — راجع خطة إعادة
+// تصميم رسائل الأخطاء.
+import { recordSuccess } from '../../../systemHealth';
 import { I, loadOfficeSetting } from '../../../constants';
 import { Inp } from '@/shared/ui/Inp';
 import { Sel } from '@/shared/ui/Sel';
@@ -602,6 +608,10 @@ function EditStandaloneModalForm({ session, db, onClose, onSaved, linkedClient =
             showErrorToast('session_save', error, 'تعذّر حفظ الجلسة. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'حفظ الجلسة');
             return;
         }
+        // 🆕 FIX (٤ سبتمبر ٢٠٢٦): تسجيل نجاح الحفظ عشان أي بانر خطأ سابق
+        // لـ"حفظ الجلسة" يختفي فورًا من الرئيسية — بدل ما يفضل معلّق لحد ما
+        // المستخدم يقفله يدوي رغم إن المشكلة اتحلت بالفعل.
+        recordSuccess('session_save');
         // 🆕 (خطة حفظ المسودات — 1 أغسطس 2026): نفس قرار NewStandaloneSessionModal.tsx
         // — بيانات الجلسة اتحفظت فعليًا في الداتابيز (أو اتقيّدت في طابور
         // الأوفلاين بأمان لو النت مقطوع) بحلول هنا (مش مجرد الضغط على "حفظ")،
@@ -1263,6 +1273,7 @@ ${PDF_FONT_LINK}
                 showErrorToast('session_delete', error, 'تعذّر حذف الجلسة. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'حذف الجلسة');
                 return;
             }
+            recordSuccess('session_delete');
             toast(offline && queued ? '📥 حذف الجلسة محفوظ محلياً — سيُزامن عند عودة الإنترنت' : '✅ تم حذف الجلسة');
             onDone();
             onClose();
