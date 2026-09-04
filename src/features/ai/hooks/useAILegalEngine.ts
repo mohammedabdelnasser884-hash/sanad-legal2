@@ -1,38 +1,25 @@
 import { db } from '../../../supabaseClient';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
+import { getEdgeFunctionErrorMessage, type EdgeFunctionError } from '../../../shared/lib/edgeFunctionErrors';
 import type { ProfileRow } from '../../../types';
 import type { CountryConfig } from '../../../constants';
 import type { AIMessage, LegalArticle } from './aiAssistantTypes';
 
-// شكل خطأ استدعاء edge function (duck-typing — نفس النمط المستخدم في
-// useAdminLegalLibrary.ts::getFnErrorMessage — context ممكن يكون Response
-// حقيقي فيه json()/text())
-interface EdgeFunctionError {
-  message?: string;
-  context?: {
-    json?: () => Promise<{ error?: string } | null>;
-    text?: () => Promise<string>;
-  };
-}
-
 // ── استخراج رسالة الخطأ الحقيقية من Edge Function ──
-// 🆕 إصلاح: ai-chat بترجّع رسائلها العربية المقصودة (السقف اليومي، الجلسة
-// منتهية، الحساب معطل...) بـ HTTP status غير 2xx، فـ supabase-js كان بيرجّع
-// error.message عام بالإنجليزي ("Edge Function returned a non-2xx status
-// code") بدل الرسالة الحقيقية جوه جسم الاستجابة. نفس نمط getFnErrorMessage.
+// 🔧 توحيد (خطة إعادة تصميم رسائل الأخطاء، P1): كان فيه نسخة محلية مكررة
+// هنا بفولباك خطير (`error?.message` الخام) — دلوقتي بتستخدم المصدر
+// الموحد `edgeFunctionErrors.ts` واللي فولباكه دايمًا رسالة عربية آمنة،
+// مش نص تقني خام زي "Edge Function returned a non-2xx status code".
+// 🆕 إصلاح أصلي محفوظ: ai-chat بترجّع رسائلها العربية المقصودة (السقف
+// اليومي، الجلسة منتهية، الحساب معطل...) بـ HTTP status غير 2xx، فـ
+// supabase-js كان بيرجّع رسالة عامة بدل الرسالة الحقيقية جوه جسم الاستجابة.
 const getFnErrorMessage = async (error: EdgeFunctionError | null | undefined): Promise<string> => {
     if (!error) return '';
-    try {
-        if (error.context && typeof error.context.json === 'function') {
-            const body = await error.context.json();
-            if (body?.error) return body.error;
-        }
-        if (error.context && typeof error.context.text === 'function') {
-            const text = await error.context.text();
-            if (text) return text;
-        }
-    } catch (_) { /* تجاهل */ }
-    return error?.message || 'تعذر الاتصال بالمساعد القانوني';
+    const extracted = await getEdgeFunctionErrorMessage(error);
+    // 🔧 الفولباك دلوقتي رسالة عربية آمنة ثابتة دايمًا — مش
+    // `error?.message` الخام زي قبل التوحيد (كان ممكن يسرّب نص إنجليزي
+    // تقني زي "Edge Function returned a non-2xx status code").
+    return extracted || 'تعذر الاتصال بالمساعد القانوني';
 };
 
 // ─────────────────────────────────────────────────────────
