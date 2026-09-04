@@ -63,6 +63,11 @@ export interface ServiceStatus {
   // لو المشكلة اتكررت نقدر نشخّصها من غير ما نحتاج نوصل للوجز/الترمينال
   // (الشغل كله من الموبايل من غير أي وصول لطرفية).
   rawError: string | null;
+  // 🆕 FIX (٤ سبتمبر ٢٠٢٦ — طلب المستخدم بعد بلاغ عن نفس رسالة الخطأ
+  // ظاهرة مرتين في نفس اللحظة): عداد تكرار لنفس المفتاح خلال نافذة زمنية
+  // قصيرة (DEDUPE_WINDOW_MS تحت)، عشان لو نفس العملية فشلت أكتر من مرة
+  // ورا بعض تظهر كارت واحد بعداد "(×٣)" بدل ما تتكرر بصريًا.
+  occurrenceCount?: number;
 }
 
 // ─── إيفنت التحديث الفوري ────────────────────────────────────────────────
@@ -137,13 +142,30 @@ const KNOWN_ERROR_MSGS: Record<KnownServiceKey, string> = {
 
 /** رسالة بسيطة بالعربي يفهمها صاحب المكتب، حتى لو المفتاح غير معروف */
 export function friendlyError(key: ServiceKey, rawError?: string, fallbackMsg?: string): string {
+  // 🔧 FIX (٤ سبتمبر ٢٠٢٦): قبل كده لو المفتاح معروف (زي app_general) كان
+  // بيرجّع نص القاموس العام دايمًا، حتى لو الاستدعاء نفسه معاه رسالة أدق
+  // ومحسوبة خصيصًا لسياق الخطأ ده (زي اللي بيحسبها installGlobalErrorWatcher
+  // تحت — بتوصف العملية اللي فشلت فعليًا) — فالرسالة الأدق كانت بتتترمي
+  // وتتستبدل بنص عام. دلوقتي أي رسالة صريحة ممررة مع الاستدعاء (fallbackMsg)
+  // ليها الأولوية دايمًا، ورجوع لقاموس المفاتيح المعروفة بس لو مفيش رسالة
+  // صريحة ممررة.
+  if (fallbackMsg) return fallbackMsg;
   if (isKnownKey(key)) return KNOWN_ERROR_MSGS[key];
-  return fallbackMsg || 'حصلت مشكلة في تنفيذ العملية دي. تحقق من اتصال الإنترنت أو حاول تاني.';
+  // 🆕 تشخيص: أي مفتاح مش معروف ومفيش له رسالة صريحة بيوصل لرسالة عامة
+  // غامضة للمستخدم — نسجّل في الـconsole اسم المفتاح بالظبط عشان نلاقي
+  // مصدره بسهولة في المرة الجاية بدل التخمين (يتلقط تلقائيًا في أي
+  // Playwright trace أو في الـconsole وقت الدعم عن بعد).
+  console.warn(`[systemHealth] مفتاح غير معروف بلا رسالة مخصصة: "${key}" — رجع للرسالة العامة الافتراضية.`);
+  return 'حصلت مشكلة في تنفيذ العملية دي. تحقق من اتصال الإنترنت أو حاول تاني.';
 }
 
 // ─── Storage ──────────────────────────────────────────────────────────────
 
 const LS_KEY = 'sanad_health'; // تخزين محلي لحالة الخدمات
+
+// نافذة تجميع التكرار: أي فشل لنفس المفتاح خلال ٣٠ ثانية من الفشل السابق
+// يتحسب تكرار لنفس الحادثة (occurrenceCount)، مش حادثة جديدة منفصلة.
+const DEDUPE_WINDOW_MS = 30_000;
 
 function loadAll(): Record<string, ServiceStatus> {
   try {
@@ -187,6 +209,7 @@ export function recordSuccess(key: ServiceKey, label?: string) {
     lastSuccess: new Date().toISOString(),
     errorMsg: null,
     rawError: null,
+    occurrenceCount: 0,
   };
   saveAll(all);
   broadcastHealthChange();
@@ -210,14 +233,22 @@ export function recordError(key: ServiceKey, rawError?: string, opts?: { label?:
   // ما يفضل مقفول جوه localStorage المتصفح بس.
   if (rawError) console.error(`[recordError:${key}] ${rawError}`);
   const all = loadAll();
+  // 🆕 FIX (٤ سبتمبر ٢٠٢٦ — dedupe بصري لنفس المفتاح): لو نفس المفتاح فشل
+  // تاني خلال نافذة قصيرة (DEDUPE_WINDOW_MS)، منزودش كارت جديد ولا نعتبره
+  // حدث منفصل — بنزوّد عداد occurrenceCount بس، وبانر الداشبورد يعرضه
+  // كـ"(×٣)" بدل ما يفضل يفتح كارت لكل تكرار.
+  const prev = all[key];
+  const prevErrorAt = prev?.lastError ? new Date(prev.lastError).getTime() : 0;
+  const withinDedupeWindow = prev?.status === 'error' && (Date.now() - prevErrorAt) < DEDUPE_WINDOW_MS;
   all[key] = {
-    ...all[key],
+    ...prev,
     key,
-    label: resolveLabel(key, opts?.label || all[key]?.label),
+    label: resolveLabel(key, opts?.label || prev?.label),
     status: 'error',
     lastError: new Date().toISOString(),
     errorMsg: friendlyError(key, rawError, opts?.message),
     rawError: rawError || null,
+    occurrenceCount: withinDedupeWindow ? (prev?.occurrenceCount || 1) + 1 : 1,
   };
   saveAll(all);
   broadcastHealthChange();
@@ -262,24 +293,45 @@ export function installGlobalErrorWatcher() {
     // ⚠️ reason ممكن يكون أي حاجة (Error, نص، أو كائن مخصص) — كاست بسيط
     // زي نفس أسلوب (e as Error)?.message المستخدم في useTelegramAlerts.ts.
     const msg = (reason as { message?: string })?.message || (typeof reason === 'string' ? reason : 'خطأ غير متوقع');
-    // نحاول نستنتج العملية من رسالة الخطأ
-    const label = msg.includes('fetch') || msg.includes('network') ? 'الاتصال بالإنترنت'
-      : msg.includes('cases') ? 'جلب القضايا'
-      : msg.includes('clients') ? 'جلب الموكلين'
-      : msg.includes('sessions') ? 'جلب الجلسات'
-      : msg.includes('fees') ? 'جلب الأتعاب'
-      : msg.includes('reminders') ? 'جلب التذكيرات'
-      : 'النظام';
-    const message = msg.includes('fetch') || msg.includes('network')
+    // 🆕 FIX (٤ سبتمبر ٢٠٢٦ — تشخيص دقيق بدل التخمين): لو الاستثناء عنده
+    // stack trace بنسجله في الـconsole (بيتلقط تلقائيًا في أي trace.zip بتاع
+    // Playwright أو في console وقت الدعم عن بعد) عشان لو نفس الخطأ ده اتكرر
+    // نقدر نلاقي بالظبط مين الاستدعاء اللي فلت من غير try/catch مخصص، بدل
+    // ما نفضل نخمن من نص الرسالة بس.
+    const stack = (reason as { stack?: string })?.stack;
+    if (stack) console.error('[installGlobalErrorWatcher:unhandledrejection] فلت من غير try/catch مخصص —\n', stack);
+    // نحاول نستنتج العملية من رسالة الخطأ، ونشتق منها مفتاح تخزين مخصص
+    // (مش 'app_general' ثابت دايمًا) — عشان أسباب مختلفة فعليًا تتسجل
+    // كإدخالات منفصلة بدل ما تتكتب فوق بعض، وعشان الـdedupe في recordError
+    // يشتغل صح على كل سبب لوحده.
+    const category = msg.includes('fetch') || msg.includes('network') ? 'network'
+      : msg.includes('cases') ? 'cases'
+      : msg.includes('clients') ? 'clients'
+      : msg.includes('sessions') ? 'sessions'
+      : msg.includes('fees') ? 'fees'
+      : msg.includes('reminders') ? 'reminders'
+      : 'unknown';
+    const label = category === 'network' ? 'الاتصال بالإنترنت'
+      : category === 'cases' ? 'جلب القضايا'
+      : category === 'clients' ? 'جلب الموكلين'
+      : category === 'sessions' ? 'جلب الجلسات'
+      : category === 'fees' ? 'جلب الأتعاب'
+      : category === 'reminders' ? 'جلب التذكيرات'
+      : 'عملية غير متوقعة';
+    const message = category === 'network'
       ? 'تعذّر الاتصال بقاعدة البيانات. تحقق من الإنترنت وأعد المحاولة.'
       : `حصل خطأ غير متوقع في ${label}. أعد تحميل التطبيق أو تواصل مع الدعم.`;
-    recordError('app_general', msg, { label, message });
+    recordError(`app_general_${category}`, msg, { label, message });
   });
 
   window.addEventListener('error', (event: ErrorEvent) => {
     // نتجاهل أخطاء تحميل الموارد (صور/سكريبتات) عشان مايبقاش فيه ضوضاء
     if (event?.target && event.target !== window) return;
-    recordError('app_general', event?.message);
+    if (event?.error?.stack) console.error('[installGlobalErrorWatcher:error] خطأ JS غير ملتقط —\n', event.error.stack);
+    recordError('app_general_unknown', event?.message, {
+      label: 'عملية غير متوقعة',
+      message: 'حصل خطأ غير متوقع. أعد تحميل التطبيق، ولو المشكلة استمرت تواصل مع الدعم.',
+    });
   });
 }
 
