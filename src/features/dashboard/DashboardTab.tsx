@@ -27,6 +27,21 @@ type LinkedCaseLike = Partial<MappedCase> & Partial<SessionCaseEmbed>;
 const fmtDate = (d: Date) =>
     d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
+// 🔧 FIX (خطة إعادة تصميم رسائل الأخطاء، §٤.٢ — ٤ سبتمبر ٢٠٢٦): قبل كده
+// سطر "تحقق من اتصالك بالإنترنت" كان بيتلصق تلقائيًا على أي رسالة خطأ
+// مفيهاش أصلاً كلمة "تحقق من"/"حاول"، بغض النظر عن نوع الخطأ الحقيقي —
+// يعني خطأ صلاحيات أو Validation كان بيتنسب غلط للإنترنت ويضلل المستخدم.
+// دلوقتي بنستخدم أدلة فعلية بس (حالة الاتصال المعروفة فعليًا في التطبيق،
+// أو مفتاح/نص خطأ فيه إشارة شبكة واضحة) قبل ما ننسب المشكلة للإنترنت؛
+// غير كده بتترجع كلمة عامة ("حاول مرة أخرى.") من غير اتهام الإنترنت.
+function isLikelyNetworkRelated(err: ServiceStatus, dbOnline: boolean | null): boolean {
+    if (dbOnline === false) return true; // دليل مباشر: التطبيق نفسه راصد إن الاتصال مقطوع
+    const key = String(err.key || '');
+    if (key === 'app_general_network' || key === 'telegram') return true;
+    const raw = String(err.rawError || '');
+    return /fetch|network|Network|timeout|Timeout|ECONNREFUSED|Failed to fetch|ERR_INTERNET/.test(raw);
+}
+
 interface DashboardTabProps {
   profile: ProfileRow | null;
   cases: MappedCase[];
@@ -296,11 +311,16 @@ function DashboardTab({
                         ),
                         React.createElement('p',{className:"text-[10px] text-slate-400 mt-1 leading-relaxed"},
                             err.errorMsg,
-                            // 🆕 [جديد] رسالة طمأنينة ثابتة — تتظهر بس لو مش مذكورة
-                            // أصلاً جوه errorMsg (أغلب الرسائل المعروفة فعلاً بتنتهي
-                            // بيها)، عشان كل بانر يسيب المستخدم عارف الخطوة التالية.
+                            // 🔧 [معدّل ٤ سبتمبر ٢٠٢٦] رسالة طمأنينة — تتظهر بس لو مش
+                            // مذكورة أصلاً جوه errorMsg (أغلب الرسائل المعروفة فعلاً
+                            // بتنتهي بيها). النص نفسه بقى شرطي بنوع الخطأ: "تحقق من
+                            // الإنترنت" بس لو فيه دليل فعلي إن المشكلة شبكة
+                            // (isLikelyNetworkRelated)، وإلا رسالة عامة محايدة
+                            // ("حاول مرة أخرى") من غير اتهام الإنترنت بلا دليل.
                             (err.errorMsg && !err.errorMsg.includes('تحقق من') && !err.errorMsg.includes('حاول'))
-                                ? ' تحقق من اتصالك بالإنترنت وحاول تاني.'
+                                ? (isLikelyNetworkRelated(err, dbOnline)
+                                    ? ' تحقق من اتصالك بالإنترنت وحاول تاني.'
+                                    : ' حاول مرة أخرى.')
                                 : ''
                         ),
                         // ⚡ [معدّل ٤ سبتمبر ٢٠٢٦] التفاصيل التقنية الخام (نص خطأ
