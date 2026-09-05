@@ -16,7 +16,7 @@ import type { AIMessage } from './aiAssistantTypes';
 
 const recordError = vi.fn();
 const recordSuccess = vi.fn();
-const trackQueryOutcome = vi.fn(async (_key: string, error: unknown) => {
+const trackQueryOutcome = vi.fn(async (_key: string, error: unknown, _opts?: { label: string; message: string }) => {
   if (!error) { recordSuccess(_key); return { ok: true }; }
   recordError(_key, (error as { message?: string })?.message);
   return { ok: false };
