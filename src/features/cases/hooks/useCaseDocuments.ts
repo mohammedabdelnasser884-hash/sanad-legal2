@@ -5,6 +5,7 @@ import { validateUploadFile, resolveStorageUrl } from '../../../shared/lib/stora
 import { logActivity, buildDeleteSnapshot, buildAddSnapshot } from '../../../shared/lib/dataAccess';
 import { getCurrentTenantId } from '../../../constants';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
+import { recordSuccess } from '../../../systemHealth';
 import type { ClientRow, ProfileRow, CaseDocumentRow } from '../../../types';
 import type { MappedCase } from '../../../hooks/useAppData';
 
@@ -91,6 +92,7 @@ export function useCaseDocuments(
       return;
     }
     toast('✅ تم رفع المستند بنجاح');
+    recordSuccess('case_document_upload');
     logActivity(db, 'رفع مستند', {
       entity_type: 'document', details: `${caseData.title} — ${docLabel.trim() || pendingFile.name}`,
       case_name: caseData.title || null, case_type: caseData.type || null,
