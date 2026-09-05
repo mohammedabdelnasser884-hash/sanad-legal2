@@ -30,7 +30,11 @@ const from = vi.fn((table: string) => {
 vi.mock('../../supabaseClient', () => ({ db: { from: (...a: Parameters<typeof from>) => from(...a) } }));
 
 const recordError = vi.fn();
-vi.mock('../../systemHealth', () => ({ recordError: (...a: unknown[]) => recordError(...a) }));
+const recordSuccess = vi.fn();
+vi.mock('../../systemHealth', () => ({
+  recordError: (...a: unknown[]) => recordError(...a),
+  recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+}));
 
 import CaseSummary from './CaseSummary';
 
