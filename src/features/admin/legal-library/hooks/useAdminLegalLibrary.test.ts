@@ -116,7 +116,11 @@ vi.mock('../../../../shared/lib/dataAccess', async (importOriginal) => {
 });
 
 const recordError = vi.fn();
-vi.mock('../../../../systemHealth', () => ({ recordError: (...a: unknown[]) => recordError(...a) }));
+const recordSuccess = vi.fn();
+vi.mock('../../../../systemHealth', () => ({
+  recordError: (...a: unknown[]) => recordError(...a),
+  recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+}));
 
 const PROFILE = { id: 'admin-1', full_name: 'أحمد المدير' } as unknown as ProfileRow;
 const FORM = { title: 'قانون العمل', law_number: '12', law_year: '2003', category_id: 'cat-1' };
