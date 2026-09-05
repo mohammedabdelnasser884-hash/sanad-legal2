@@ -3,6 +3,7 @@ import { toast } from '../../../../shared/lib/notifications';
 import { logActivity, buildFieldDiff, buildAddSnapshot, buildDeleteSnapshot, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
 import { callAdminAction, db } from '../../../../supabaseClient';
 import { showErrorToast } from '../../../../shared/lib/errorReporting';
+import { recordSuccess } from '../../../../systemHealth';
 import type { PermissionsMap } from '../../../../shared/lib/permissions';
 import type { ProfileRow } from '../../../../types';
 
@@ -87,6 +88,7 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
       });
       setEditUser(null);
       fetchLawyers();
+      recordSuccess('admin_update_profile');
     } catch (e) {
       showErrorToast('admin_update_profile', e, 'تعذّر حفظ التعديلات. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'تعديل مستخدم');
     }
@@ -118,6 +120,7 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
       });
       setShowAddUser(false);
       fetchLawyers();
+      recordSuccess('admin_create_user');
     } catch (e) {
       showErrorToast('admin_create_user', e, 'تعذّر إنشاء الحساب. تأكد من صحة البيانات وحاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'إنشاء مستخدم');
     }
@@ -147,6 +150,7 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
       });
       setConfirmDelete(null);
       fetchLawyers();
+      recordSuccess('admin_delete_user');
     } catch (e) {
       // 🩺 TEMP DEBUG (30 يوليو 2026) — showErrorToast بتعرض رسالة عامة قصدًا
       // للمستخدم، فمخفية السبب الحقيقي حتى في لوجز CI النصية. السطر ده مؤقت
@@ -170,6 +174,7 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
         user_id: user.user_id || null,
         is_active: newState,
       });
+      recordSuccess('admin_update_profile');
     } catch (e) {
       showErrorToast('admin_update_profile', e, 'تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'تفعيل/تعطيل مستخدم');
       return;
@@ -250,6 +255,7 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
       logActivity(db, isLocked ? 'فتح حساب' : 'قفل حساب', { userName: _userName, entity_type: 'user', entity_id: user.id, details: user.full_name || null });
       setConfirmLock(null);
       fetchLawyers();
+      recordSuccess('admin_toggle_lock');
     } catch (e) {
       showErrorToast('admin_toggle_lock', e, 'تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'قفل/فتح حساب');
     }
