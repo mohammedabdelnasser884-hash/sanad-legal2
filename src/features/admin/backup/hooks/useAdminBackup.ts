@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { toast } from '../../../../shared/lib/notifications';
 import { showErrorToast } from '../../../../shared/lib/errorReporting';
+import { recordSuccess } from '../../../../systemHealth';
 import { logActivity } from '../../../../shared/lib/dataAccess';
 import { db } from '../../../../supabaseClient';
 import { formatArDate } from '../../../../shared/ui/arabicLocale';
@@ -352,6 +353,7 @@ export function useAdminBackup(profile?: ProfileRow | null) {
     }
     toast(incomplete ? '⚠️ تم الحفظ لكن بعض الجداول فشل تصديرها — راجع النسخة' : '✅ تم إنشاء النسخة الاحتياطية بنجاح');
     logActivity(db, 'إنشاء نسخة احتياطية', { entity_type: 'backup', details: `${totalRows} صف — ${sizeKb} KB`, userName: _userName });
+    recordSuccess('admin_backup_create');
     fetchBackups();
   };
 
