@@ -318,6 +318,7 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             toast('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
             return;
         }
+        recordSuccess('reminder_save');
         toast('✅ تم إضافة التذكير');
         // ⚡ NEW (سجل النشاط — بيان مميز عند الإضافة، مرحلة 4): التاريخ بدل
         // العنوان بس.
@@ -358,6 +359,7 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             toast('❌ تعذّر تحديث التذكير',true);
             return;
         }
+        recordSuccess('reminder_save');
         toast(r.done ? '↩️ تم إلغاء الإنجاز' : '✅ تم تسجيل الإنجاز');
         fetchReminders();
     };
@@ -384,6 +386,7 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             toast('❌ تعذّر حذف التذكير',true);
             return;
         }
+        recordSuccess('reminder_save');
         toast('🗑 تم حذف التذكير');
         logActivity(db, 'حذف تذكير', {
             userName: _userName, entity_type: 'reminder', entity_id: id,
@@ -415,6 +418,7 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             toast('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
             return;
         }
+        recordSuccess('reminder_save');
         toast('✅ تم تعديل المهمة');
         // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 4، 19 أغسطس 2026):
         // editTarget هو ReminderRow خام (اتلقط قبل safeUpdate، لسه بالقيم القديمة).
@@ -481,6 +485,7 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
         if (latestSearchTermRef.current !== term) return;
         if (titleRes.error) recordError('db_reminders_search', titleRes.error.message);
         if (notesRes.error) recordError('db_reminders_search', notesRes.error.message);
+        if (!titleRes.error && !notesRes.error) recordSuccess('db_reminders_search');
         const merged = [...(titleRes.data||[]), ...(notesRes.data||[])];
         const seen = new Set<string>();
         const deduped = merged.filter((r: ReminderRow) => {
