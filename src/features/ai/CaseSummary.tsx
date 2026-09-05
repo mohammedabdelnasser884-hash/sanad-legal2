@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../supabaseClient';
-import { recordError } from '../../systemHealth';
+import { recordError, recordSuccess } from '../../systemHealth';
 import {
   CasePicker, EmptyState, SectionCard, CopyButton, DisclaimerNote, ErrorState,
   UsageLimitState, isQuotaExceededMessage,
@@ -134,6 +134,7 @@ function CaseSummary({ cases, clients, retrieveLegalArticles, buildLegalContextB
       const prompt = buildSummaryPrompt(contextText);
       const reply = await callAI(prompt, null, legalContextBlock);
       setSummary(reply);
+      recordSuccess('ai_case_summary');
     } catch (e) {
       const _msg = e instanceof Error ? e.message : String(e);
       // نفس منطق useAIChat/useAIDocumentGenerator: رسالة السيرفر العربية
