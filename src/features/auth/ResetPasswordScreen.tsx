@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../../supabaseClient';
-import { recordError } from '../../systemHealth';
+import { recordError, recordSuccess } from '../../systemHealth';
 import { I, SanadMark } from '../../constants';
 import { Inp } from '@/shared/ui/Inp';
 import { getEdgeFunctionErrorMessage, looksArabicUserMessage, type EdgeFunctionError } from '@/shared/lib/edgeFunctionErrors';
@@ -89,6 +89,7 @@ function ResetPasswordScreen() {
             return;
         }
         setResendCooldown(RESEND_COOLDOWN_SECONDS);
+        recordSuccess('reset_password_otp_send');
     };
 
     // أول ما الشاشة تفتح: هات إيميل المستخدم من جلسة الـrecovery
@@ -137,6 +138,7 @@ function ResetPasswordScreen() {
             return;
         }
         setStage('password');
+        recordSuccess('reset_password_otp_verify');
     };
 
     // ⚠️ FIX (2 سبتمبر 2026 — إغلاق ثغرة تخطي شاشة الكود): كان هنا
@@ -170,6 +172,7 @@ function ResetPasswordScreen() {
         // نجحت — بنسيب رسالة النجاح تظهر لحظة قبل ما نسجّل خروج ونرجّع
         // المستخدم لشاشة الدخول العادية عشان يدخل بالباسورد الجديد.
         setDone(true);
+        recordSuccess('reset_password');
         setTimeout(() => { db.auth.signOut(); }, 1500);
     };
 
