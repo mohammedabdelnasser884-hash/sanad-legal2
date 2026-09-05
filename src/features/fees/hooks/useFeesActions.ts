@@ -6,7 +6,7 @@ import { COUNTRY_CONFIGS } from '../../../constants';
 import { db } from '../../../supabaseClient';
 import { formatArNumber, formatArDate } from '../../../shared/ui/arabicLocale';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
-import { recordError, recordSuccess } from '../../../systemHealth';
+import { runTrackedOperation, trackQueryOutcome } from '../../../systemHealth';
 import { computeFeeStatus } from '../feeStatus';
 import { formatPartySideLine } from '../../../shared/parties/partyDisplay';
 import type { PartyDisplayRow } from '../../../shared/parties/partiesDisplay';
@@ -192,63 +192,84 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         // أونلاين بطيء يتقفل بعد 8 ثواني بدل ما يفضل معلّق، وأي فشل يتسجل
         // بلقب واضح (db_fees) بدل ما يظهر برسالة عامة غلط في الداشبورد.
         const guard = createFetchGuard();
+        const feesOpts = { label: 'جلب الأتعاب', message: 'تعذّر تحميل بيانات الأتعاب. تحقق من الاتصال بالإنترنت.' };
         if (guard.offline) {
-            recordError('db_fees', 'offline');
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_fees
+            // (حالة offline) لـtrackQueryOutcome — كائن خطأ صناعي بسيط زي نمط
+            // useAppData.ts/useRemindersTab.ts.
+            await trackQueryOutcome('db_fees', { message: 'offline' }, feesOpts);
             const cached = loadFeesCache<Record<string, number>>(FEES_COUNTS_CACHE_KEY, profile.tenant_id);
             if (cached) { setStatusCounts(cached); toast('أنت أوف لاين — بتشوف آخر نسخة محفوظة من عدّاد الأتعاب'); }
             return;
         }
-        try {
-            const [c1, c2, c3] = await Promise.all([
-                db.from('case_fees').select('id', { count: 'exact', head: true }).eq('status','collected').is('deleted_at', null).abortSignal(guard.controller.signal),
-                db.from('case_fees').select('id', { count: 'exact', head: true }).eq('status','deferred').is('deleted_at', null).abortSignal(guard.controller.signal),
-                db.from('case_fees').select('id', { count: 'exact', head: true }).eq('status','open').is('deleted_at', null).abortSignal(guard.controller.signal),
-            ]);
-            if (c1.error || c2.error || c3.error) throw (c1.error || c2.error || c3.error);
-            const collected = c1.count||0, deferred = c2.count||0, open = c3.count||0;
-            const counts = { collected, deferred, open, pending: deferred + open };
-            setStatusCounts(counts);
-            saveFeesCache(FEES_COUNTS_CACHE_KEY, profile.tenant_id, counts);
-            recordSuccess('db_fees');
-        } catch (err) {
-            const msg = guard.didTimeOut() ? 'timeout' : (err as { message?: string })?.message || 'fetch failed';
-            recordError('db_fees', msg);
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣، فئة B): تحويل من
+        // try/catch + recordError(msg مستخرج مسبقًا) لـrunTrackedOperation —
+        // العملية دي throw-based فعليًا (Promise.all + throw عند أي error).
+        // الخطأ الخام (مش .message مستخرج) دلوقتي بيوصل لـclassifyError صح.
+        // منطق كشف الـtimeout (guard.didTimeOut()) اتحافظ عليه بالظبط زي ما
+        // كان جوه catch داخلي هنا، عشان classifyError يفضل يتعرف على
+        // 'timeout' زي قبل التحويل بالضبط.
+        const result = await runTrackedOperation('db_fees', feesOpts, async () => {
+            try {
+                const [c1, c2, c3] = await Promise.all([
+                    db.from('case_fees').select('id', { count: 'exact', head: true }).eq('status','collected').is('deleted_at', null).abortSignal(guard.controller.signal),
+                    db.from('case_fees').select('id', { count: 'exact', head: true }).eq('status','deferred').is('deleted_at', null).abortSignal(guard.controller.signal),
+                    db.from('case_fees').select('id', { count: 'exact', head: true }).eq('status','open').is('deleted_at', null).abortSignal(guard.controller.signal),
+                ]);
+                if (c1.error || c2.error || c3.error) throw (c1.error || c2.error || c3.error);
+                const collected = c1.count||0, deferred = c2.count||0, open = c3.count||0;
+                const counts = { collected, deferred, open, pending: deferred + open };
+                setStatusCounts(counts);
+                saveFeesCache(FEES_COUNTS_CACHE_KEY, profile.tenant_id, counts);
+                return counts;
+            } catch (err) {
+                if (guard.didTimeOut()) throw { message: 'timeout' };
+                throw err;
+            }
+        });
+        if (!result.ok) {
             const cached = loadFeesCache<Record<string, number>>(FEES_COUNTS_CACHE_KEY, profile.tenant_id);
             if (cached) setStatusCounts(cached);
-        } finally {
-            guard.cleanup();
         }
+        guard.cleanup();
     }, [profile]);
 
     const fetchGrandSummary = useCallback(async () => {
         if (!profile) return;
         setLoadingSummary(true);
         const guard = createFetchGuard();
+        const feesOpts = { label: 'جلب الأتعاب', message: 'تعذّر تحميل بيانات الأتعاب. تحقق من الاتصال بالإنترنت.' };
         if (guard.offline) {
-            recordError('db_fees', 'offline');
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_fees (offline).
+            await trackQueryOutcome('db_fees', { message: 'offline' }, feesOpts);
             const cached = loadFeesCache<{ total: number; paid: number }>(FEES_SUMMARY_CACHE_KEY, profile.tenant_id);
             if (cached) { setGrandTotalAll(cached.total); setGrandPaidAll(cached.paid); toast('أنت أوف لاين — بتشوف آخر نسخة محفوظة من إجمالي الأتعاب'); }
             setLoadingSummary(false);
             return;
         }
-        try {
-            const { data, error } = await db.from('case_fees').select('total_fees,paid_fees').is('deleted_at', null).abortSignal(guard.controller.signal);
-            if (error) throw error;
-            const t = (data || []).reduce((s: number, f: { total_fees: number | null }) => s + (f.total_fees || 0), 0);
-            const p = (data || []).reduce((s: number, f: { paid_fees: number | null }) => s + (f.paid_fees  || 0), 0);
-            setGrandTotalAll(t);
-            setGrandPaidAll(p);
-            saveFeesCache(FEES_SUMMARY_CACHE_KEY, profile.tenant_id, { total: t, paid: p });
-            recordSuccess('db_fees');
-        } catch (err) {
-            const msg = guard.didTimeOut() ? 'timeout' : (err as { message?: string })?.message || 'fetch failed';
-            recordError('db_fees', msg);
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣، فئة B): تحويل لـrunTrackedOperation
+        // (نفس منطق fetchStatusCounts فوق — كشف الـtimeout محفوظ زي ما هو).
+        const result = await runTrackedOperation('db_fees', feesOpts, async () => {
+            try {
+                const { data, error } = await db.from('case_fees').select('total_fees,paid_fees').is('deleted_at', null).abortSignal(guard.controller.signal);
+                if (error) throw error;
+                const t = (data || []).reduce((s: number, f: { total_fees: number | null }) => s + (f.total_fees || 0), 0);
+                const p = (data || []).reduce((s: number, f: { paid_fees: number | null }) => s + (f.paid_fees  || 0), 0);
+                setGrandTotalAll(t);
+                setGrandPaidAll(p);
+                saveFeesCache(FEES_SUMMARY_CACHE_KEY, profile.tenant_id, { total: t, paid: p });
+                return { t, p };
+            } catch (err) {
+                if (guard.didTimeOut()) throw { message: 'timeout' };
+                throw err;
+            }
+        });
+        if (!result.ok) {
             const cached = loadFeesCache<{ total: number; paid: number }>(FEES_SUMMARY_CACHE_KEY, profile.tenant_id);
             if (cached) { setGrandTotalAll(cached.total); setGrandPaidAll(cached.paid); }
-        } finally {
-            guard.cleanup();
-            setLoadingSummary(false);
         }
+        guard.cleanup();
+        setLoadingSummary(false);
     }, [profile]);
 
     useEffect(() => { fetchGrandSummary(); fetchStatusCounts(); }, [fetchGrandSummary, fetchStatusCounts]);
@@ -272,8 +293,10 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         // استعلام `case_fees` الرئيسي — لازم نفس فحص الأوفلاين يغطي الاتنين
         // مع بعض، مش بس الاستعلام الرئيسي زي قبل.
         const guard = createFetchGuard();
+        const feesOpts = { label: 'جلب الأتعاب', message: 'تعذّر تحميل بيانات الأتعاب. تحقق من الاتصال بالإنترنت.' };
         if (guard.offline) {
-            recordError('db_fees', 'offline');
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_fees (offline).
+            await trackQueryOutcome('db_fees', { message: 'offline' }, feesOpts);
             if (page === 0 && !search.trim()) {
                 const cached = loadFeesCache<{ fees: CaseFeeRow[]; payments: PaymentsByFeeId }>(FEES_PAGE0_CACHE_PREFIX + status, profile.tenant_id);
                 if (cached) {
@@ -334,53 +357,58 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             q = q.or(orParts.join(','));
         }
 
-        try {
-            const { data, error, count } = await q.abortSignal(guard.controller.signal);
-            if (error) throw error;
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣، فئة B): تحويل لـrunTrackedOperation
+        // (نفس منطق fetchStatusCounts/fetchGrandSummary فوق — كشف الـtimeout محفوظ زي ما هو).
+        const result = await runTrackedOperation('db_fees', feesOpts, async () => {
+            try {
+                const { data, error, count } = await q.abortSignal(guard.controller.signal);
+                if (error) throw error;
 
-            const list = data || [];
+                const list = data || [];
 
-            // جلب الدفعات للصفحة الحالية بس
-            const feeIds = list.map((f) => f.id);
-            const grouped: PaymentsByFeeId = {};
-            if (feeIds.length > 0) {
-                const { data: pays, error: paysErr } = await db.from('fee_payments')
-                    .select('*')
-                    .in('fee_id', feeIds)
-                    .order('payment_date', { ascending: false })
-                    .abortSignal(guard.controller.signal);
-                if (paysErr) throw paysErr;
-                (pays || []).forEach((p) => {
-                    const key = p.fee_id as string;
-                    if (!grouped[key]) grouped[key] = [];
-                    grouped[key].push(p);
-                });
+                // جلب الدفعات للصفحة الحالية بس
+                const feeIds = list.map((f) => f.id);
+                const grouped: PaymentsByFeeId = {};
+                if (feeIds.length > 0) {
+                    const { data: pays, error: paysErr } = await db.from('fee_payments')
+                        .select('*')
+                        .in('fee_id', feeIds)
+                        .order('payment_date', { ascending: false })
+                        .abortSignal(guard.controller.signal);
+                    if (paysErr) throw paysErr;
+                    (pays || []).forEach((p) => {
+                        const key = p.fee_id as string;
+                        if (!grouped[key]) grouped[key] = [];
+                        grouped[key].push(p);
+                    });
+                }
+
+                if (append) {
+                    setFees((prev) => [...prev, ...list]);
+                    setPayments((prev) => ({ ...prev, ...grouped }));
+                } else {
+                    setFees(list);
+                    setPayments(grouped);
+                }
+
+                setFeesTotal(count || 0);
+                setFeesPage(page);
+                setFeesMore((page + 1) * PAGE_SIZE < (count || 0));
+                if (page === 0 && !search.trim()) saveFeesCache(FEES_PAGE0_CACHE_PREFIX + status, profile.tenant_id, { fees: list, payments: grouped });
+                return list;
+            } catch (err) {
+                if (guard.didTimeOut()) throw { message: 'timeout' };
+                throw err;
             }
-
-            if (append) {
-                setFees((prev) => [...prev, ...list]);
-                setPayments((prev) => ({ ...prev, ...grouped }));
-            } else {
-                setFees(list);
-                setPayments(grouped);
-            }
-
-            setFeesTotal(count || 0);
-            setFeesPage(page);
-            setFeesMore((page + 1) * PAGE_SIZE < (count || 0));
-            if (page === 0 && !search.trim()) saveFeesCache(FEES_PAGE0_CACHE_PREFIX + status, profile.tenant_id, { fees: list, payments: grouped });
-            recordSuccess('db_fees');
-        } catch (err) {
-            const msg = guard.didTimeOut() ? 'timeout' : (err as { message?: string })?.message || 'fetch failed';
-            recordError('db_fees', msg);
+        });
+        if (!result.ok) {
             if (page === 0 && !search.trim()) {
                 const cached = loadFeesCache<{ fees: CaseFeeRow[]; payments: PaymentsByFeeId }>(FEES_PAGE0_CACHE_PREFIX + status, profile.tenant_id);
                 if (cached) { setFees(cached.fees); setPayments(cached.payments); setFeesMore(false); }
             }
-        } finally {
-            guard.cleanup();
-            setLoading(false);
         }
+        guard.cleanup();
+        setLoading(false);
     }, [profile, feesFilter, feesSearch]);
 
     // ── جلب كل سجلات الأتعاب الخاصة بقضية واحدة بس (وضع caseScopeId) ──
@@ -391,48 +419,52 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         if (!profile || !caseId) return;
         setLoading(true);
         const guard = createFetchGuard();
+        const feesOpts = { label: 'جلب الأتعاب', message: 'تعذّر تحميل بيانات الأتعاب. تحقق من الاتصال بالإنترنت.' };
         if (guard.offline) {
-            recordError('db_fees', 'offline');
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_fees (offline).
+            await trackQueryOutcome('db_fees', { message: 'offline' }, feesOpts);
             setLoading(false);
             return;
         }
-        try {
-            const { data, error } = await db.from('case_fees')
-                .select('*')
-                .eq('case_id', caseId)
-                .is('deleted_at', null)
-                .order('created_at', { ascending: false })
-                .abortSignal(guard.controller.signal);
-            if (error) throw error;
-            const list = data || [];
-            const feeIds = list.map((f) => f.id);
-            const grouped: PaymentsByFeeId = {};
-            if (feeIds.length > 0) {
-                const { data: pays, error: paysErr } = await db.from('fee_payments')
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣، فئة B): تحويل لـrunTrackedOperation.
+        await runTrackedOperation('db_fees', feesOpts, async () => {
+            try {
+                const { data, error } = await db.from('case_fees')
                     .select('*')
-                    .in('fee_id', feeIds)
-                    .order('payment_date', { ascending: false })
+                    .eq('case_id', caseId)
+                    .is('deleted_at', null)
+                    .order('created_at', { ascending: false })
                     .abortSignal(guard.controller.signal);
-                if (paysErr) throw paysErr;
-                (pays || []).forEach((p) => {
-                    const key = p.fee_id as string;
-                    if (!grouped[key]) grouped[key] = [];
-                    grouped[key].push(p);
-                });
+                if (error) throw error;
+                const list = data || [];
+                const feeIds = list.map((f) => f.id);
+                const grouped: PaymentsByFeeId = {};
+                if (feeIds.length > 0) {
+                    const { data: pays, error: paysErr } = await db.from('fee_payments')
+                        .select('*')
+                        .in('fee_id', feeIds)
+                        .order('payment_date', { ascending: false })
+                        .abortSignal(guard.controller.signal);
+                    if (paysErr) throw paysErr;
+                    (pays || []).forEach((p) => {
+                        const key = p.fee_id as string;
+                        if (!grouped[key]) grouped[key] = [];
+                        grouped[key].push(p);
+                    });
+                }
+                setFees(list);
+                setPayments(grouped);
+                setFeesTotal(list.length);
+                setFeesPage(0);
+                setFeesMore(false);
+                return list;
+            } catch (err) {
+                if (guard.didTimeOut()) throw { message: 'timeout' };
+                throw err;
             }
-            setFees(list);
-            setPayments(grouped);
-            setFeesTotal(list.length);
-            setFeesPage(0);
-            setFeesMore(false);
-            recordSuccess('db_fees');
-        } catch (err) {
-            const msg = guard.didTimeOut() ? 'timeout' : (err as { message?: string })?.message || 'fetch failed';
-            recordError('db_fees', msg);
-        } finally {
-            guard.cleanup();
-            setLoading(false);
-        }
+        });
+        guard.cleanup();
+        setLoading(false);
     }, [profile]);
 
     // ── إعادة الجلب بعد أي كتابة (حفظ/دفعة/حذف...) — بترجع لنفس مصدر
