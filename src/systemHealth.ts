@@ -57,6 +57,16 @@ export interface ServiceStatus {
   key: ServiceKey;
   label: string;           // اسم الخدمة بالعربي
   status: 'ok' | 'error' | 'unknown';
+  // 🆕 (خطة "تصنيف الرسائل ودورة حياة العمليات"، قسم ٣.٥.١ — قرار محسوم
+  // بعد مراجعتين خارجيتين): حقل منفصل تمامًا عن `status`، مش توسيع لمعناه
+  // ومش استبدال له. `status` يفضل زي ما هو (هل الخدمة معروفة إنها بتشتغل
+  // أو لأ)، و`lastOutcome` يوصف نتيجة آخر عملية اتنفذت فعليًا:
+  // 'success' | 'failure' بيتسجلوا دلوقتي تلقائيًا من recordSuccess/
+  // recordError. القيمة 'unknown' محجوزة لسيناريو مستقبلي (رد ضايع بعد
+  // commit فعلي، زي عند Retry على عمليات الكتابة) ومفيش أي مكان في الكود
+  // دلوقتي بيحطها — التمييز بين "لسه محدش جرّب" (undefined) و"اتجربت
+  // والنتيجة غير معروفة" ('unknown') مقصود ومحفوظ للمستقبل.
+  lastOutcome?: 'success' | 'failure' | 'unknown';
   lastSuccess: string | null;   // ISO timestamp
   lastError: string | null;     // ISO timestamp
   errorMsg: string | null;      // رسالة الخطأ بلغة المستخدم
@@ -208,6 +218,7 @@ export function recordSuccess(key: ServiceKey, label?: string) {
     key,
     label: resolveLabel(key, label || all[key]?.label),
     status: 'ok',
+    lastOutcome: 'success',
     lastSuccess: new Date().toISOString(),
     errorMsg: null,
     rawError: null,
@@ -247,6 +258,7 @@ export function recordError(key: ServiceKey, rawError?: string, opts?: { label?:
     key,
     label: resolveLabel(key, opts?.label || prev?.label),
     status: 'error',
+    lastOutcome: 'failure',
     lastError: new Date().toISOString(),
     errorMsg: friendlyError(key, rawError, opts?.message),
     rawError: rawError || null,
