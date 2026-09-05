@@ -3,6 +3,7 @@ import { db } from '../../../supabaseClient';
 import { invalidateOfficeCache } from '../../../constants';
 import { toast } from '../../../shared/lib/notifications';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
+import { recordSuccess } from '../../../systemHealth';
 import type { ProfileRow } from '../../../types';
 
 // ─────────────────────────────────────────────────────────
@@ -57,6 +58,7 @@ export function useAIApiKey(profile: ProfileRow | null) {
             invalidateOfficeCache();
             setHasKey(true);
             setShowKeyInput(false);
+            recordSuccess('ai_api_key_save');
             toast('✅ تم حفظ API Key بأمان على السيرفر');
         } catch(e) {
             showErrorToast('ai_api_key_save', e, 'تعذّر حفظ مفتاح المساعد الذكي. تأكد من صحة المفتاح. لو المشكلة استمرت، تواصل مع الدعم.', 'حفظ مفتاح المساعد الذكي');
