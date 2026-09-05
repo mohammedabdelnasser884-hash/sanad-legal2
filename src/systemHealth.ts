@@ -346,11 +346,40 @@ async function extractSafeErrorText(rawError: unknown): Promise<string | undefin
 }
 
 /**
+ * النواة المشتركة لتصنيف/تسجيل أي فشل — يستخدمها كل من `runTrackedOperation`
+ * (throw-based) و`trackQueryOutcome` (نمط {error} تحت)، عشان أي تحسين
+ * مستقبلي في التصنيف أو استخراج نص الخطأ يسري على الاتنين مرة واحدة، من
+ * غير تكرار منطق في نسختين منفصلتين (قرار الجزء الرابع من خطة "تصنيف
+ * الرسائل ودورة حياة العمليات"، ٥ سبتمبر ٢٠٢٦).
+ */
+async function classifyAndRecordFailure(
+  key: ServiceKey,
+  rawError: unknown,
+  opts: { label: string; message: string }
+): Promise<NormalizedErrorContext> {
+  const classification = classifyError(rawError);
+  const safeErrorText = await extractSafeErrorText(rawError);
+  recordError(key, safeErrorText, opts);
+  return {
+    rawError,
+    classification,
+    safeMessage: opts.message,
+    operationKey: key,
+    operationLabel: opts.label,
+  };
+}
+
+/**
  * يلف أي عملية (نجاح/فشل) ويضمن تسجيل دورة حياتها تلقائيًا في systemHealth
  * — مستحيل تنسى recordSuccess لأنها جوه الدالة نفسها. **قرار محسوم: مفيش
  * تحويل لأي نقطة recordError/showErrorToast قائمة (٦٩ نقطة) — الدالة دي
  * foundation للعمليات الجديدة بس، والتحويل التدريجي بيحصل مع أي لمسة
  * مستقبلية طبيعية لنفس الملف.**
+ *
+ * ⚠️ مخصصة لعمليات **throw-based** بس (try/catch → نجاح أو throw). لنمط
+ * Supabase الأصلي `const { data, error } = await db.from(...)` (من غير
+ * throw خالص) استخدم `trackQueryOutcome` تحت — الاتنين مختلفين في الشكل
+ * عمدًا، مش أسماء بديلة لنفس الحاجة (خطة "تصنيف الرسائل"، الجزء الرابع).
  */
 export async function runTrackedOperation<T>(
   key: ServiceKey,
@@ -362,20 +391,37 @@ export async function runTrackedOperation<T>(
     recordSuccess(key);
     return { ok: true, data };
   } catch (rawError) {
-    const classification = classifyError(rawError);
-    const safeErrorText = await extractSafeErrorText(rawError);
-    recordError(key, safeErrorText, opts);
-    return {
-      ok: false,
-      failure: {
-        rawError,
-        classification,
-        safeMessage: opts.message,
-        operationKey: key,
-        operationLabel: opts.label,
-      },
-    };
+    const failure = await classifyAndRecordFailure(key, rawError, opts);
+    return { ok: false, failure };
   }
+}
+
+/**
+ * نسخة **{error}-based** من دورة حياة العملية — لنمط Supabase الأصلي
+ * `const { data, error } = await db.from(...)` اللي مفيهوش throw خالص
+ * (أغلب فئة B من الـaudit، زي `useAppData.ts`/`useRemindersTab.ts`).
+ *
+ * بعكس `runTrackedOperation`، الدالة دي **مبتقررش لوحدها هل الفشل يستحق
+ * تسجيل/تصنيف أصلاً** — القرار ده يفضل في يد الكود المستدعي. مثال:
+ * `fetchCases` لما بترجع لكاش محفوظ بعد فشل الشبكة، الكود المستدعي
+ * ببساطة **مايناديش الدالة دي خالص** في الفرع ده (قرار ٩ أغسطس محفوظ زي
+ * ما هو، مش هيتلمّس). لو اتنادت، مسؤوليتها فقط: صنّف وسجّل صح.
+ *
+ * مرّر `error` كما هو من Supabase (الكائن الخام، مش `.message` مستخرج
+ * مسبقًا) عشان `classifyError`/استخراج النص الآمن يشتغلوا على الشكل
+ * الحقيقي للخطأ (PostgrestError/EdgeFunctionError/إلخ).
+ */
+export async function trackQueryOutcome(
+  key: ServiceKey,
+  error: unknown,
+  opts: { label: string; message: string }
+): Promise<{ ok: true } | { ok: false; failure: NormalizedErrorContext }> {
+  if (!error) {
+    recordSuccess(key);
+    return { ok: true };
+  }
+  const failure = await classifyAndRecordFailure(key, error, opts);
+  return { ok: false, failure };
 }
 
 /**
