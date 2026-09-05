@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../supabaseClient';
 import { CasePicker, EmptyState, LoadingState, ErrorState, SectionCard, ToneDot, DisclaimerNote, CopyButton } from '../../shared/ui/TaskResultKit';
 import type { ResultTone } from '../../shared/ui/TaskResultKit';
-import { recordError } from '../../systemHealth';
+import { recordError, recordSuccess } from '../../systemHealth';
 import type { MappedCase } from '../../hooks/useAppData';
 
 // ─────────────────────────────────────────────────────────
@@ -153,6 +153,7 @@ function NextStepSuggestion({ cases }: NextStepSuggestionProps) {
       setDocsCount(docRes.count || 0);
       setFee((feeRes.data || null) as unknown as FeeRow | null);
       setLoading(false);
+      recordSuccess('ai_next_step');
     }).catch((e) => {
       if (cancelled) return;
       const _msg = e instanceof Error ? e.message : String(e);
