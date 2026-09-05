@@ -437,7 +437,7 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             // (التعديل). safeUpdate بترجع {success, conflict} مش {error} — مفيش
             // كائن خطأ حقيقي هنا (نفس حالة db_case_by_id في useAppData.ts)، فبنبني
             // واحد صناعي بسيط عشان يتصنّف ويتسجل زي ما كان يحصل بالظبط قبل التحويل.
-            await trackQueryOutcome('reminder_save', { message: 'edit_failed' }, {label:'حفظ التذكيرات', message:'تعذّر تعديل المهمة. تحقق من الاتصال بالإنترنت.'});
+            await trackQueryOutcome('reminder_save', { message: '' }, {label:'حفظ التذكيرات', message:'تعذّر تعديل المهمة. تحقق من الاتصال بالإنترنت.'});
             toast('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
             return;
         }
