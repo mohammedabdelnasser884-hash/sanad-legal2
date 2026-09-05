@@ -7,7 +7,7 @@ import { safeUpdate, logActivity, buildFieldDiff, buildDeleteSnapshot, buildAddS
 import { PDF_FONT_FAMILY, PDF_FONT_LINK } from '../../../shared/lib/pdf';
 import { loadOfficeSetting } from '../../../constants';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
-import { recordError, recordSuccess } from '../../../systemHealth';
+import { recordError, recordSuccess, trackQueryOutcome } from '../../../systemHealth';
 import { formatArDate } from '../../../shared/ui/arabicLocale';
 import type { ClientRow, ProfileRow, CaseNoteRow, CaseSessionRow } from '../../../types';
 import type { MappedCase } from '../../../hooks/useAppData';
@@ -192,8 +192,17 @@ export function useCaseDetailActions(
       // useAppData.ts.
       saveCaseDetailCache({ sessions: data || [], notes: nd || [], docs: ddWithUrls, caseParties: cp });
     } catch (err) {
-      const msg = guard.didTimeOut() ? 'timeout' : (err as { message?: string })?.message || 'fetch failed';
-      recordError('db_documents', msg);
+      // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٣، ٢-ج-٣، فئة B): تحويل
+      // لـtrackQueryOutcome بدل recordError(msg) المباشر. بعكس نقاط الدفعة
+      // ١/٢ (نمط {error} مباشر)، النقطة دي جوه catch بعد throw صريح —
+      // فحص نقطة نقطة أكّد إن err هنا هو الكائن الخام (sessErr/docsErr) زي
+      // ما اترمى بالظبط، فتمريره مباشرة (بدل .message المستخرج قبل كده)
+      // آمن ومفيدة لـclassifyError. حالة timeout بتتمثّل بخطأ صناعي
+      // new Error('timeout')، بنفس نمط useGenerateDocument.ts.
+      await trackQueryOutcome('db_documents', guard.didTimeOut() ? new Error('timeout') : err, {
+        label: 'تحميل الجلسات والمستندات',
+        message: 'تعذّر تحميل جلسات/مستندات هذه القضية. تحقق من الاتصال بالإنترنت.',
+      });
       // 🔒 FIX (13 أغسطس 2026): تايم آوت أو فشل حقيقي — نجرّب آخر نسخة
       // محفوظة قبل ما نسيب الشاشة فاضية.
       applyCaseDetailCacheIfAny(false);
