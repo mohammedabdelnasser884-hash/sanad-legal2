@@ -268,6 +268,7 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
         }),
         timeoutPromise,
       ]);
+      recordSuccess('doc_generation_generate');
       return doc;
     } catch (e: unknown) {
       const timedOut = guard.didTimeOut();
