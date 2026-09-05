@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../supabaseClient';
 import { formatArDate } from '../../shared/ui/arabicLocale';
 import { CasePicker, EmptyState, SectionCard, InfoRow, CopyButton, ErrorState } from '../../shared/ui/TaskResultKit';
-import { recordError, recordSuccess } from '../../systemHealth';
+import { recordSuccess, trackQueryOutcome } from '../../systemHealth';
 import type { MappedCase, MappedClient } from '../../hooks/useAppData';
 import type { CasePartyRow } from '../cases/hooks/useCaseDetailActions';
 import { buildFullPartiesText, effectiveLegalTitleForDisplay } from '../../shared/parties/partyDisplay';
@@ -84,11 +84,12 @@ function CaseDataExtract({ cases, clients }: CaseDataExtractProps) {
       setCaseParties(partiesRes.error ? [] : ((partiesRes.data as unknown as CasePartyRow[]) || []));
       setLoadingCounts(false);
       recordSuccess('ai_case_data_extract');
-    }).catch((e) => {
+    }).catch(async (e) => {
       if (cancelled) return;
-      const _msg = e instanceof Error ? e.message : String(e);
       const displayMsg = 'تعذّر تحميل إحصائيات القضية. جرّب تاني.';
-      recordError('ai_case_data_extract', _msg, { label: 'بيانات القضية (إحصائيات)', message: displayMsg });
+      // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٦ (٢-ج-٣)، نقطة ٥/٨): نفس تحويل
+      // SessionsRemindersOverview.tsx — الكائن الخام e بدل .message مستخرج.
+      await trackQueryOutcome('ai_case_data_extract', e, { label: 'بيانات القضية (إحصائيات)', message: displayMsg });
       setCountsError(displayMsg);
       setLoadingCounts(false);
     });
