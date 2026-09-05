@@ -18,7 +18,11 @@ import type { AIDocFields } from './aiAssistantTypes';
 // ══════════════════════════════════════════════════════════════════
 
 const recordError = vi.fn();
-vi.mock('../../../systemHealth', () => ({ recordError: (...a: unknown[]) => recordError(...a) }));
+const recordSuccess = vi.fn();
+vi.mock('../../../systemHealth', () => ({
+  recordError: (...a: unknown[]) => recordError(...a),
+  recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+}));
 
 const activeCfg = {
   name: 'مصر', flag: '🇪🇬', legalSystem: 'مدني', referenceCode: 'القانون المدني',
