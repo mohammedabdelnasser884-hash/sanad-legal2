@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { recordError, recordSuccess } from '../../../systemHealth';
+import { recordSuccess, trackQueryOutcome } from '../../../systemHealth';
 import type { MappedCase } from '../../../hooks/useAppData';
 import type { AIMessage, LegalArticle } from './aiAssistantTypes';
 
@@ -76,7 +76,15 @@ export function useAIChat({
                         ? _msg
                         : '⚠️ تعذّر الحصول على رد من المساعد الذكي. حاول تاني بعد قليل. لو المشكلة استمرت، تواصل مع الدعم.';
             if (!isKeyError && !isUserFacingMessage) {
-                recordError('ai_chat', _msg, {label:'المساعد الذكي', message: msg});
+                // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٦ من ٢-ج-٣، ٥ سبتمبر
+                // 2026): تحويل لـtrackQueryOutcome بدل recordError(msg)
+                // المباشر. e هنا دايمًا Error نضيف (رسالة بس، مفيش .context)
+                // لأن callAI في useAILegalEngine.ts بترمي throw new
+                // Error(...) نظيفة، فمرور e الخام بدل _msg المستخرج آمن
+                // ١٠٠٪ (مفيش خطر قراءة stream مرتين). الشرط والمنطق المحيط
+                // (isKeyError/isQuotaError/isUserFacingMessage/msg المعروضة)
+                // متلمسوش خالص.
+                await trackQueryOutcome('ai_chat', e, {label:'المساعد الذكي', message: msg});
             }
             if (isQuotaError) setShowKeyInput(true);
             setMessages((p: AIMessage[]) =>[...p,{role:'assistant',text:msg}]);
