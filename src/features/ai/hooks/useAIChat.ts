@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { recordError } from '../../../systemHealth';
+import { recordError, recordSuccess } from '../../../systemHealth';
 import type { MappedCase } from '../../../hooks/useAppData';
 import type { AIMessage, LegalArticle } from './aiAssistantTypes';
 
@@ -51,6 +51,7 @@ export function useAIChat({
             const trimmedMessages = newMessages.slice(-MAX_HISTORY_MESSAGES);
             const reply = await callAI(null, trimmedMessages, legalContextBlock);
             setMessages((p: AIMessage[]) =>[...p,{role:'assistant',text:reply, references: retrieved}]);
+            recordSuccess('ai_chat');
         } catch(e) {
             const _msg = e instanceof Error ? e.message : String(e);
             const isKeyError = _msg?.includes('401')||_msg?.includes('invalid')||_msg?.includes('key');
