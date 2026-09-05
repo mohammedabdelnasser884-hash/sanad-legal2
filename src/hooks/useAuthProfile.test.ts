@@ -63,9 +63,37 @@ vi.mock('../constants', () => ({ setCurrentTenantId: (...a: unknown[]) => setCur
 
 const recordError = vi.fn();
 const recordSuccess = vi.fn();
+// ⚡ FIX (trackQueryOutcome مفقودة من الـmock — خطة "تصنيف الرسائل" دفعة ١،
+// ٢-ج-٣): useAuthProfile.ts بقى بينادي trackQueryOutcome بدل recordError
+// المباشرة في مسار فشل تحميل البروفايل — الموك القديم مكانش مصدّرها، فأي
+// مسار بيوصلها كان هيرمي "trackQueryOutcome غير معرّفة" (نفس فئة الباج
+// اللي اتكشف قبل كده في useRemindersTab.test.ts). نفس منطق trackQueryOutcome
+// الحقيقي (systemHealth.ts) هنا: من غير error → recordSuccess، مع error →
+// recordError بنفس التوقيع الثلاثي (key, rawError.message, opts) بالظبط.
+const trackQueryOutcome = vi.fn(
+  async (key: string, error: unknown, opts?: { label?: string; message?: string }) => {
+    if (!error) {
+      recordSuccess(key);
+      return { ok: true as const };
+    }
+    const message = (error as { message?: string } | null | undefined)?.message;
+    recordError(key, message, opts);
+    return {
+      ok: false as const,
+      failure: {
+        rawError: error,
+        classification: 'server' as const,
+        safeMessage: opts?.message ?? '',
+        operationKey: key,
+        operationLabel: opts?.label ?? '',
+      },
+    };
+  }
+);
 vi.mock('../systemHealth', () => ({
   recordError: (...a: unknown[]) => recordError(...a),
   recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+  trackQueryOutcome: (...a: Parameters<typeof trackQueryOutcome>) => trackQueryOutcome(...a),
 }));
 
 let useAuthProfile: typeof import('./useAuthProfile').useAuthProfile;
@@ -85,6 +113,8 @@ beforeEach(async () => {
   toast.mockClear();
   setCurrentTenantId.mockClear();
   recordError.mockClear();
+  recordSuccess.mockClear();
+  trackQueryOutcome.mockClear();
   ({ useAuthProfile } = await import('./useAuthProfile'));
 });
 
