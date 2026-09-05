@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { db } from '../../supabaseClient';
 import { logActivity } from '../../shared/lib/dataAccess';
-import { recordError } from '../../systemHealth';
+import { recordError, recordSuccess } from '../../systemHealth';
 import { getEdgeFunctionErrorMessage, looksArabicUserMessage, type EdgeFunctionError } from '../../shared/lib/edgeFunctionErrors';
 import { I, SanadMark } from '../../constants';
 
@@ -48,6 +48,7 @@ function LoginScreen({onLogin}: LoginScreenProps){
             return;
         }
         setForgotSent(true);
+        recordSuccess('reset_password_request');
     };
 
     const handleLogin=async(e: React.MouseEvent<HTMLButtonElement>)=>{
@@ -107,6 +108,7 @@ function LoginScreen({onLogin}: LoginScreenProps){
             return;
         }
         logActivity(db, 'تسجيل دخول', { entity_type: 'user', entity_id: data.user?.id, details: data.user?.email || null });
+        recordSuccess('office_login');
         onLogin(data.user);
     };
 
