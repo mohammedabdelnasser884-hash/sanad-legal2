@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../supabaseClient';
-import { recordError, recordSuccess } from '../../systemHealth';
+import { recordSuccess, trackQueryOutcome } from '../../systemHealth';
 import {
   CasePicker, EmptyState, SectionCard, CopyButton, DisclaimerNote, ErrorState,
   UsageLimitState, isQuotaExceededMessage,
@@ -144,7 +144,11 @@ function CaseSummary({ cases, clients, retrieveLegalArticles, buildLegalContextB
         ? _msg
         : 'تعذّر توليد التلخيص. حاول تاني بعد قليل. لو المشكلة استمرت، تواصل مع الدعم.';
       if (!isUserFacingMessage) {
-        recordError('ai_case_summary', _msg, { label: 'تلخيص القضية', message: displayMsg });
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٦ (٢-ج-٣)، نقطة ٨/٨): تحويل
+        // لـtrackQueryOutcome بدل recordError(_msg) المستخرج مسبقًا. نفس
+        // منطق useAIChat.ts/ClientMessage.tsx — callAI بترمي Error(...)
+        // نظيفة، فمرور e الخام آمن. الشرط والرسالة المعروضة للمستخدم متلمستش.
+        await trackQueryOutcome('ai_case_summary', e, { label: 'تلخيص القضية', message: displayMsg });
       }
       setError(displayMsg);
     }
