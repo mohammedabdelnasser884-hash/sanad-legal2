@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from '../../../shared/lib/notifications';
 import { safeUpdate, logActivity, buildFieldDiff, buildDeleteSnapshot, buildAddSnapshot, type FieldDiffMap } from '../../../shared/lib/dataAccess';
-import { recordError, recordSuccess } from '../../../systemHealth';
+import { recordSuccess, trackQueryOutcome } from '../../../systemHealth';
 import { db } from '../../../supabaseClient';
 import { normalizeArabicDigits } from '../../../shared/lib/sanitize';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
@@ -136,7 +136,13 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
                 toast('أنت أوف لاين — بتشوف آخر نسخة محفوظة من التذكيرات');
                 return cached;
             }
-            recordError('db_reminders', error.message);
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_reminders
+            // (fetchUpcoming) لـtrackQueryOutcome. القرار الشرطي (تخطي التسجيل
+            // لو الكاش رجع بيانات) فضل زي ما هو فوق من غير أي لمس.
+            await trackQueryOutcome('db_reminders', error, {
+                label: 'جلب التذكيرات',
+                message: 'تعذّر تحميل التذكيرات. تحقق من الاتصال بالإنترنت.',
+            });
         } else {
             recordSuccess('db_reminders');
             saveRemindersCache(profile?.tenant_id, data || []);
@@ -189,7 +195,11 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
                     return;
                 }
             }
-            recordError('db_reminders', error.message);
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_reminders (fetchOverdue).
+            await trackQueryOutcome('db_reminders', error, {
+                label: 'جلب التذكيرات',
+                message: 'تعذّر تحميل التذكيرات. تحقق من الاتصال بالإنترنت.',
+            });
             return;
         }
         recordSuccess('db_reminders');
@@ -243,7 +253,11 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
                     return;
                 }
             }
-            recordError('db_reminders', error.message);
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_reminders (fetchDone).
+            await trackQueryOutcome('db_reminders', error, {
+                label: 'جلب التذكيرات',
+                message: 'تعذّر تحميل التذكيرات. تحقق من الاتصال بالإنترنت.',
+            });
             return;
         }
         recordSuccess('db_reminders');
@@ -314,7 +328,10 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             return;
         }
         if(error){
-            recordError('reminder_save', (error as {message?: string})?.message, {label:'حفظ التذكيرات', message:'تعذّر حفظ التذكير. تحقق من الاتصال بالإنترنت.'});
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل reminder_save
+            // (الإضافة) لـtrackQueryOutcome — الكائن الخام من __dbWrite بيتمرر
+            // زي ما هو (مش .message مستخرج مسبقًا) عشان classifyError يشتغل صح.
+            await trackQueryOutcome('reminder_save', error, {label:'حفظ التذكيرات', message:'تعذّر حفظ التذكير. تحقق من الاتصال بالإنترنت.'});
             toast('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
             return;
         }
@@ -355,7 +372,8 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             return;
         }
         if(error){
-            recordError('reminder_save', (error as {message?: string})?.message, {label:'حفظ التذكيرات', message:'تعذّر تحديث التذكير. تحقق من الاتصال بالإنترنت.'});
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل reminder_save (تبديل الإنجاز).
+            await trackQueryOutcome('reminder_save', error, {label:'حفظ التذكيرات', message:'تعذّر تحديث التذكير. تحقق من الاتصال بالإنترنت.'});
             toast('❌ تعذّر تحديث التذكير',true);
             return;
         }
@@ -382,7 +400,8 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             return;
         }
         if(error){
-            recordError('reminder_save', (error as {message?: string})?.message, {label:'حذف التذكيرات', message:'تعذّر حذف التذكير. تحقق من الاتصال بالإنترنت.'});
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل reminder_save (الحذف).
+            await trackQueryOutcome('reminder_save', error, {label:'حذف التذكيرات', message:'تعذّر حذف التذكير. تحقق من الاتصال بالإنترنت.'});
             toast('❌ تعذّر حذف التذكير',true);
             return;
         }
@@ -414,7 +433,11 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
         // 🔒 FIX (تقرير الموثوقية — القسم 12، Concurrent Editing): توست بدل السكوت التام.
         if(conflict) { toast('⚠️ هذا التذكير عدّله شخص آخر بعد ما فتحته — أعد المحاولة', true); return; }
         if(!success){
-            recordError('reminder_save', '', {label:'حفظ التذكيرات', message:'تعذّر تعديل المهمة. تحقق من الاتصال بالإنترنت.'});
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل reminder_save
+            // (التعديل). safeUpdate بترجع {success, conflict} مش {error} — مفيش
+            // كائن خطأ حقيقي هنا (نفس حالة db_case_by_id في useAppData.ts)، فبنبني
+            // واحد صناعي بسيط عشان يتصنّف ويتسجل زي ما كان يحصل بالظبط قبل التحويل.
+            await trackQueryOutcome('reminder_save', { message: 'edit_failed' }, {label:'حفظ التذكيرات', message:'تعذّر تعديل المهمة. تحقق من الاتصال بالإنترنت.'});
             toast('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
             return;
         }
@@ -483,8 +506,11 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
         ]);
         // نتيجة قديمة وصلت بعد ما المستخدم غيّر نص البحث تاني — نتجاهلها
         if (latestSearchTermRef.current !== term) return;
-        if (titleRes.error) recordError('db_reminders_search', titleRes.error.message);
-        if (notesRes.error) recordError('db_reminders_search', notesRes.error.message);
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_reminders_search
+        // لـtrackQueryOutcome. الاستعلامين لسه بيتفحصوا كل واحد لوحده زي ما كان —
+        // dedupe الموجود جوه recordError بيمنع كارت مزدوج لو الاتنين فشلوا مع بعض.
+        if (titleRes.error) await trackQueryOutcome('db_reminders_search', titleRes.error, {label:'البحث في التذكيرات', message:'تعذّر البحث في التذكيرات. تحقق من الاتصال بالإنترنت.'});
+        if (notesRes.error) await trackQueryOutcome('db_reminders_search', notesRes.error, {label:'البحث في التذكيرات', message:'تعذّر البحث في التذكيرات. تحقق من الاتصال بالإنترنت.'});
         if (!titleRes.error && !notesRes.error) recordSuccess('db_reminders_search');
         const merged = [...(titleRes.data||[]), ...(notesRes.data||[])];
         const seen = new Set<string>();
