@@ -3,6 +3,7 @@ import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
 import { logActivity, buildFieldDiff, buildAddSnapshot, buildDeleteSnapshot, type FieldDiffMap, type FieldDiffEntry } from '../../../shared/lib/dataAccess';
 import { checkCaseNumberDuplicate } from '../../../shared/lib/caseValidation';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
+import { recordSuccess } from '../../../systemHealth';
 import { runDuplicateCheckOfflineAware } from '../../../shared/lib/offlineGuard';
 import { db } from '../../../supabaseClient';
 import { withFkOfflineSentinel, linkClientToParty, unlinkClientFromParty } from '../../calendar/hooks/caseSessionLinkingShared';
@@ -1192,6 +1193,7 @@ export function useCaseActions(params: {
             showErrorToast('party_client_link', new Error('link party to existing client failed'), 'تعذّر ربط الموكل بهذا الطرف. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'ربط طرف بموكل');
             return;
         }
+        recordSuccess('party_client_link');
         toast('✅ تم ربط الطرف بالموكل' + (linkedClient?.full_name ? ` "${linkedClient.full_name}"` : ''));
         logActivity(db, 'ربط طرف بموكل', {
             userName: _userName,
@@ -1324,6 +1326,7 @@ export function useCaseActions(params: {
             showErrorToast('party_client_unlink', new Error('unlink party from client failed'), 'تعذّر فك ربط الطرف عن الموكل. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'فك ربط طرف عن موكل');
             return;
         }
+        recordSuccess('party_client_unlink');
         toast('✅ تم فك ربط الطرف عن الموكل — بياناته بقت قابلة للتعديل الحر');
         logActivity(db, 'فك ربط طرف عن موكل', {
             userName: _userName,
