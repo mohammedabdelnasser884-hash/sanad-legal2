@@ -6,7 +6,7 @@ import { COUNTRY_CONFIGS } from '../../../constants';
 import { db } from '../../../supabaseClient';
 import { formatArNumber, formatArDate } from '../../../shared/ui/arabicLocale';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
-import { runTrackedOperation, trackQueryOutcome } from '../../../systemHealth';
+import { runTrackedOperation, trackQueryOutcome, recordWriteFailure, recordSuccess } from '../../../systemHealth';
 import { computeFeeStatus } from '../feeStatus';
 import { formatPartySideLine } from '../../../shared/parties/partyDisplay';
 import type { PartyDisplayRow } from '../../../shared/parties/partiesDisplay';
@@ -641,6 +641,9 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             // هنا فى مسار الإنشاء). دلوقتي الأربعة بقوا جوه RPC واحدة بتتنفذ
             // فى transaction حقيقية على مستوى القاعدة — إما تنجح كلها أو
             // ترجع كلها.
+            // 🆕 (٣-هـ، ٥ سبتمبر ٢٠٢٦): نفس فكرة guard+abortSignal فى handleAddPayment
+            // — نميّز فشل transient (الرد ضايع، الحفظ ممكن يكون تم فعلاً) عن فشل حقيقي.
+            const newFeeGuard = createFetchGuard();
             const { data: inserted, error } = await db.rpc('create_fee_with_advance', {
                 p_case_id: payload.case_id,
                 p_case_title: payload.case_title,
@@ -655,8 +658,23 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
                 // فشل — لو الطلب الأول نجح فعليًا والرد بس ضاع، الـRPC
                 // هترجع نفس السجل القديم بدل إنشاء سجل أتعاب مكرر.
                 p_idempotency_key: newFeeIdempotencyKeyRef.current,
-            });
-            if(error){ toast('❌ فشل حفظ الأتعاب الجديدة — تحقق من الاتصال وأعد المحاولة', true); setSaving(false); return; }
+            }).abortSignal(newFeeGuard.controller.signal);
+            newFeeGuard.cleanup();
+            if(error){
+                const effectiveError = newFeeGuard.didTimeOut() ? { message: 'timeout' } : error;
+                const { ambiguous } = recordWriteFailure('fee_create_write', effectiveError, {
+                    label: 'إضافة أتعاب جديدة',
+                    message: 'فشل حفظ الأتعاب الجديدة — تحقق من الاتصال وأعد المحاولة',
+                    // 🆕 (٣-هـ): نفس منطق handleAddPayment — الرد ضايع مش يعني فشل قطعي.
+                    ambiguousMessage: 'تعذّر تأكيد نتيجة حفظ الأتعاب الجديدة — قد تكون حُفظت فعلاً. أعد المحاولة، المفتاح المرفق يمنع أي تكرار.',
+                });
+                toast(ambiguous
+                    ? '⚠️ تعذّر تأكيد نتيجة الحفظ — قد يكون تم فعلاً. أعد المحاولة (لن تتكرر).'
+                    : '❌ فشل حفظ الأتعاب الجديدة — تحقق من الاتصال وأعد المحاولة', true);
+                setSaving(false);
+                return;
+            }
+            recordSuccess('fee_create_write');
             toast('✅ تم إضافة الأتعاب');
             // ⚡ NEW (سجل النشاط — بيان مميز عند الإضافة، مرحلة 4): المبلغ
             // بدل ما نكتفي باسم الموكل/القضية.
@@ -739,6 +757,12 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         // مش متحدّث (partial save موثّق فى الكود القديم). دلوقتي التلاتة
         // بقوا جوه RPC واحدة (record_fee_payment) بتتنفذ فى transaction
         // حقيقية على مستوى القاعدة — إما تنجح كلها أو ترجع كلها.
+        // 🆕 (٣-هـ، ٥ سبتمبر ٢٠٢٦): guard+abortSignal هنا (نفس نمط باقي نداءات
+        // القراءة فى الملف ده) عشان نقدر نميّز فشل transient (timeout/network —
+        // ممكن الدفعة تكون سُجّلت فعلاً والرد بس ضاع) عن فشل حقيقي (صلاحية/منطق).
+        // قبل كده الـRPC ده كان بينادَى من غير أي سقف زمني ومن غير أي تسجيل فى
+        // systemHealth خالص.
+        const payGuard = createFetchGuard();
         const { data: updatedFeeRow, error: rpcError } = await db.rpc('record_fee_payment', {
             p_fee_id: fee.id,
             p_amount: amount,
@@ -752,8 +776,25 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             // الأولى نجحت فعليًا والرد بس ضاع، الـRPC هترجع سجل case_fees
             // الحالي بدل تسجيل دفعة مكررة.
             p_idempotency_key: payIdempotencyKeyRef.current,
-        });
-        if(rpcError){ toast('❌ فشل تسجيل الدفعة، يرجى المحاولة مرة أخرى', true); setPayingFeeId(null); return; }
+        }).abortSignal(payGuard.controller.signal);
+        payGuard.cleanup();
+        if(rpcError){
+            const effectiveError = payGuard.didTimeOut() ? { message: 'timeout' } : rpcError;
+            const { ambiguous } = recordWriteFailure('fee_payment_write', effectiveError, {
+                label: 'تسجيل دفعة',
+                message: 'فشل تسجيل الدفعة، يرجى المحاولة مرة أخرى',
+                // 🆕 (٣-هـ): ambiguous يعني الرد بس ضاع (timeout/network) — بفضل
+                // idempotency key (٣-د) إعادة المحاولة آمنة، فالرسالة هنا توضح
+                // إن الدفعة ممكن تكون سُجّلت فعلاً بدل "فشل" قطعية.
+                ambiguousMessage: 'تعذّر تأكيد نتيجة تسجيل الدفعة — قد تكون سُجّلت فعلاً. أعد المحاولة، المفتاح المرفق يمنع أي تكرار.',
+            });
+            toast(ambiguous
+                ? '⚠️ تعذّر تأكيد نتيجة تسجيل الدفعة — قد تكون سُجّلت فعلاً. أعد المحاولة (لن تتكرر).'
+                : '❌ فشل تسجيل الدفعة، يرجى المحاولة مرة أخرى', true);
+            setPayingFeeId(null);
+            return;
+        }
+        recordSuccess('fee_payment_write');
         payIdempotencyKeyRef.current = null; // 🆕 (٣-د) الدفعة اتسجلت — صفّر المفتاح استعدادًا لأي فتح تالي
         toast('✅ تم تسجيل الدفعة');
         logActivity(db, 'تسجيل دفعة', {
