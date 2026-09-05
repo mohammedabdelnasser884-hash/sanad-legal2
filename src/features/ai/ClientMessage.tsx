@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { loadOfficeSetting } from '../../constants';
 import { toast } from '../../shared/lib/notifications';
 import { formatPhoneForWhatsApp } from '../../shared/lib/validation';
-import { recordError } from '../../systemHealth';
+import { recordError, recordSuccess } from '../../systemHealth';
 import {
   CasePicker, EmptyState, SectionCard, CopyButton, DisclaimerNote, ErrorState,
   UsageLimitState, isQuotaExceededMessage,
@@ -87,6 +87,7 @@ function ClientMessage({ cases, clients, callAI }: ClientMessageProps) {
       const prompt = buildMessagePrompt(contextText, officeName);
       const reply = await callAI(prompt, null);
       setMessage(reply);
+      recordSuccess('ai_client_message');
     } catch (e) {
       const _msg = e instanceof Error ? e.message : String(e);
       // نفس منطق useAIChat/useAIDocumentGenerator/CaseSummary: رسالة السيرفر
