@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { classifyError, runTrackedOperation, getServiceStatus, recordSuccess, recordError } from './systemHealth';
+import { classifyError, runTrackedOperation, trackQueryOutcome, getServiceStatus, recordSuccess, recordError } from './systemHealth';
 
 beforeEach(() => {
   localStorage.clear();
@@ -156,6 +156,87 @@ describe('runTrackedOperation', () => {
   });
 });
 
+describe('trackQueryOutcome ({error}-based، خطة "تصنيف الرسائل" الجزء الرابع)', () => {
+  it('error فاضي (null) → { ok: true } ويسجل recordSuccess تلقائيًا', async () => {
+    const result = await trackQueryOutcome(
+      'test_query_success',
+      null,
+      { label: 'جلب تجريبي', message: 'تعذّر الجلب.' }
+    );
+    expect(result).toEqual({ ok: true });
+    expect(getServiceStatus('test_query_success').status).toBe('ok');
+  });
+
+  it('error فاضي (undefined) → { ok: true } برضه', async () => {
+    const result = await trackQueryOutcome(
+      'test_query_success_undef',
+      undefined,
+      { label: 'جلب تجريبي', message: 'تعذّر الجلب.' }
+    );
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('error موجود (PostgrestError): بيرجع failure كامل بنفس شكل runTrackedOperation ويسجل recordError', async () => {
+    const pgError = { code: '42501', message: 'permission denied for table cases', details: null, hint: null };
+    const result = await trackQueryOutcome(
+      'test_query_permission',
+      pgError,
+      { label: 'جلب القضايا', message: 'تعذّر جلب القضايا.' }
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.failure.rawError).toBe(pgError);
+      expect(result.failure.classification).toBe('permission');
+      expect(result.failure.safeMessage).toBe('تعذّر جلب القضايا.');
+      expect(result.failure.operationKey).toBe('test_query_permission');
+      expect(result.failure.operationLabel).toBe('جلب القضايا');
+    }
+    const status = getServiceStatus('test_query_permission');
+    expect(status.status).toBe('error');
+    expect(status.rawError).toBe(pgError.message);
+  });
+
+  it('timeout حقيقي (نمط guard.didTimeOut(): { message: "timeout" }) → classification=timeout', async () => {
+    const result = await trackQueryOutcome(
+      'test_query_timeout',
+      { message: 'timeout' },
+      { label: 'تحميل البيانات', message: 'تعذّر تحميل البيانات.' }
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.failure.classification).toBe('timeout');
+  });
+
+  it('لا يُستدعى خالص لفرع الرجوع للكاش (fetchCases، قرار ٩ أغسطس) — مش مسؤولية الدالة، القرار في الكود المستدعي', () => {
+    // اختبار توثيقي: مفيش استدعاء لـtrackQueryOutcome هنا عمدًا — العقد
+    // إن الكود المستدعي هو اللي بيقرر مايناديهاش في فرع الكاش، مش الدالة
+    // بتتجاهل الخطأ بنفسها.
+    expect(getServiceStatus('test_query_cache_fallback_not_called')).toBeUndefined();
+  });
+
+  it('FunctionsHttpError: بيستخرج الرسالة العربية الحقيقية من context.json() زي runTrackedOperation بالظبط (نفس النواة المشتركة)', async () => {
+    const fnError = {
+      message: 'Edge Function returned a non-2xx status code',
+      context: { json: async () => ({ error: 'انتهت الجلسة. سجّل الدخول تاني.' }) },
+    };
+    await trackQueryOutcome(
+      'test_query_edgefn',
+      fnError,
+      { label: 'نداء مساعد ذكي', message: 'تعذّر تنفيذ الطلب.' }
+    );
+    const status = getServiceStatus('test_query_edgefn');
+    expect(status.rawError).toBe('انتهت الجلسة. سجّل الدخول تاني.');
+  });
+
+  it('نجاح لاحق بعد فشل سابق لنفس المفتاح يمسح الخطأ (نفس سلوك recordSuccess)', async () => {
+    await trackQueryOutcome('test_query_recover', new Error('fail'), { label: 'عملية', message: 'تعذّر.' });
+    expect(getServiceStatus('test_query_recover').status).toBe('error');
+
+    const result = await trackQueryOutcome('test_query_recover', null, { label: 'عملية', message: 'تعذّر.' });
+    expect(result).toEqual({ ok: true });
+    expect(getServiceStatus('test_query_recover').status).toBe('ok');
+  });
+});
+
 describe('lastOutcome (منفصل عن status، خطة قسم ٣.٥.١)', () => {
   it('مفتاح لسه ماتسجلش له نجاح ولا فشل من الأساس → lastOutcome غير معرّف', () => {
     expect(getServiceStatus('test_op_never_touched')).toBeUndefined();
@@ -179,6 +260,16 @@ describe('lastOutcome (منفصل عن status، خطة قسم ٣.٥.١)', () => 
   it('runTrackedOperation فاشلة تسجل lastOutcome = failure (لا "unknown" — القيمة دي محجوزة لسيناريو مستقبلي مش مستخدمة حاليًا)', async () => {
     await runTrackedOperation('test_op_lo_tracked_failure', { label: 'عملية', message: 'تعذّر.' }, async () => { throw new Error('x'); });
     expect(getServiceStatus('test_op_lo_tracked_failure').lastOutcome).toBe('failure');
+  });
+
+  it('trackQueryOutcome ناجحة (error=null) تسجل lastOutcome = success', async () => {
+    await trackQueryOutcome('test_op_lo_query_success', null, { label: 'عملية', message: 'تعذّر.' });
+    expect(getServiceStatus('test_op_lo_query_success').lastOutcome).toBe('success');
+  });
+
+  it('trackQueryOutcome فاشلة تسجل lastOutcome = failure', async () => {
+    await trackQueryOutcome('test_op_lo_query_failure', new Error('x'), { label: 'عملية', message: 'تعذّر.' });
+    expect(getServiceStatus('test_op_lo_query_failure').lastOutcome).toBe('failure');
   });
 
   it('نجاح لاحق بعد فشل يحدّث lastOutcome من failure لـsuccess', () => {
