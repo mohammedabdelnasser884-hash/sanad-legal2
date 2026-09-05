@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../supabaseClient';
 import { CasePicker, EmptyState, LoadingState, ErrorState, SectionCard, ToneDot, DisclaimerNote, CopyButton } from '../../shared/ui/TaskResultKit';
 import type { ResultTone } from '../../shared/ui/TaskResultKit';
-import { recordError, recordSuccess } from '../../systemHealth';
+import { recordSuccess, trackQueryOutcome } from '../../systemHealth';
 import type { MappedCase } from '../../hooks/useAppData';
 
 // ─────────────────────────────────────────────────────────
@@ -154,11 +154,12 @@ function NextStepSuggestion({ cases }: NextStepSuggestionProps) {
       setFee((feeRes.data || null) as unknown as FeeRow | null);
       setLoading(false);
       recordSuccess('ai_next_step');
-    }).catch((e) => {
+    }).catch(async (e) => {
       if (cancelled) return;
-      const _msg = e instanceof Error ? e.message : String(e);
       const displayMsg = 'تعذّر تحليل بيانات القضية. جرّب تاني.';
-      recordError('ai_next_step', _msg, { label: 'الخطوة التالية', message: displayMsg });
+      // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٦ (٢-ج-٣)، نقطة ٦/٨): نفس تحويل
+      // النقطتين اللي فاتوا — الكائن الخام e بدل .message مستخرج.
+      await trackQueryOutcome('ai_next_step', e, { label: 'الخطوة التالية', message: displayMsg });
       setError(displayMsg);
       setLoading(false);
     });
