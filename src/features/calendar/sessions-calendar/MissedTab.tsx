@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../../supabaseClient';
 import { toast } from '../../../shared/lib/notifications';
-import { recordError, recordSuccess } from '../../../systemHealth';
+import { recordError, recordSuccess, trackQueryOutcome } from '../../../systemHealth';
 import { getCurrentTenantId, I } from '../../../constants';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
 import { MONTHS_AR2, DAYS_AR_FULL, toDateStr } from './constants';
@@ -91,13 +91,23 @@ function MissedTab({ cases, clients, onOpenCase, onOpenReminders, onOpenStandalo
               .lt('due_date', todayStr)
               .order('due_date', { ascending: false })
               .abortSignal(guard.controller.signal)
-        ]).then(([sessRes, tskRes]) => {
+        ]).then(async ([sessRes, tskRes]) => {
             guard.cleanup();
             let sess: CalendarSessionRow[];
             if (sessRes.error) {
                 const cached = loadTypedCache<CalendarSessionRow[]>(MISSED_SESSIONS_CACHE_KEY);
                 if (cached) { sess = cached; toast('أنت أوف لاين — بتشوف آخر نسخة محفوظة من الجلسات الفائتة'); }
-                else { sess = []; recordError('db_calendar_sessions', sessRes.error.message); }
+                else {
+                    sess = [];
+                    // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٢، ٢-ج-٣، فئة B): تحويل
+                    // لـtrackQueryOutcome بدل recordError(sessRes.error.message)
+                    // المباشر. نفس القرار الشرطي (تخطي التسجيل لو الكاش رجع بيانات)
+                    // المطبَّق في CalendarTab.tsx/MonthListTab.tsx.
+                    await trackQueryOutcome('db_calendar_sessions', sessRes.error, {
+                        label: 'جلب الجلسات الفائتة',
+                        message: 'تعذّر تحميل الجلسات الفائتة. تحقق من الاتصال بالإنترنت.',
+                    });
+                }
             } else {
                 recordSuccess('db_calendar_sessions');
                 sess = ((sessRes.data || []) as unknown as CalendarSessionRow[]).filter((s: CalendarSessionRow) => !s.result?.trim() && !s.next_action?.trim());
@@ -107,7 +117,15 @@ function MissedTab({ cases, clients, onOpenCase, onOpenReminders, onOpenStandalo
             if (tskRes.error) {
                 const cached = loadTypedCache<TaskFeedItem[]>(MISSED_TASKS_CACHE_KEY);
                 if (cached) tsk = cached;
-                else { tsk = []; recordError('db_reminders', tskRes.error.message); }
+                else {
+                    tsk = [];
+                    // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٢، ٢-ج-٣، فئة B): تحويل
+                    // لـtrackQueryOutcome بدل recordError(tskRes.error.message) المباشر.
+                    await trackQueryOutcome('db_reminders', tskRes.error, {
+                        label: 'جلب التذكيرات الفائتة',
+                        message: 'تعذّر تحميل التذكيرات الفائتة. تحقق من الاتصال بالإنترنت.',
+                    });
+                }
             } else {
                 recordSuccess('db_reminders');
                 tsk = (tskRes.data || []) as unknown as TaskFeedItem[];
