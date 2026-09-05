@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../supabaseClient';
 import { toDateStr } from '../calendar/sessions-calendar/constants';
 import { LoadingState, ErrorState, SummaryBanner, SectionCard, CopyButton } from '../../shared/ui/TaskResultKit';
-import { recordError, recordSuccess } from '../../systemHealth';
+import { recordSuccess, trackQueryOutcome } from '../../systemHealth';
 import type { MappedCase } from '../../hooks/useAppData';
 
 // ─────────────────────────────────────────────────────────
@@ -144,11 +144,14 @@ function SessionsRemindersOverview({ cases, onOpenCase }: SessionsRemindersOverv
       setUpcomingReminders((upRes.data || []) as unknown as OverviewReminderRow[]);
       setLoading(false);
       recordSuccess('ai_sessions_reminders');
-    }).catch((e) => {
+    }).catch(async (e) => {
       if (cancelled) return;
-      const _msg = e instanceof Error ? e.message : String(e);
       const displayMsg = 'تعذّر تحميل الجلسات والتذكيرات. جرّب تاني.';
-      recordError('ai_sessions_reminders', _msg, { label: 'الجلسات والتذكيرات', message: displayMsg });
+      // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٦ (٢-ج-٣)، نقطة ٤/٨): تحويل
+      // لـtrackQueryOutcome بدل recordError(_msg) بعد استخراج .message.
+      // تمرير الكائن الخام e (بدل النص المستخرج مسبقًا) عشان classifyError
+      // يشتغل على شكل الخطأ الحقيقي. غير شرطي (مفيش كاش محلي هنا أصلاً).
+      await trackQueryOutcome('ai_sessions_reminders', e, { label: 'الجلسات والتذكيرات', message: displayMsg });
       setError(displayMsg);
       setLoading(false);
     });
