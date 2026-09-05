@@ -19,9 +19,15 @@ import type { AIDocFields } from './aiAssistantTypes';
 
 const recordError = vi.fn();
 const recordSuccess = vi.fn();
+const trackQueryOutcome = vi.fn(async (_key: string, error: unknown, _opts?: { label: string; message: string }) => {
+  if (!error) { recordSuccess(_key); return { ok: true }; }
+  recordError(_key, (error as { message?: string })?.message);
+  return { ok: false };
+});
 vi.mock('../../../systemHealth', () => ({
   recordError: (...a: unknown[]) => recordError(...a),
   recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+  trackQueryOutcome: (...a: [string, unknown, { label: string; message: string }?]) => trackQueryOutcome(...a),
 }));
 
 const activeCfg = {
@@ -99,22 +105,26 @@ describe('useAIDocumentGenerator — validation قبل التوليد', () => {
     expect(result.current.generatedDoc).toContain('نص المستند المولّد');
   });
 
-  it('نفاد السقف اليومي: generatedDoc بتبدأ بـ ⏳ + تلميح BYOK، ومن غير recordError', async () => {
+  it('نفاد السقف اليومي: generatedDoc بتبدأ بـ ⏳ + تلميح BYOK، ومن غير trackQueryOutcome', async () => {
     const quotaMsg = 'وصلت للحد المجاني اليومي للمساعد الذكي. تقدر تضيف مفتاح Groq شخصي مجاني من الإعدادات لاستخدام أكبر.';
     const { result } = setup(() => Promise.reject(new Error(quotaMsg)));
     fillRequiredFields(result);
     await act(async () => { await result.current.generateDocument(); });
     expect(result.current.generatedDoc.startsWith('⏳ ' + quotaMsg)).toBe(true);
     expect(result.current.generatedDoc).toContain('السقف بيترجع تلقائيًا بكرة');
-    expect(recordError).not.toHaveBeenCalled();
+    expect(trackQueryOutcome).not.toHaveBeenCalled();
   });
 
-  it('فشل المزود (رسالة غير عربية): generatedDoc برسالة عامة تبدأ بـ ⚠️ + recordError بيتنادى', async () => {
+  it('فشل المزود (رسالة غير عربية): generatedDoc برسالة عامة تبدأ بـ ⚠️ + trackQueryOutcome بيتنادى', async () => {
     const { result } = setup(() => Promise.reject(new Error('Failed to fetch')));
     fillRequiredFields(result);
     await act(async () => { await result.current.generateDocument(); });
     expect(result.current.generatedDoc.startsWith('⚠️ تعذّر توليد المستند')).toBe(true);
-    expect(recordError).toHaveBeenCalledWith('ai_document_generate', 'Failed to fetch', expect.objectContaining({ label: 'توليد المستندات' }));
+    expect(trackQueryOutcome).toHaveBeenCalledWith(
+      'ai_document_generate',
+      expect.objectContaining({ message: 'Failed to fetch' }),
+      expect.objectContaining({ label: 'توليد المستندات' })
+    );
   });
 
   // 🆕 المرحلة 5 — البند الأخير المتبقي: تسجيل خطأ فشل تنزيل/طباعة الـ PDF
@@ -122,7 +132,7 @@ describe('useAIDocumentGenerator — validation قبل التوليد', () => {
   // الوحيد بين كل مهام المساعد). بنحاكي فشل window.open (مثلاً حاجب
   // النوافذ المنبثقة في المتصفح رمى استثناء بدل ما يرجع null) عشان
   // نوصل لفرع catch فعليًا.
-  it('downloadPDF: فشل فعلي (window.open بيرمي استثناء) → recordError بيتنادى بمفتاح ai_document_download', async () => {
+  it('downloadPDF: فشل فعلي (window.open بيرمي استثناء) → trackQueryOutcome بيتنادى بمفتاح ai_document_download', async () => {
     const { result } = setup();
     fillRequiredFields(result);
     await act(async () => { await result.current.generateDocument(); });
@@ -132,7 +142,11 @@ describe('useAIDocumentGenerator — validation قبل التوليد', () => {
     window.open = vi.fn(() => { throw new Error('Popup blocked'); }) as unknown as typeof window.open;
     try {
       act(() => { result.current.downloadPDF(); });
-      expect(recordError).toHaveBeenCalledWith('ai_document_download', 'Popup blocked', expect.objectContaining({ label: 'تنزيل مستند PDF' }));
+      expect(trackQueryOutcome).toHaveBeenCalledWith(
+        'ai_document_download',
+        expect.objectContaining({ message: 'Popup blocked' }),
+        expect.objectContaining({ label: 'تنزيل مستند PDF' })
+      );
     } finally {
       window.open = originalOpen;
     }
