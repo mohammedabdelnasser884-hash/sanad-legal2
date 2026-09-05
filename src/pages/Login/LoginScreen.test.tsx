@@ -49,7 +49,11 @@ const logActivity = vi.fn();
 vi.mock('../../shared/lib/dataAccess', () => ({ logActivity: (...a: unknown[]) => logActivity(...a) }));
 
 const recordError = vi.fn();
-vi.mock('../../systemHealth', () => ({ recordError: (...a: unknown[]) => recordError(...a) }));
+const recordSuccess = vi.fn();
+vi.mock('../../systemHealth', () => ({
+  recordError: (...a: unknown[]) => recordError(...a),
+  recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+}));
 
 const SUCCESS: InvokeResult = {
   data: { access_token: 'at-1', refresh_token: 'rt-1', user: { id: 'user-1', email: 'lawyer@sanad.test' } },
