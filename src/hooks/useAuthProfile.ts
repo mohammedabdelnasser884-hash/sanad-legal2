@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../supabaseClient';
 import { toast } from '../shared/lib/notifications';
-import { recordError, recordSuccess } from '../systemHealth';
+import { recordSuccess, trackQueryOutcome } from '../systemHealth';
 import { setCurrentTenantId } from '../constants';
 import type { ProfileRow } from '../types';
 
@@ -133,7 +133,18 @@ export function useAuthProfile() {
                 setAuthLoading(false);
                 return;
             }
-            recordError('auth_profile_load', error.message, {
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ١، ٢-ج-٣، فئة B): تحويل لـ
+            // trackQueryOutcome بدل recordError(error.message) المباشر.
+            // ⚠️ ملحوظة فحص نقطة نقطة: error هنا مش دايمًا كائن Supabase
+            // حقيقي — ممكن يكون marker صناعي {message:'offline'}/
+            // {message:'timeout'} (مبني فوق فوقنا في نفس الدالة) أو res.error
+            // حقيقي من قاعدة البيانات. تمرير الكائن الخام (بدل .message
+            // المستخرج) آمن في الحالتين: classifyError بيرجّع 'network'/
+            // 'timeout' صح للـmarkers الصناعية (نفس فحص navigator.onLine/
+            // 'timeout' المُستخدم أصلاً في بناء الـmarker ده فوق)، ولسه بيضيف
+            // تصنيف session/permission حقيقي لأول مرة لما يكون error فعلاً
+            // PostgrestError من res.error.
+            await trackQueryOutcome('auth_profile_load', error, {
                 label: 'تحميل بيانات الحساب',
                 message: 'تعذّر تحميل بيانات حسابك. أعد تحميل الصفحة. لو المشكلة استمرت، تواصل مع الدعم.',
             });
