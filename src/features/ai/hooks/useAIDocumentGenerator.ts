@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { toast } from '../../../shared/lib/notifications';
 import { escapeHtml } from '../../../shared/lib/sanitize';
-import { recordError } from '../../../systemHealth';
+import { recordError, recordSuccess } from '../../../systemHealth';
 import { PDF_FONT_FAMILY, PDF_FONT_LINK } from '../../../shared/lib/pdf';
 import type { CountryConfig } from '../../../constants';
 import type { ProfileRow } from '../../../types';
@@ -135,6 +135,7 @@ ${caseInfoWithParties}
             const legalContextBlock = buildLegalContextBlock(retrieved, true);
             const reply = await callAI(prompt, null, legalContextBlock);
             setGeneratedDoc(isMemo ? memoHeader + '\n\n' + reply : reply);
+            recordSuccess('ai_document_generate');
         } catch(e) {
             const _msg = e instanceof Error ? e.message : String(e);
             // 🆕 نفس منطق useAIChat: لو الرسالة عربية ومقصودة للمستخدم
@@ -334,6 +335,7 @@ ${PDF_FONT_LINK}
             if (!w) { toast('❌ السماح بالنوافذ المنبثقة مطلوب', true); return; }
             w.document.write(printHTML);
             w.document.close();
+            recordSuccess('ai_document_download');
             toast('📥 جاري فتح نافذة الطباعة/الحفظ...');
         } catch(err) {
             // 🆕 المرحلة 5 (خطة المساعد الذكي) — البند المتبقي الأخير:
