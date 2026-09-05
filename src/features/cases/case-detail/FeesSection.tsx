@@ -45,6 +45,7 @@ function FeesSection({ caseData, clients, country, profile = null, ensureClients
   const {
     fees, payments, expandedPayments, setExpandedPayments,
     loading, showForm, setShowForm, form, setForm, saving, editId, setEditId,
+    markNewFeeFormOpened, markNewFeeFormClosed,
     addPaymentFor, setAddPaymentFor, payingFeeId, payAmount, setPayAmount, payDate, setPayDate,
     payNote, setPayNote, confirmDeletePay, setConfirmDeletePay,
     confirmDeleteFee, setConfirmDeleteFee, invoiceModal, setInvoiceModal,
@@ -77,6 +78,7 @@ function FeesSection({ caseData, clients, country, profile = null, ensureClients
     setEditId(null);
     setForm({ case_id: caseData.id, client_id: caseData.client_id || '', receiver: '', total: '', paid: '', payment_date: '', notes: '' });
     setShowForm(true);
+    markNewFeeFormOpened(); // 🆕 (٣-د)
   };
 
   return React.createElement('div', { className: 'space-y-4 fade-in' },
@@ -92,7 +94,7 @@ function FeesSection({ caseData, clients, country, profile = null, ensureClients
     showForm && createPortal(
       React.createElement('div', {
         className: `fixed inset-0 z-[70] flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/80 backdrop-blur-sm`,
-        onClick: (e: React.MouseEvent) => { if (e.target === e.currentTarget) { setShowForm(false); setEditId(null); } }
+        onClick: (e: React.MouseEvent) => { if (e.target === e.currentTarget) { setShowForm(false); setEditId(null); markNewFeeFormClosed(); } }
       },
         React.createElement('div', {
           className: `bg-premium-card w-full max-w-lg ${modalPresentation.isDesktop ? 'border border-premium-gold/20 rounded-3xl' : 'border-t border-premium-gold/20 rounded-t-3xl'} overflow-y-auto no-scrollbar p-5 space-y-3 shadow-2xl max-h-[90vh] ${modalPresentation.panelAnimationClassName}`,
@@ -100,7 +102,7 @@ function FeesSection({ caseData, clients, country, profile = null, ensureClients
         },
           React.createElement('div', { className: 'flex items-center justify-between mb-1' },
             React.createElement('h4', { className: 'text-xs font-black text-premium-gold' }, editId ? '✏️ تعديل الأتعاب' : '📋 إضافة أتعاب'),
-            React.createElement('button', { onClick: () => { setShowForm(false); setEditId(null); }, 'data-testid': 'close-case-fee-form', className: 'w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90' }, '✕')
+            React.createElement('button', { onClick: () => { setShowForm(false); setEditId(null); markNewFeeFormClosed(); }, 'data-testid': 'close-case-fee-form', className: 'w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90' }, '✕')
           ),
           // اسم القضية — عرض ثابت بس (مقفول، محقون تلقائي من caseData)
           React.createElement('div', { className: 'space-y-1' },
@@ -142,7 +144,7 @@ function FeesSection({ caseData, clients, country, profile = null, ensureClients
           React.createElement('div', { className: 'flex gap-2' },
             React.createElement('button', { onClick: handleSave, disabled: saving || !resolvedFormClient.displayLabel, 'data-testid': 'save-case-fee-button', className: 'flex-1 py-2.5 bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg rounded-xl text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-95' },
               saving ? React.createElement(I.Spin) : React.createElement(I.Check), 'حفظ'),
-            React.createElement('button', { onClick: () => { setShowForm(false); setEditId(null); }, className: 'px-4 py-2.5 bg-white/5 text-slate-400 rounded-xl text-xs font-bold active:scale-95' }, 'إلغاء')
+            React.createElement('button', { onClick: () => { setShowForm(false); setEditId(null); markNewFeeFormClosed(); }, className: 'px-4 py-2.5 bg-white/5 text-slate-400 rounded-xl text-xs font-bold active:scale-95' }, 'إلغاء')
           )
         )
       ),
