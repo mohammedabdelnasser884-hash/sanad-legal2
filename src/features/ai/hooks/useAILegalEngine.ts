@@ -1,26 +1,10 @@
 import { db } from '../../../supabaseClient';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
-import { getEdgeFunctionErrorMessage, type EdgeFunctionError } from '../../../shared/lib/edgeFunctionErrors';
+import { recordSuccess } from '../../../systemHealth';
+import { getEdgeFunctionErrorMessage, looksArabicUserMessage, type EdgeFunctionError } from '../../../shared/lib/edgeFunctionErrors';
 import type { ProfileRow } from '../../../types';
 import type { CountryConfig } from '../../../constants';
 import type { AIMessage, LegalArticle } from './aiAssistantTypes';
-
-// ── استخراج رسالة الخطأ الحقيقية من Edge Function ──
-// 🔧 توحيد (خطة إعادة تصميم رسائل الأخطاء، P1): كان فيه نسخة محلية مكررة
-// هنا بفولباك خطير (`error?.message` الخام) — دلوقتي بتستخدم المصدر
-// الموحد `edgeFunctionErrors.ts` واللي فولباكه دايمًا رسالة عربية آمنة،
-// مش نص تقني خام زي "Edge Function returned a non-2xx status code".
-// 🆕 إصلاح أصلي محفوظ: ai-chat بترجّع رسائلها العربية المقصودة (السقف
-// اليومي، الجلسة منتهية، الحساب معطل...) بـ HTTP status غير 2xx، فـ
-// supabase-js كان بيرجّع رسالة عامة بدل الرسالة الحقيقية جوه جسم الاستجابة.
-const getFnErrorMessage = async (error: EdgeFunctionError | null | undefined): Promise<string> => {
-    if (!error) return '';
-    const extracted = await getEdgeFunctionErrorMessage(error);
-    // 🔧 الفولباك دلوقتي رسالة عربية آمنة ثابتة دايمًا — مش
-    // `error?.message` الخام زي قبل التوحيد (كان ممكن يسرّب نص إنجليزي
-    // تقني زي "Edge Function returned a non-2xx status code").
-    return extracted || 'تعذر الاتصال بالمساعد القانوني';
-};
 
 // ─────────────────────────────────────────────────────────
 //  useAILegalEngine — منقول حرفيًا من useAIAssistant.ts (دفعة 3):
@@ -88,6 +72,7 @@ ${list}
                 return [];
             }
             if (!matches) return [];
+            recordSuccess('ai_legal_query');
             // ⚠️ db.rpc() بقى مكتوب-النوع (Functions permissive) فبيرجّع
             // unknown بدل any — بنعرف شكل الصفوف فعليًا (نتيجة search_law_articles)
             // فبنعمل cast صريح هنا بدل ما نسيب .filter() يفشل وقت الكتابة.
@@ -112,7 +97,17 @@ ${list}
                 model: selectedModel,
             },
         });
-        if (error) throw new Error(await getFnErrorMessage(error as EdgeFunctionError));
+        if (error) {
+            // 🔧 FIX (المرحلة ١ من خطة إعادة تصميم رسائل الأخطاء — ٤ سبتمبر
+            // ٢٠٢٦): كان في نسخة محلية من نفس الفكرة هنا، وفولباكها كان
+            // بيرجّع error.message الخام ("Edge Function returned a non-2xx
+            // status code") لو الاستخراج فشل — يعني ممكن نص تقني إنجليزي
+            // يوصل للمستخدم في رسالة الخطأ. دلوقتي بنستخدم الدالة الموحدة
+            // المشتركة (edgeFunctionErrors.ts)، ونتحقق إن الرسالة المستخرجة
+            // عربية فعلاً قبل ما نعرضها؛ غير كده رسالة عربية آمنة ثابتة.
+            const serverMessage = await getEdgeFunctionErrorMessage(error as EdgeFunctionError);
+            throw new Error(looksArabicUserMessage(serverMessage) ? (serverMessage as string) : 'تعذّر الاتصال بالمساعد القانوني. تحقق من اتصال الإنترنت وحاول تاني.');
+        }
         if (data?.error) throw new Error(data.error);
         return data?.content || 'لم يتم الحصول على رد.';
     };
