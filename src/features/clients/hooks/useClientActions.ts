@@ -6,6 +6,7 @@ import { safeUpdate, logActivity, buildFieldDiff, buildAddSnapshot, buildDeleteS
 import { callAdminAction, db } from '../../../supabaseClient';
 import { getCurrentTenantId } from '../../../constants';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
+import { recordSuccess } from '../../../systemHealth';
 import { runDuplicateCheckOfflineAware } from '../../../shared/lib/offlineGuard';
 import { linkClientToParty, linkClientToSessionParty } from '../../calendar/hooks/caseSessionLinkingShared';
 import type { Dispatch, SetStateAction } from 'react';
@@ -209,6 +210,7 @@ export function useClientActions(params: {
             setSavingClient(false);
             return false;
         }
+        recordSuccess('client_duplicate_check');
         if (dup.duplicate) { toast(dup.message!, true); setSavingClient(false); return false; }
         // رفع الصور على Storage (يحتاج نت — مش بنحفظه offline)
         let idUrl: string | null = null, poaUrl: string | null = null;
@@ -331,6 +333,7 @@ export function useClientActions(params: {
                 if (!result.ok) {
                     showErrorToast('client_auto_link', new Error('party link failed'), 'تم حفظ الموكل لكن تعذّر ربطه بالطرف تلقائيًا — استخدم زرار "🔗 ربط" لربطه يدويًا.', 'ربط الموكل تلقائيًا');
                 } else {
+                    recordSuccess('client_auto_link');
                     logActivity(db, 'ربط طرف بموكل', {
                         userName: _userName,
                         entity_type: 'case',
@@ -352,6 +355,7 @@ export function useClientActions(params: {
                 if (!result.ok) {
                     showErrorToast('client_auto_link', new Error('session party link failed'), 'تم حفظ الموكل لكن تعذّر ربطه بالطرف تلقائيًا — استخدم زرار "🔗 ربط" لربطه يدويًا.', 'ربط الموكل تلقائيًا');
                 } else {
+                    recordSuccess('client_auto_link');
                     logActivity(db, 'ربط طرف بموكل', {
                         userName: _userName,
                         entity_type: 'session',
@@ -391,6 +395,7 @@ export function useClientActions(params: {
                     const targetLabel = clientLinkTarget.type === 'case' ? 'بالقضية' : 'بالجلسة';
                     showErrorToast('client_auto_link', linkErr, `تم حفظ الموكل لكن تعذّر ربطه ${targetLabel} تلقائيًا — استخدم زرار "🔗 ربط" لربطه يدويًا.`, 'ربط الموكل تلقائيًا');
                 } else {
+                    recordSuccess('client_auto_link');
                     logActivity(db, clientLinkTarget.type === 'case' ? 'ربط قضية بموكل' : 'ربط جلسة بموكل', {
                         userName: _userName,
                         entity_type: clientLinkTarget.type,
@@ -513,6 +518,7 @@ export function useClientActions(params: {
             setSavingClient(false);
             return false;
         }
+        recordSuccess('client_duplicate_check');
         if (dup.duplicate) { toast(dup.message!, true); setSavingClient(false); return false; }
         const client = clients.find((c) => c.id === clientId);
         const existingContactInfo = (client?.contact_info as ClientContactInfo | null) || null;
@@ -627,6 +633,7 @@ export function useClientActions(params: {
             toast('✅ تم إنشاء حساب ' + form.full_name + ' بنجاح!');
             logActivity(db, 'إضافة مستخدم', { userName: _userName, entity_type: 'user', details: `${form.full_name} (${form.role || '—'})` });
             setShowLawyerModal(false); fetchLawyers();
+            recordSuccess('client_create_lawyer_account');
         } catch (e) {
             showErrorToast('client_create_lawyer_account', e, 'تعذّر إنشاء الحساب. تحقق من صحة البيانات وحاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'إنشاء حساب محامي');
         }
