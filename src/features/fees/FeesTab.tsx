@@ -60,6 +60,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
     const {
       fees, payments, expandedPayments, setExpandedPayments,
       loading, showForm: showFormRaw, setShowForm: setShowFormRaw, form, setForm, saving, editId, setEditId,
+      markNewFeeFormOpened, markNewFeeFormClosed,
       addPaymentFor, setAddPaymentFor, payingFeeId, payAmount, setPayAmount, payDate, setPayDate,
       payNote, setPayNote, confirmDeletePay: confirmDeletePayRaw, setConfirmDeletePay: setConfirmDeletePayRaw,
       confirmDeleteFee: confirmDeleteFeeRaw, setConfirmDeleteFee: setConfirmDeleteFeeRaw, invoiceModal: invoiceModalRaw, setInvoiceModal: setInvoiceModalRaw,
@@ -260,7 +261,13 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         // ─ زر الإضافة (بعد ما زر الملخص المالي اتنقل للهيدر فوق، بقى الزرار
         // الوحيد في الصف ده — عرض كامل ثابت على الموبايل والديسكتوب) ─
         React.createElement('button',{
-            onClick:()=>{setShowForm(!showForm);setEditId(null);setForm({case_id:'',client_id:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); },
+            onClick:()=>{
+                // 🆕 (٣-د): بيتولّد مفتاح idempotency جديد بس وقت الفتح
+                // الفعلي (مش وقت القفل لو الزرار ده بقى بيقفل فورم مفتوح).
+                const opening = !showForm;
+                setShowForm(opening);setEditId(null);setForm({case_id:'',client_id:'',receiver:'',total:'',paid:'',payment_date:'',notes:''});
+                if (opening) markNewFeeFormOpened(); else markNewFeeFormClosed();
+            },
             'data-testid':'add-fee-button',
             className:"w-full py-3 border border-dashed border-premium-gold/30 rounded-2xl flex items-center justify-center gap-2 text-premium-gold text-xs font-black hover:bg-premium-gold/5 transition-all active:scale-[0.98]"
         }, React.createElement(I.Plus), "إضافة أتعاب قضية"),
@@ -269,7 +276,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
         showForm && createPortal(
             React.createElement('div',{
                 className:`fixed inset-0 z-[70] flex ${modalPresentation.overlayAlignClassName} justify-center bg-black/80 backdrop-blur-sm`,
-                onClick:(e: React.MouseEvent) => { if(e.target===e.currentTarget) { setShowForm(false); setEditId(null); } }
+                onClick:(e: React.MouseEvent) => { if(e.target===e.currentTarget) { setShowForm(false); setEditId(null); markNewFeeFormClosed(); } }
             },
             React.createElement('div',{
                 className:`bg-premium-card w-full max-w-lg ${modalPresentation.isDesktop ? 'border border-premium-gold/20 rounded-3xl' : 'border-t border-premium-gold/20 rounded-t-3xl'} overflow-y-auto no-scrollbar p-5 space-y-3 shadow-2xl max-h-[90vh] ${modalPresentation.panelAnimationClassName}`,
@@ -282,7 +289,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                         // الفورم بدقة، بدل الاعتماد على نص "✕" اللي ممكن يتكرر في عناصر
                         // تانية (مودال تفاصيل الأتعاب تحته، مودال الفاتورة، ...إلخ) ويسبب
                         // strict-mode violation في Playwright. صفر تغيير في السلوك/الشكل.
-                        React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);},'data-testid':'close-fee-form',className:"w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90"},"✕")
+                        React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);markNewFeeFormClosed();},'data-testid':'close-fee-form',className:"w-7 h-7 rounded-lg bg-white/5 text-slate-400 text-xs active:scale-90"},"✕")
                     ),
                     // 🔒 CHANGED (طلب المستخدم — 29 أغسطس 2026): دروب-داون قضية عادي
                     // بقى CaseSearchSelect (بحث حي في الداتابيز، بنفس نمط
@@ -352,7 +359,7 @@ function FeesTab({cases, clients, showSummaryModal, setShowSummaryModal, country
                     React.createElement('div',{className:"flex gap-2"},
                         React.createElement('button',{onClick:handleSave,disabled:saving || !resolvedFormClient.displayLabel,'data-testid':'save-fee-button',className:"flex-1 py-2.5 bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg rounded-xl text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-95"},
                             saving?React.createElement(I.Spin):React.createElement(I.Check),"حفظ"),
-                        React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);},className:"px-4 py-2.5 bg-white/5 text-slate-400 rounded-xl text-xs font-bold active:scale-95"},"إلغاء")
+                        React.createElement('button',{onClick:()=>{setShowForm(false);setEditId(null);markNewFeeFormClosed();},className:"px-4 py-2.5 bg-white/5 text-slate-400 rounded-xl text-xs font-bold active:scale-95"},"إلغاء")
                     )
                 )
             )
