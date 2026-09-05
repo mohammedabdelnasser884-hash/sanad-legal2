@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { I } from '../../constants';
 import type { MappedCase, MappedClient } from '../../hooks/useAppData';
 import { db } from '../../supabaseClient';
-import { recordError } from '../../systemHealth';
+import { recordError, recordSuccess } from '../../systemHealth';
 // 🆕 (مرحلة D3 — خطة Desktop Experience، 14 أغسطس 2026): جدول الموكلين
 // على الديسكتوب، بنفس نمط جدول القضايا (D1/D2). راجع تعليقات
 // ClientTableRow.tsx لتفاصيل اختيار الأعمدة.
@@ -89,6 +89,7 @@ function ClientsTab({ cases, clients, clientSearch, setClientSearch, clientsPage
     (async () => {
       const { data, error } = await db.from('case_parties').select('client_id, case_id').in('client_id', clientIds);
       if (error) { recordError('db_case_parties_by_client_ids', error.message); return; }
+      recordSuccess('db_case_parties_by_client_ids');
       if (cancelled) return;
       const grouped: Record<string, string[]> = {};
       (data || []).forEach((row: { client_id: string | null; case_id: string | null }) => {
