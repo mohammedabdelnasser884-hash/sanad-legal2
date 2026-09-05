@@ -9,7 +9,7 @@ import { getPublishedTemplateFields } from '../api/templatesApi';
 import { resolveCaseBindings, validateRequiredFields, generateDocument, resolveTemplateVersion, renderDocumentContent } from '../api/generationApi';
 import { loadOfficeSetting, getCurrentTenantId } from '../../../constants';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
-import { recordError, recordSuccess } from '../../../systemHealth';
+import { recordError, recordSuccess, trackQueryOutcome } from '../../../systemHealth';
 import { saveOfflineTemplateCache, loadOfflineTemplateCache, makeOfflineGeneratedDocId } from '../lib/offlineTemplateCache';
 import type { TemplateField, ResolvedBindings, SourceMode, GeneratedDocument } from '../types';
 
@@ -142,7 +142,13 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
             ? 'انتهت مهلة تحميل حقول القالب. تحقق من الاتصال بالإنترنت وحاول تاني.'
             : (e instanceof Error ? e.message : 'تعذّر تحميل حقول القالب');
           setLoadError(msg);
-          recordError('db_document_generation', timedOut ? 'timeout' : msg);
+          // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٣، ٢-ج-٣، فئة B): تحويل
+          // لـtrackQueryOutcome بدل recordError(msg) المباشر — تمرير e الخام
+          // (أو خطأ صناعي timeout) بدل msg المستخرج/المُعاد صياغته للعرض.
+          await trackQueryOutcome('db_document_generation', timedOut ? new Error('timeout') : e, {
+            label: 'تحميل قوالب المستندات',
+            message: 'تعذّر تحميل حقول القالب أو بيانات القضية. تحقق من الاتصال بالإنترنت.',
+          });
         }
       } finally {
         guard.cleanup();
@@ -277,7 +283,13 @@ export function useGenerateDocument({ templateId, caseId, sourceMode }: UseGener
           ? 'انتهت مهلة توليد المستند. تحقق من الاتصال بالإنترنت وحاول تاني.'
           : (e instanceof Error ? e.message : 'تعذّر توليد المستند، تحقق من البيانات المطلوبة')
       );
-      recordError('doc_generation_generate', timedOut ? 'timeout' : (e instanceof Error ? e.message : String(e)));
+      // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٣، ٢-ج-٣، فئة B): تحويل
+      // لـtrackQueryOutcome بدل recordError(...) المباشر. doc_generation_generate
+      // مش مفتاح معروف، فبنمرر label/message صريحين.
+      await trackQueryOutcome('doc_generation_generate', timedOut ? new Error('timeout') : e, {
+        label: 'توليد المستند',
+        message: 'تعذّر توليد المستند. تحقق من البيانات المطلوبة أو الاتصال بالإنترنت.',
+      });
       return null;
     } finally {
       guard.cleanup();
