@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { db } from '../../supabaseClient';
 import { logActivity } from '../../shared/lib/dataAccess';
-import { recordError, recordSuccess } from '../../systemHealth';
+import { recordError, trackQueryOutcome } from '../../systemHealth';
 import { getEdgeFunctionErrorMessage, looksArabicUserMessage, type EdgeFunctionError } from '../../shared/lib/edgeFunctionErrors';
 import { I, SanadMark } from '../../constants';
 
@@ -39,16 +39,22 @@ function LoginScreen({onLogin}: LoginScreenProps){
         setForgotLoading(true);setForgotErr('');
         const {error}=await db.auth.resetPasswordForEmail(forgotEmail,{redirectTo:PASSWORD_RESET_REDIRECT_URL});
         setForgotLoading(false);
-        if(error){
-            // ⚡ الحماية من إساءة الاستخدام (A.4، ✅ تقرر): معتمدين على
-            // حماية Supabase الافتراضية بس دلوقتي (بدون Edge Function
-            // إضافية) — أي رفض منها بيتعرض هنا برسالة عامة.
-            recordError('reset_password_request', error.message);
-            setForgotErr('تعذّر إرسال رابط الاستعادة. تحقق من اتصال الإنترنت وحاول مرة أخرى.');
+        // ⚡ الحماية من إساءة الاستخدام (A.4، ✅ تقرر): معتمدين على
+        // حماية Supabase الافتراضية بس دلوقتي (بدون Edge Function
+        // إضافية) — أي رفض منها بيتعرض هنا برسالة عامة.
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ١، ٢-ج-٣، فئة B): تحويل
+        // لـtrackQueryOutcome بدل recordError(error.message) المباشر —
+        // نقطة {error} بسيطة زي fetchPartiesMapByCaseIds، بيسجل recordSuccess
+        // تلقائيًا لما error فاضي.
+        const result = await trackQueryOutcome('reset_password_request', error, {
+            label: 'إرسال رابط استعادة كلمة المرور',
+            message: 'تعذّر إرسال رابط الاستعادة. تحقق من اتصال الإنترنت وحاول مرة أخرى.',
+        });
+        if(!result.ok){
+            setForgotErr(result.failure.safeMessage);
             return;
         }
         setForgotSent(true);
-        recordSuccess('reset_password_request');
     };
 
     const handleLogin=async(e: React.MouseEvent<HTMLButtonElement>)=>{
@@ -89,7 +95,22 @@ function LoginScreen({onLogin}: LoginScreenProps){
                 if (looksArabicUserMessage(serverMessage)) {
                     setErr(serverMessage as string);
                 } else {
-                    recordError('office_login', error?.message);
+                    // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ١، ٢-ج-٣، فئة B): تحويل
+                    // لـtrackQueryOutcome بدل recordError(error?.message) المباشر.
+                    // ⚠️ ملحوظة فحص نقطة نقطة: النقطة دي *مش* نفس باج
+                    // ResetPasswordScreen.tsx رغم تشابه الشكل (recordError جوه
+                    // else-branch بعد حساب serverMessage) — التعليق الأصلي فوق
+                    // (سطر ٧٠-٧٦) بيوضّح إن استخدام error?.message هنا **مقصود**:
+                    // بيلتقط فشل شبكة/عميل خام (زي "Failed to fetch") مش هيبقى
+                    // موجود في serverMessage أصلاً لو مفيش context لل response.
+                    // تمرير الكائن الخام error بدل .message المستخرج بيحافظ على
+                    // نفس السلوك بالظبط (extractSafeErrorText بتقع لنفس fallback
+                    // .message لو مفيش context، أو لو serverMessage الناتج مش
+                    // عربي) وبيضيف تصنيف classifyError من غير ما يغيّر أي قرار عرض.
+                    await trackQueryOutcome('office_login', error, {
+                        label: 'تسجيل الدخول',
+                        message: 'تعذّر تسجيل الدخول. تحقق من اتصال الإنترنت وحاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.',
+                    });
                     setErr('تعذّر تسجيل الدخول. تحقق من اتصال الإنترنت وحاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.');
                 }
             } else {
@@ -102,13 +123,21 @@ function LoginScreen({onLogin}: LoginScreenProps){
         // من هنا وطالع، auth.uid() هيشتغل عادي في كل مكان بالتطبيق.
         const {error:sessionErr}=await db.auth.setSession({access_token:data.access_token,refresh_token:data.refresh_token});
         setLoading(false);
-        if(sessionErr){
-            recordError('office_login', sessionErr.message);
-            setErr('تعذّر إتمام تسجيل الدخول. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.');
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ١، ٢-ج-٣، فئة B): تحويل
+        // لـtrackQueryOutcome بدل recordError(sessionErr.message) المباشر.
+        // ⚠️ ملحوظة فحص نقطة نقطة: trackQueryOutcome بتسجل recordSuccess('office_login')
+        // تلقائيًا لما sessionErr فاضي، فده بيغني عن recordSuccess('office_login')
+        // الصريح اللي كان بعدها تحت مباشرة — كان بيتكرر بلا داعي لنفس المفتاح
+        // في نفس المسار (اتشال هنا، مش نسيان).
+        const sessionResult = await trackQueryOutcome('office_login', sessionErr, {
+            label: 'تسجيل الدخول',
+            message: 'تعذّر إتمام تسجيل الدخول. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.',
+        });
+        if(!sessionResult.ok){
+            setErr(sessionResult.failure.safeMessage);
             return;
         }
         logActivity(db, 'تسجيل دخول', { entity_type: 'user', entity_id: data.user?.id, details: data.user?.email || null });
-        recordSuccess('office_login');
         onLogin(data.user);
     };
 
