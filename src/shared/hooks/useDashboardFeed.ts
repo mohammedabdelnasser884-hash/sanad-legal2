@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { db } from '../../supabaseClient';
 import { getCurrentTenantId } from '../../constants';
-import { createFetchGuard } from '../lib/offlineGuard';
+import { createFetchGuard, runReadWithRetry } from '../lib/offlineGuard';
 import { toast } from '../lib/notifications';
 import type { ProfileRow, ReminderRow } from '../../types';
 
@@ -116,26 +116,29 @@ export function useDashboardFeed(profile: ProfileRow | null) {
         if (!profile) return;
         setLoadingUrgent(true);
         const todayStr = fmtDate(new Date());
-        const guard = createFetchGuard();
-        let data: SessionFeedItem[] | null = null;
-        let error: { message: string } | null = null;
-        if (guard.offline) {
-            error = { message: 'offline' };
-        } else {
-            try {
-                const res = await db.from('case_sessions')
-                    .select('id, session_date, session_time, session_floor, session_hall, description, case_id, client_id, result, next_action, title, case_number, court, case_type, circuit_number, cases(id,title,court_name,case_type,case_number_official,client_id)')
-                    .eq('session_date', todayStr)
-                    .order('session_date', { ascending: true })
-                    .abortSignal(guard.controller.signal);
-                data = res.data;
-                error = res.error;
-            } catch (err) {
-                error = { message: guard.didTimeOut() ? 'timeout' : (err as { message?: string })?.message || 'fetch failed' };
-            } finally {
-                guard.cleanup();
-            }
-        }
+        // 🔁 FIX (خطة "تصنيف الرسائل" — بند ٣-ج، ٥ سبتمبر ٢٠٢٦): إعادة محاولة
+        // تلقائية (محاولة إضافية واحدة) لو الفشل transient (timeout/network)
+        // — انظر runReadWithRetry في offlineGuard.ts. باقي المنطق (كاش/رسائل)
+        // زي ما هو تمامًا.
+        const { error, result, attempts } = await runReadWithRetry<SessionFeedItem[]>(
+            async (guard) => {
+                if (guard.offline) return { error: { message: 'offline' } };
+                try {
+                    const res = await db.from('case_sessions')
+                        .select('id, session_date, session_time, session_floor, session_hall, description, case_id, client_id, result, next_action, title, case_number, court, case_type, circuit_number, cases(id,title,court_name,case_type,case_number_official,client_id)')
+                        .eq('session_date', todayStr)
+                        .order('session_date', { ascending: true })
+                        .abortSignal(guard.controller.signal);
+                    return { error: res.error, result: res.data ?? undefined };
+                } catch (err) {
+                    return { error: guard.didTimeOut() ? { message: 'timeout' } : err };
+                }
+            },
+            { onRetry: () => toast('تعذّر الاتصال، جارِ إعادة المحاولة...') }
+        );
+        const wasOffline = (error as { message?: string } | null)?.message === 'offline';
+        const data = result ?? null;
+        if (attempts > 1 && !error) toast('تم تحميل جلسات اليوم بنجاح بعد إعادة المحاولة');
         if (error) {
             // 🔒 FIX (تشخيص لوجز E2E — 30 يوليو 2026): كان بيتجاهل error تمامًا —
             // أي فشل حقيقي في الاستعلام كان بيرجّع قائمة فاضية بصمت من غير أي أثر
@@ -143,9 +146,9 @@ export function useDashboardFeed(profile: ProfileRow | null) {
             const cached = loadDashboardCache();
             if (cached?.todaySessions) {
                 setTodaySessions(cached.todaySessions);
-                if (guard.offline) toast('أنت أوف لاين — بتشوف آخر نسخة محفوظة من جلسات اليوم');
+                if (wasOffline) toast('أنت أوف لاين — بتشوف آخر نسخة محفوظة من جلسات اليوم');
             } else {
-                console.error('[Dashboard] فشل تحميل جلسات اليوم:', error.message);
+                console.error('[Dashboard] فشل تحميل جلسات اليوم:', (error as { message?: string })?.message);
                 setTodaySessions([]);
             }
             setLoadingUrgent(false);
@@ -162,34 +165,35 @@ export function useDashboardFeed(profile: ProfileRow | null) {
         const today    = new Date();
         const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
         const endDay   = new Date(today); endDay.setDate(today.getDate() + 7);
-        const guard = createFetchGuard();
-        let data: SessionFeedItem[] | null = null;
-        let error: { message: string } | null = null;
-        if (guard.offline) {
-            error = { message: 'offline' };
-        } else {
-            try {
-                const res = await db.from('case_sessions')
-                    .select('id, session_date, session_time, session_floor, session_hall, description, case_id, client_id, result, next_action, title, case_number, court, case_type, circuit_number, cases(id,title,court_name,case_type,case_number_official,client_id)')
-                    .gte('session_date', fmtDate(tomorrow))
-                    .lte('session_date', fmtDate(endDay))
-                    .order('session_date', { ascending: true })
-                    .abortSignal(guard.controller.signal);
-                data = res.data;
-                error = res.error;
-            } catch (err) {
-                error = { message: guard.didTimeOut() ? 'timeout' : (err as { message?: string })?.message || 'fetch failed' };
-            } finally {
-                guard.cleanup();
-            }
-        }
+        // 🔁 FIX (خطة "تصنيف الرسائل" — بند ٣-ج، ٥ سبتمبر ٢٠٢٦): نفس تحويل
+        // fetchTodaySessions فوق بالظبط — انظر التعليق هناك.
+        const { error, result, attempts } = await runReadWithRetry<SessionFeedItem[]>(
+            async (guard) => {
+                if (guard.offline) return { error: { message: 'offline' } };
+                try {
+                    const res = await db.from('case_sessions')
+                        .select('id, session_date, session_time, session_floor, session_hall, description, case_id, client_id, result, next_action, title, case_number, court, case_type, circuit_number, cases(id,title,court_name,case_type,case_number_official,client_id)')
+                        .gte('session_date', fmtDate(tomorrow))
+                        .lte('session_date', fmtDate(endDay))
+                        .order('session_date', { ascending: true })
+                        .abortSignal(guard.controller.signal);
+                    return { error: res.error, result: res.data ?? undefined };
+                } catch (err) {
+                    return { error: guard.didTimeOut() ? { message: 'timeout' } : err };
+                }
+            },
+            { onRetry: () => toast('تعذّر الاتصال، جارِ إعادة المحاولة...') }
+        );
+        const wasOffline = (error as { message?: string } | null)?.message === 'offline';
+        const data = result ?? null;
+        if (attempts > 1 && !error) toast('تم تحميل جلسات الأسبوع القادم بنجاح بعد إعادة المحاولة');
         if (error) {
             const cached = loadDashboardCache();
             if (cached?.upcomingSessions) {
                 setUpcomingSessions(cached.upcomingSessions);
-                if (guard.offline) toast('أنت أوف لاين — بتشوف آخر نسخة محفوظة من جلسات الأسبوع القادم');
+                if (wasOffline) toast('أنت أوف لاين — بتشوف آخر نسخة محفوظة من جلسات الأسبوع القادم');
             } else {
-                console.error('[Dashboard] فشل تحميل جلسات الأسبوع القادم:', error.message);
+                console.error('[Dashboard] فشل تحميل جلسات الأسبوع القادم:', (error as { message?: string })?.message);
                 setUpcomingSessions([]);
             }
             return;
