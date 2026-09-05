@@ -131,6 +131,7 @@ export async function fetchPartiesMapByCaseIds(caseIds: string[]): Promise<{ [k:
         recordError('db_case_parties', error.message);
         return {};
     }
+    recordSuccess('db_case_parties');
     const map: { [k: string]: PartyDisplayRow[] } = {};
     (data || []).forEach((p: { case_id: string | null } & PartyDisplayRow) => {
         if (!p.case_id) return;
@@ -193,6 +194,7 @@ export function mapCaseRow(
 export async function fetchMappedCaseById(caseId: string): Promise<MappedCase | null> {
     const { data, error } = await db.from('cases').select('*').eq('id', caseId).maybeSingle();
     if (error || !data) { recordError('db_case_by_id', error?.message); return null; }
+    recordSuccess('db_case_by_id');
     const row = data as CaseRow;
     let sessionsMap: { [k: string]: string } = {};
     const { data: sessionsData, error: sessErr } = await db
@@ -200,7 +202,7 @@ export async function fetchMappedCaseById(caseId: string): Promise<MappedCase | 
         .select('case_id,session_date')
         .eq('case_id', caseId);
     if (sessErr) recordError('db_sessions_by_case_ids', sessErr.message);
-    else sessionsMap = buildNearestSessionMap(sessionsData || []);
+    else { sessionsMap = buildNearestSessionMap(sessionsData || []); recordSuccess('db_sessions_by_case_ids'); }
     const partiesMap = await fetchPartiesMapByCaseIds([caseId]);
     return mapCaseRow(row, sessionsMap, partiesMap);
 }
@@ -282,6 +284,7 @@ export function useAppData(profile: ProfileRow | null) {
             recordError('db_clients_by_id', error.message);
             return;
         }
+        recordSuccess('db_clients_by_id');
         const mapped: MappedClient[] = (data || []).map((c: ClientRow) => ({
             ...c,
             full_name: c.client_name || '—',
@@ -330,6 +333,7 @@ export function useAppData(profile: ProfileRow | null) {
             recordError('db_cases_by_id', error.message);
             return;
         }
+        recordSuccess('db_cases_by_id');
         const rows = (data || []) as CaseRow[];
         if (rows.length === 0) return;
 
@@ -340,7 +344,7 @@ export function useAppData(profile: ProfileRow | null) {
             .select('case_id,session_date')
             .in('case_id', caseIds);
         if (sessErr) recordError('db_sessions_by_case_ids', sessErr.message);
-        else sessionsMap = buildNearestSessionMap(sessionsData || []);
+        else { sessionsMap = buildNearestSessionMap(sessionsData || []); recordSuccess('db_sessions_by_case_ids'); }
         const partiesMap = await fetchPartiesMapByCaseIds(caseIds);
 
         const mapped = rows.map((r) => mapCaseRow(r, sessionsMap, partiesMap));
