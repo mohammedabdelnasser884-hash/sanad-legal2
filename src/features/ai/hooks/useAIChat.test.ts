@@ -24,7 +24,7 @@ const trackQueryOutcome = vi.fn(async (_key: string, error: unknown, _opts?: { l
 vi.mock('../../../systemHealth', () => ({
   recordError: (...a: unknown[]) => recordError(...a),
   recordSuccess: (...a: unknown[]) => recordSuccess(...a),
-  trackQueryOutcome: (...a: [string, unknown, unknown?]) => trackQueryOutcome(...a),
+  trackQueryOutcome: (...a: [string, unknown, { label: string; message: string }?]) => trackQueryOutcome(...a),
 }));
 
 function setup(callAIImpl?: () => Promise<string>) {
