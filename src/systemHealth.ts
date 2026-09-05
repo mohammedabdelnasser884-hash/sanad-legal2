@@ -5,6 +5,23 @@
  * ويخزّنها في localStorage، وينشر إيفنت فوري (HEALTH_EVENT) لتحديث
  * بانر الأخطاء في الصفحة الرئيسية لحظة حدوث المشكلة من أي مكان في الكود،
  * بدون داعي لأي شاشة تكون مفتوحة وقتها.
+ *
+ * ─── 📏 عُرف إلزامي لأي عملية جديدة (خطة "تصنيف الرسائل ودورة حياة
+ * العمليات"، بند ٢-ب، ٥ سبتمبر ٢٠٢٦) ───────────────────────────────
+ * أي نقطة تسجيل **جديدة** في الكود (مش تعديل نقطة قديمة موجودة فعلاً)
+ * لازم تستخدم `runTrackedOperation` (لعمليات try/catch اللي بترمي
+ * throw) أو `trackQueryOutcome` (لنمط Supabase الأصلي
+ * `const { data, error } = await db.from(...)` اللي مفيهوش throw) —
+ * **مش** `recordError`/`recordSuccess` مباشرة. السبب: الاتنين بيمرروا
+ * الكائن الخام للخطأ (مش `.message` مستخرج مسبقًا) لـ`classifyError`
+ * واستخراج النص الآمن (`extractSafeErrorText`)، فبيضمنوا تصنيف صحيح
+ * (`session`/`permission`/`timeout`/`network`/`server`) وتعامل صح مع
+ * أشكال الأخطاء المختلفة (PostgrestError/FunctionsHttpError/Error
+ * عادي) من غير ما يحتاج كل نقطة استدعاء تعيد نفس منطق الاستخراج بنفسها.
+ * `recordError`/`recordSuccess` نفسهم فضلوا مُصدَّرين ومستخدمين داخليًا
+ * (جوه `classifyAndRecordFailure` تحت) — الاستخدام المباشر ليهم من كود
+ * تطبيق مسموح بس لنقاط الاستدعاء القديمة اللي لسه مانتقلتش (تحويلها
+ * تدريجي، بند ٢-ج-٣ في نفس الخطة)، مش لأي نقطة جديدة من دلوقتي.
  */
 
 import { getEdgeFunctionErrorMessage, looksArabicUserMessage, type EdgeFunctionError } from './shared/lib/edgeFunctionErrors';
@@ -233,6 +250,10 @@ export function recordSuccess(key: ServiceKey, label?: string) {
  * key: أي مفتاح معروف، أو نص مخصص يوصف العملية (مثلاً 'fees_save', 'reminder_delete').
  * rawError: رسالة الخطأ التقنية (تُستخدم فقط لو مفيش رسالة جاهزة للمفتاح).
  * label/message: لمفتاح مخصص، ممكن تمرر اسم وعرض بالعربي مفهومين لغير المبرمج.
+ *
+ * ⚠️ لعمليات **جديدة**: استخدم `runTrackedOperation`/`trackQueryOutcome`
+ * تحت بدل النداء المباشر هنا (عُرف بند ٢-ب، انظر تعليق أعلى الملف). الدالة
+ * دي فضلت متاحة بس لنقاط الاستدعاء القديمة اللي لسه تحت التحويل التدريجي.
  */
 export function recordError(key: ServiceKey, rawError?: string, opts?: { label?: string; message?: string }) {
   // 🔎 FIX (تحليل لوجز E2E — 30 أغسطس 2026): rawError كان بيتسجل بس جوه
