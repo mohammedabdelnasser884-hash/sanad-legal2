@@ -335,6 +335,53 @@ export function classifyError(rawError: unknown): ErrorClassification {
   return 'server';
 }
 
+/**
+ * سجّل فشل عملية **كتابة** محمية بـidempotency key (خطة "تصنيف الرسائل
+ * ودورة حياة العمليات"، بند ٣-هـ، ٥ سبتمبر ٢٠٢٦) — أول استخدام حقيقي
+ * لقيمة `lastOutcome: 'unknown'` المحجوزة من قسم ٣.٥.١. السيناريو اللي
+ * كانت القيمة دي متحجوزة له بالظبط: لو تصنيف الفشل transient (`timeout`/
+ * `network`)، الطلب ممكن يكون وصل السيرفر ونجح فعليًا (commit) والرد بس
+ * اللي ضاع — مش نفس معنى فشل حقيقي (`session`/`permission`/`server`).
+ * بفضل idempotency key (بند ٣-د)، إعادة المحاولة اليدوية آمنة فى الحالة
+ * دي (السيرفر هيرجّع نفس السجل القديم بدل تكرار)، فمينفعش نسجلها
+ * `failure` قطعية زي أي خطأ تاني — ده كان بالظبط سبب حجز القيمة.
+ *
+ * key: نفس فلسفة recordError (مفتاح معروف أو نص مخصص لعملية كتابة جديدة).
+ * rawError: الكائن الخام (مش .message مستخرج) عشان classifyError يشتغل صح.
+ * opts.ambiguousMessage: رسالة عربية توضح للمستخدم إن العملية ممكن تكون
+ * نجحت فعليًا (بدل رسالة "فشل" قطعية)، تُستخدم فقط فى الحالة الـambiguous.
+ *
+ * بترجع `{ ambiguous }` عشان المنادي (زي useFeesActions.ts) يعرض التوست
+ * المناسب لكل حالة.
+ */
+export function recordWriteFailure(
+  key: ServiceKey,
+  rawError: unknown,
+  opts: { label: string; message: string; ambiguousMessage: string }
+): { ambiguous: boolean } {
+  const classification = classifyError(rawError);
+  const ambiguous = classification === 'timeout' || classification === 'network';
+  const all = loadAll();
+  const prev = all[key];
+  const rawMsg = (rawError as { message?: string } | null | undefined)?.message ?? null;
+  const prevErrorAt = prev?.lastError ? new Date(prev.lastError).getTime() : 0;
+  const withinDedupeWindow = prev?.status === 'error' && (Date.now() - prevErrorAt) < DEDUPE_WINDOW_MS;
+  all[key] = {
+    ...prev,
+    key,
+    label: resolveLabel(key, opts.label || prev?.label),
+    status: 'error',
+    lastOutcome: ambiguous ? 'unknown' : 'failure',
+    lastError: new Date().toISOString(),
+    errorMsg: ambiguous ? opts.ambiguousMessage : friendlyError(key, rawMsg ?? undefined, opts.message),
+    rawError: rawMsg,
+    occurrenceCount: withinDedupeWindow ? (prev?.occurrenceCount || 1) + 1 : 1,
+  };
+  saveAll(all);
+  broadcastHealthChange();
+  return { ambiguous };
+}
+
 /** سياق خطأ موحّد — يمنع كل مستهلك لاحق (Retry مستقبلي، عرض بانر عام،
  * observability) من إعادة تفكيك الـraw error بطريقته الخاصة. */
 export interface NormalizedErrorContext {
