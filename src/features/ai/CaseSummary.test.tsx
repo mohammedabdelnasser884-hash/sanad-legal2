@@ -31,9 +31,17 @@ vi.mock('../../supabaseClient', () => ({ db: { from: (...a: Parameters<typeof fr
 
 const recordError = vi.fn();
 const recordSuccess = vi.fn();
+// ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٦ (٢-ج-٣)، نقطة ٨/٨): نفس تحديث
+// موك useAIChat.test.ts/ClientMessage.test.tsx — إضافة trackQueryOutcome.
+const trackQueryOutcome = vi.fn(async (_key: string, error: unknown, _opts?: { label: string; message: string }) => {
+  if (!error) { recordSuccess(_key); return { ok: true }; }
+  recordError(_key, (error as { message?: string })?.message);
+  return { ok: false };
+});
 vi.mock('../../systemHealth', () => ({
   recordError: (...a: unknown[]) => recordError(...a),
   recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+  trackQueryOutcome: (...a: [string, unknown, { label: string; message: string }?]) => trackQueryOutcome(...a),
 }));
 
 import CaseSummary from './CaseSummary';
@@ -82,7 +90,7 @@ describe('CaseSummary — validation قبل التلخيص', () => {
     await waitFor(() => expect(screen.getByText(/القضية في مرحلة نظر أولى/)).toBeTruthy());
   });
 
-  it('نفاد السقف اليومي: بتتعرض حالة UsageLimitState (⏳ بدون زرار إعادة محاولة) ومن غير recordError', async () => {
+  it('نفاد السقف اليومي: بتتعرض حالة UsageLimitState (⏳ بدون زرار إعادة محاولة) ومن غير trackQueryOutcome', async () => {
     const quotaMsg = 'وصلت للحد المجاني اليومي للمساعد الذكي. تقدر تضيف مفتاح Groq شخصي مجاني من الإعدادات لاستخدام أكبر.';
     const callAI = vi.fn(() => Promise.reject(new Error(quotaMsg)));
     const c = makeCase();
@@ -94,10 +102,10 @@ describe('CaseSummary — validation قبل التلخيص', () => {
     fireEvent.click(btn);
     await waitFor(() => expect(screen.getByText(quotaMsg)).toBeTruthy());
     expect(screen.queryByText('إعادة المحاولة')).toBeNull();
-    expect(recordError).not.toHaveBeenCalled();
+    expect(trackQueryOutcome).not.toHaveBeenCalled();
   });
 
-  it('فشل المزود (رسالة غير عربية): رسالة عامة + زرار إعادة محاولة + recordError بيتنادى', async () => {
+  it('فشل المزود (رسالة غير عربية): رسالة عامة + زرار إعادة محاولة + trackQueryOutcome بيتنادى', async () => {
     const callAI = vi.fn(() => Promise.reject(new Error('Failed to fetch')));
     const c = makeCase();
     render(React.createElement(CaseSummary, {
@@ -108,6 +116,10 @@ describe('CaseSummary — validation قبل التلخيص', () => {
     fireEvent.click(btn);
     await waitFor(() => expect(screen.getByText(/تعذّر توليد التلخيص/)).toBeTruthy());
     expect(screen.getByText('إعادة المحاولة')).toBeTruthy();
-    expect(recordError).toHaveBeenCalledWith('ai_case_summary', 'Failed to fetch', expect.objectContaining({ label: 'تلخيص القضية' }));
+    expect(trackQueryOutcome).toHaveBeenCalledWith(
+      'ai_case_summary',
+      expect.objectContaining({ message: 'Failed to fetch' }),
+      expect.objectContaining({ label: 'تلخيص القضية' })
+    );
   });
 });
