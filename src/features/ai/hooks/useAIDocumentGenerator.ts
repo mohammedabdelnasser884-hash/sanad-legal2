@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { toast } from '../../../shared/lib/notifications';
 import { escapeHtml } from '../../../shared/lib/sanitize';
-import { recordError, recordSuccess } from '../../../systemHealth';
+import { recordSuccess, trackQueryOutcome } from '../../../systemHealth';
 import { PDF_FONT_FAMILY, PDF_FONT_LINK } from '../../../shared/lib/pdf';
 import type { CountryConfig } from '../../../constants';
 import type { ProfileRow } from '../../../types';
@@ -145,7 +145,7 @@ ${caseInfoWithParties}
                 ? _msg
                 : '⚠️ تعذّر توليد المستند. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.';
             if (!isUserFacingMessage) {
-                recordError('ai_document_generate', _msg, {label:'توليد المستندات', message: displayMsg});
+                await trackQueryOutcome('ai_document_generate', e, {label:'توليد المستندات', message: displayMsg});
             }
             // 🆕 نفاد السقف اليومي حالة مختلفة عن خطأ عادي — ⏳ بدل ⚠️ + تلميح BYOK
             // (المرحلة 3، بند "fallback واضح عند غياب رصيد AI")
@@ -348,8 +348,13 @@ ${PDF_FONT_LINK}
             // النظام أو نلاحظ لو بيتكرر لمستخدمين كتير. بنسجّله دلوقتي بنفس
             // نمط باقي المهام بالظبط (استخراج رسالة الخطأ الخام، مفتاح خدمة
             // مخصص، رسالة عربية آمنة للمستخدم).
-            const _msg = err instanceof Error ? err.message : String(err);
-            recordError('ai_document_download', _msg, { label: 'تنزيل مستند PDF', message: 'حدث خطأ أثناء تجهيز التنزيل، يرجى المحاولة مرة أخرى' });
+            // 🆕 (٢-ج-٣، دفعة ٦، قرار ٢): downloadPDF مش async، وtrackQueryOutcome
+            // نفسها async — بدل ما نوسّع نطاق التغيير بتحويل downloadPDF كلها
+            // لـasync (هيأثر على أي كود مستدعي)، بننادي trackQueryOutcome من
+            // غير await (fire-and-forget) بنفس روح recordError القديمة
+            // المتزامنة. التسجيل الفعلي بيحصل على الـmicrotask التالي، ومفيش
+            // كود بعده في نفس الدالة بيعتمد على اكتمال التسجيل.
+            void trackQueryOutcome('ai_document_download', err, { label: 'تنزيل مستند PDF', message: 'حدث خطأ أثناء تجهيز التنزيل، يرجى المحاولة مرة أخرى' });
             toast('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
         }
     };
