@@ -50,9 +50,39 @@ vi.mock('../../shared/lib/dataAccess', () => ({ logActivity: (...a: unknown[]) =
 
 const recordError = vi.fn();
 const recordSuccess = vi.fn();
+// ⚡ FIX (trackQueryOutcome مفقودة من الـmock — خطة "تصنيف الرسائل" دفعة ١،
+// ٢-ج-٣): LoginScreen.tsx بقى بينادي trackQueryOutcome بدل recordError/
+// recordSuccess المباشرين في handleForgotSubmit وhandleLogin (فرعي
+// serverMessage غير عربي وsetSession) — الموك القديم مكانش مصدّرها، فأي
+// مسار بيوصلها كان هيرمي "trackQueryOutcome غير معرّفة" فعليًا (نفس فئة
+// الباج اللي اتكشف قبل كده في useRemindersTab.test.ts). نفس منطق
+// trackQueryOutcome الحقيقي (systemHealth.ts) هنا: من غير error →
+// recordSuccess، مع error → recordError بنفس التوقيع الثلاثي
+// (key, rawError.message, opts) بالظبط.
+const trackQueryOutcome = vi.fn(
+  async (key: string, error: unknown, opts?: { label?: string; message?: string }) => {
+    if (!error) {
+      recordSuccess(key);
+      return { ok: true as const };
+    }
+    const message = (error as { message?: string } | null | undefined)?.message;
+    recordError(key, message, opts);
+    return {
+      ok: false as const,
+      failure: {
+        rawError: error,
+        classification: 'server' as const,
+        safeMessage: opts?.message ?? '',
+        operationKey: key,
+        operationLabel: opts?.label ?? '',
+      },
+    };
+  }
+);
 vi.mock('../../systemHealth', () => ({
   recordError: (...a: unknown[]) => recordError(...a),
   recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+  trackQueryOutcome: (...a: Parameters<typeof trackQueryOutcome>) => trackQueryOutcome(...a),
 }));
 
 const SUCCESS: InvokeResult = {
@@ -81,6 +111,8 @@ describe('LoginScreen (تدفق تكاملي مع office-login)', () => {
     resetPasswordForEmail.mockClear();
     logActivity.mockClear();
     recordError.mockClear();
+    recordSuccess.mockClear();
+    trackQueryOutcome.mockClear();
   });
 
   it('بريد أو باسورد فاضي → رسالة تحقق محلية، من غير أي نداء لـ office-login خالص', () => {
@@ -136,7 +168,7 @@ describe('LoginScreen (تدفق تكاملي مع office-login)', () => {
     fillAndSubmit('lawyer@sanad.test', 'secret123');
     await waitFor(() => expect(screen.getByText('تعذّر تسجيل الدخول. تحقق من اتصال الإنترنت وحاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.')).toBeTruthy());
     expect(screen.queryByText('Failed to fetch')).toBeNull();
-    expect(recordError).toHaveBeenCalledWith('office_login', 'Failed to fetch');
+    expect(recordError).toHaveBeenCalledWith('office_login', 'Failed to fetch', expect.objectContaining({ label: 'تسجيل الدخول' }));
     expect(onLogin).not.toHaveBeenCalled();
   });
 
@@ -176,7 +208,7 @@ describe('LoginScreen (تدفق تكاملي مع office-login)', () => {
     render(React.createElement(LoginScreen, { onLogin }));
     fillAndSubmit('lawyer@sanad.test', 'secret123');
     await waitFor(() => expect(screen.getByText('تعذّر إتمام تسجيل الدخول. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.')).toBeTruthy());
-    expect(recordError).toHaveBeenCalledWith('office_login', 'invalid token');
+    expect(recordError).toHaveBeenCalledWith('office_login', 'invalid token', expect.objectContaining({ label: 'تسجيل الدخول' }));
     expect(logActivity).not.toHaveBeenCalled();
     expect(onLogin).not.toHaveBeenCalled();
   });
@@ -263,7 +295,7 @@ describe('LoginScreen (تدفق تكاملي مع office-login)', () => {
 
       await waitFor(() => expect(screen.getByTestId('forgot-password-error')).toBeTruthy());
       expect(screen.getByTestId('forgot-password-error').textContent).toBe('تعذّر إرسال رابط الاستعادة. تحقق من اتصال الإنترنت وحاول مرة أخرى.');
-      expect(recordError).toHaveBeenCalledWith('reset_password_request', 'rate limited');
+      expect(recordError).toHaveBeenCalledWith('reset_password_request', 'rate limited', expect.objectContaining({ label: 'إرسال رابط استعادة كلمة المرور' }));
     });
 
     it('زرار "الرجوع لتسجيل الدخول" بيرجّع فورم الدخول العادي ويصفّر حالة فورم الاستعادة', () => {
