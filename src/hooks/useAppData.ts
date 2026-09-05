@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { db } from '../supabaseClient';
-import { recordError, recordSuccess } from '../systemHealth';
+import { recordError, recordSuccess, trackQueryOutcome } from '../systemHealth';
 import { ilikeOrClause } from '../shared/lib/sanitize';
 import { toast } from '../shared/lib/notifications';
 import { createFetchGuard } from '../shared/lib/offlineGuard';
@@ -127,11 +127,15 @@ export async function fetchPartiesMapByCaseIds(caseIds: string[]): Promise<{ [k:
         .select('case_id,side,name,capacity,client_id')
         .in('case_id', caseIds)
         .order('sort_order', { ascending: true });
-    if (error) {
-        recordError('db_case_parties', error.message);
-        return {};
-    }
-    recordSuccess('db_case_parties');
+    // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل تجريبية ٥ سبتمبر): تحويل
+    // لـtrackQueryOutcome بدل recordError المباشر — نقطة {error} بسيطة من
+    // غير أي فرع شرطي إضافي (بعكس fetchCases/fetchClients اللي فيهم
+    // fallback للكاش، فضلوا زي ما هم عمدًا).
+    const result = await trackQueryOutcome('db_case_parties', error, {
+        label: 'جلب أطراف القضية',
+        message: 'تعذّر تحميل بيانات أطراف القضية. تحقق من الاتصال بالإنترنت.',
+    });
+    if (!result.ok) return {};
     const map: { [k: string]: PartyDisplayRow[] } = {};
     (data || []).forEach((p: { case_id: string | null } & PartyDisplayRow) => {
         if (!p.case_id) return;
@@ -201,8 +205,12 @@ export async function fetchMappedCaseById(caseId: string): Promise<MappedCase | 
         .from('case_sessions')
         .select('case_id,session_date')
         .eq('case_id', caseId);
-    if (sessErr) recordError('db_sessions_by_case_ids', sessErr.message);
-    else { sessionsMap = buildNearestSessionMap(sessionsData || []); recordSuccess('db_sessions_by_case_ids'); }
+    // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل تجريبية ٥ سبتمبر): نفس تحويل db_case_parties فوق.
+    const sessResult = await trackQueryOutcome('db_sessions_by_case_ids', sessErr, {
+        label: 'جلب جلسات القضايا',
+        message: 'تعذّر تحميل الجلسات المرتبطة بالقضايا. تحقق من الاتصال بالإنترنت.',
+    });
+    if (sessResult.ok) sessionsMap = buildNearestSessionMap(sessionsData || []);
     const partiesMap = await fetchPartiesMapByCaseIds([caseId]);
     return mapCaseRow(row, sessionsMap, partiesMap);
 }
@@ -280,11 +288,12 @@ export function useAppData(profile: ProfileRow | null) {
             .is('deleted_at', null)
             .in('id', missing);
 
-        if (error) {
-            recordError('db_clients_by_id', error.message);
-            return;
-        }
-        recordSuccess('db_clients_by_id');
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل تجريبية ٥ سبتمبر): تحويل db_clients_by_id لـtrackQueryOutcome.
+        const result = await trackQueryOutcome('db_clients_by_id', error, {
+            label: 'جلب بيانات الموكل',
+            message: 'تعذّر تحميل بيانات الموكل. تحقق من الاتصال بالإنترنت.',
+        });
+        if (!result.ok) return;
         const mapped: MappedClient[] = (data || []).map((c: ClientRow) => ({
             ...c,
             full_name: c.client_name || '—',
@@ -329,11 +338,12 @@ export function useAppData(profile: ProfileRow | null) {
             .is('deleted_at', null)
             .in('id', missing);
 
-        if (error) {
-            recordError('db_cases_by_id', error.message);
-            return;
-        }
-        recordSuccess('db_cases_by_id');
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل تجريبية ٥ سبتمبر): تحويل db_cases_by_id لـtrackQueryOutcome.
+        const result = await trackQueryOutcome('db_cases_by_id', error, {
+            label: 'جلب القضايا المرتبطة',
+            message: 'تعذّر تحميل القضايا المرتبطة. تحقق من الاتصال بالإنترنت.',
+        });
+        if (!result.ok) return;
         const rows = (data || []) as CaseRow[];
         if (rows.length === 0) return;
 
@@ -431,12 +441,12 @@ export function useAppData(profile: ProfileRow | null) {
                 .select('case_id,session_date')
                 .in('case_id', caseIds);
 
-            if (sessErr) {
-                recordError('db_sessions', sessErr.message);
-            } else {
-                sessionsMap = buildNearestSessionMap(sessionsData || []);
-                recordSuccess('db_sessions');
-            }
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل تجريبية ٥ سبتمبر): تحويل db_sessions لـtrackQueryOutcome.
+            const sessResult = await trackQueryOutcome('db_sessions', sessErr, {
+                label: 'جلب الجلسات',
+                message: 'تعذّر تحميل الجلسات. تحقق من الاتصال بالإنترنت.',
+            });
+            if (sessResult.ok) sessionsMap = buildNearestSessionMap(sessionsData || []);
         }
         // ⚡ B.4: نفس فكرة sessionsMap فوق بالظبط بس لصفوف case_parties —
         // نداء واحد لكل القضايا المحملة في الصفحة دي، مش نداء لكل قضية.
