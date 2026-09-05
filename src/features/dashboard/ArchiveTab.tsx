@@ -12,7 +12,7 @@ import { createPortal } from 'react-dom';
 import PdfViewerModal from '@/shared/modals/PdfViewerModal';
 import DeleteConfirmModal from '@/shared/modals/DeleteConfirmModal';
 import { createFetchGuard } from '../../shared/lib/offlineGuard';
-import { recordError, recordSuccess } from '../../systemHealth';
+import { recordError, recordSuccess, trackQueryOutcome } from '../../systemHealth';
 import type { MappedCase, MappedClient } from '../../hooks/useAppData';
 import type { CaseDocumentRow } from '../../types';
 import type { NavigationState } from '../../useNavigation';
@@ -161,8 +161,14 @@ function ArchiveTab({cases, clients, nav}: ArchiveTabProps){
             if (cacheable) saveArchiveCache(cat, tenantId, { docs: list, total: count || 0 });
             recordSuccess('db_archive');
         } catch (err) {
-            const msg = guard.didTimeOut() ? 'timeout' : (err as { message?: string })?.message || 'fetch failed';
-            recordError('db_archive', msg);
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٣، ٢-ج-٣، فئة B): تحويل
+            // لـtrackQueryOutcome بدل recordError(msg) المباشر. db_archive مش
+            // مفتاح معروف، فبنمرر label/message صريحين. err هنا الكائن الخام
+            // من throw error (سطر ١٤٨) بيتمرر كما هو.
+            await trackQueryOutcome('db_archive', guard.didTimeOut() ? new Error('timeout') : err, {
+                label: 'تحميل الأرشيف',
+                message: 'تعذّر تحميل الأرشيف. تحقق من الاتصال بالإنترنت.',
+            });
             if (cacheable) {
                 const cached = loadArchiveCache(cat, tenantId);
                 if (cached) { setDocs(cached.docs); setDocsTotal(cached.total); setDocsPage(0); setDocsMore(false); }
