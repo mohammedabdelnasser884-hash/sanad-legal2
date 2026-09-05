@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { classifyError, runTrackedOperation, trackQueryOutcome, getServiceStatus, recordSuccess, recordError } from './systemHealth';
+import { classifyError, runTrackedOperation, trackQueryOutcome, getServiceStatus, recordSuccess, recordError, recordWriteFailure } from './systemHealth';
 
 beforeEach(() => {
   localStorage.clear();
@@ -257,7 +257,7 @@ describe('lastOutcome (منفصل عن status، خطة قسم ٣.٥.١)', () => 
     expect(getServiceStatus('test_op_lo_tracked_success').lastOutcome).toBe('success');
   });
 
-  it('runTrackedOperation فاشلة تسجل lastOutcome = failure (لا "unknown" — القيمة دي محجوزة لسيناريو مستقبلي مش مستخدمة حاليًا)', async () => {
+  it('runTrackedOperation فاشلة تسجل lastOutcome = failure (مش "unknown" — التمييز ده مسؤولية recordWriteFailure تحت بس، مش أي نقطة تانية)', async () => {
     await runTrackedOperation('test_op_lo_tracked_failure', { label: 'عملية', message: 'تعذّر.' }, async () => { throw new Error('x'); });
     expect(getServiceStatus('test_op_lo_tracked_failure').lastOutcome).toBe('failure');
   });
@@ -277,5 +277,52 @@ describe('lastOutcome (منفصل عن status، خطة قسم ٣.٥.١)', () => 
     expect(getServiceStatus('test_op_lo_flip').lastOutcome).toBe('failure');
     recordSuccess('test_op_lo_flip');
     expect(getServiceStatus('test_op_lo_flip').lastOutcome).toBe('success');
+  });
+});
+
+// 🆕 (خطة "تصنيف الرسائل ودورة حياة العمليات" — البند ٣-هـ، ٥ سبتمبر ٢٠٢٦):
+// recordWriteFailure هي أول نقطة فعلية بتستخدم lastOutcome:'unknown' —
+// لعمليات كتابة محمية بـidempotency key (بند ٣-د)، لو الفشل transient
+// (timeout/network) الطلب ممكن يكون نجح فعليًا والرد بس ضاع.
+describe('recordWriteFailure (أول استخدام حقيقي لـlastOutcome:"unknown"، بند ٣-هـ)', () => {
+  const opts = {
+    label: 'عملية كتابة',
+    message: 'فشلت العملية، حاول تاني',
+    ambiguousMessage: 'تعذّر تأكيد النتيجة — قد تكون تمت فعلاً. أعد المحاولة، لن تتكرر.',
+  };
+
+  it("فشل بـ{message:'timeout'} (نمط guard.didTimeOut() الفعلي) → lastOutcome='unknown'، ambiguous=true، ورسالة المستخدم هي ambiguousMessage", () => {
+    const { ambiguous } = recordWriteFailure('test_write_timeout', { message: 'timeout' }, opts);
+    expect(ambiguous).toBe(true);
+    const status = getServiceStatus('test_write_timeout');
+    expect(status.lastOutcome).toBe('unknown');
+    expect(status.status).toBe('error'); // لسه لازم يظهر بانر — الشك مش يعني "كل حاجة تمام"
+    expect(status.errorMsg).toBe(opts.ambiguousMessage);
+  });
+
+  it('navigator.onLine=false (تصنيف network) → lastOutcome=\'unknown\' برضه', () => {
+    const onLineSpy = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const { ambiguous } = recordWriteFailure('test_write_network', { message: 'Failed to fetch' }, opts);
+    onLineSpy.mockRestore();
+    expect(ambiguous).toBe(true);
+    expect(getServiceStatus('test_write_network').lastOutcome).toBe('unknown');
+  });
+
+  it('فشل حقيقي (permission/session/server) → lastOutcome=\'failure\' زي أي خطأ عادي، مش unknown', () => {
+    const { ambiguous } = recordWriteFailure('test_write_permission', { code: '42501', message: 'permission denied' }, opts);
+    expect(ambiguous).toBe(false);
+    const status = getServiceStatus('test_write_permission');
+    expect(status.lastOutcome).toBe('failure');
+    // فى الحالة العادية، الرسالة المعروضة بترجع لـfriendlyError العادية (opts.message
+    // كـfallbackMsg لأن المفتاح مخصص/غير معروف)، مش ambiguousMessage.
+    expect(status.errorMsg).toBe(opts.message);
+  });
+
+  it('نجاح لاحق (recordSuccess) بعد unknown يمسحه زي أي فشل عادي', () => {
+    recordWriteFailure('test_write_flip', { message: 'timeout' }, opts);
+    expect(getServiceStatus('test_write_flip').lastOutcome).toBe('unknown');
+    recordSuccess('test_write_flip');
+    expect(getServiceStatus('test_write_flip').lastOutcome).toBe('success');
+    expect(getServiceStatus('test_write_flip').status).toBe('ok');
   });
 });
