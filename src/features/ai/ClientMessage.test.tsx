@@ -26,9 +26,18 @@ vi.mock('../../shared/lib/notifications', () => ({ toast: (...a: unknown[]) => t
 
 const recordError = vi.fn();
 const recordSuccess = vi.fn();
+// ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٦ (٢-ج-٣)، نقطة ٧/٨): الموك بقى
+// بيصدّر trackQueryOutcome (زي نسخة useAIChat.test.ts الحقيقية) عشان
+// الكود المُحوَّل في ClientMessage.tsx مايرميش "trackQueryOutcome غير معرّفة".
+const trackQueryOutcome = vi.fn(async (_key: string, error: unknown, _opts?: { label: string; message: string }) => {
+  if (!error) { recordSuccess(_key); return { ok: true }; }
+  recordError(_key, (error as { message?: string })?.message);
+  return { ok: false };
+});
 vi.mock('../../systemHealth', () => ({
   recordError: (...a: unknown[]) => recordError(...a),
   recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+  trackQueryOutcome: (...a: [string, unknown, { label: string; message: string }?]) => trackQueryOutcome(...a),
 }));
 
 import ClientMessage from './ClientMessage';
@@ -69,7 +78,7 @@ describe('ClientMessage — validation قبل كتابة الرسالة', () => 
     await waitFor(() => expect(screen.getByText(/أهلاً أحمد/)).toBeTruthy());
   });
 
-  it('نفاد السقف اليومي: بتتعرض حالة UsageLimitState (⏳ بدون زرار إعادة محاولة) ومن غير recordError', async () => {
+  it('نفاد السقف اليومي: بتتعرض حالة UsageLimitState (⏳ بدون زرار إعادة محاولة) ومن غير trackQueryOutcome', async () => {
     const quotaMsg = 'وصلت للحد المجاني اليومي للمساعد الذكي. تقدر تضيف مفتاح Groq شخصي مجاني من الإعدادات لاستخدام أكبر.';
     const callAI = vi.fn(() => Promise.reject(new Error(quotaMsg)));
     const c = makeCase();
@@ -78,10 +87,10 @@ describe('ClientMessage — validation قبل كتابة الرسالة', () => 
     fireEvent.click(btn);
     await waitFor(() => expect(screen.getByText(quotaMsg)).toBeTruthy());
     expect(screen.queryByText('إعادة المحاولة')).toBeNull();
-    expect(recordError).not.toHaveBeenCalled();
+    expect(trackQueryOutcome).not.toHaveBeenCalled();
   });
 
-  it('فشل المزود (رسالة غير عربية): رسالة عامة + زرار إعادة محاولة + recordError بيتنادى', async () => {
+  it('فشل المزود (رسالة غير عربية): رسالة عامة + زرار إعادة محاولة + trackQueryOutcome بيتنادى', async () => {
     const callAI = vi.fn(() => Promise.reject(new Error('Failed to fetch')));
     const c = makeCase();
     render(React.createElement(ClientMessage, { cases: [c], clients: [client], callAI }));
@@ -89,6 +98,10 @@ describe('ClientMessage — validation قبل كتابة الرسالة', () => 
     fireEvent.click(btn);
     await waitFor(() => expect(screen.getByText(/تعذّر كتابة الرسالة/)).toBeTruthy());
     expect(screen.getByText('إعادة المحاولة')).toBeTruthy();
-    expect(recordError).toHaveBeenCalledWith('ai_client_message', 'Failed to fetch', expect.objectContaining({ label: 'رسالة عميل مختصرة' }));
+    expect(trackQueryOutcome).toHaveBeenCalledWith(
+      'ai_client_message',
+      expect.objectContaining({ message: 'Failed to fetch' }),
+      expect.objectContaining({ label: 'رسالة عميل مختصرة' })
+    );
   });
 });
