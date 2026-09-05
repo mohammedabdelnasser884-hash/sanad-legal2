@@ -122,7 +122,11 @@ const toast = vi.fn();
 vi.mock('../../../shared/lib/notifications', () => ({ toast: (...a: unknown[]) => toast(...a) }));
 
 const recordError = vi.fn();
-vi.mock('../../../systemHealth', () => ({ recordError: (...a: unknown[]) => recordError(...a) }));
+const recordSuccess = vi.fn();
+vi.mock('../../../systemHealth', () => ({
+  recordError: (...a: unknown[]) => recordError(...a),
+  recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+}));
 
 const getCurrentTenantId = vi.fn();
 vi.mock('../../../constants', () => ({ getCurrentTenantId: () => getCurrentTenantId() }));
