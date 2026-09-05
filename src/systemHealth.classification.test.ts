@@ -155,3 +155,36 @@ describe('runTrackedOperation', () => {
     expect(getServiceStatus('test_op_recover').status).toBe('ok');
   });
 });
+
+describe('lastOutcome (منفصل عن status، خطة قسم ٣.٥.١)', () => {
+  it('مفتاح لسه ماتسجلش له نجاح ولا فشل من الأساس → lastOutcome غير معرّف', () => {
+    expect(getServiceStatus('test_op_never_touched')).toBeUndefined();
+  });
+
+  it('recordSuccess يسجل lastOutcome = success', () => {
+    recordSuccess('test_op_lo_success');
+    expect(getServiceStatus('test_op_lo_success').lastOutcome).toBe('success');
+  });
+
+  it('recordError (مباشر) يسجل lastOutcome = failure', () => {
+    recordError('test_op_lo_failure', 'some error');
+    expect(getServiceStatus('test_op_lo_failure').lastOutcome).toBe('failure');
+  });
+
+  it('runTrackedOperation ناجحة تسجل lastOutcome = success', async () => {
+    await runTrackedOperation('test_op_lo_tracked_success', { label: 'عملية', message: 'تعذّر.' }, async () => 'ok');
+    expect(getServiceStatus('test_op_lo_tracked_success').lastOutcome).toBe('success');
+  });
+
+  it('runTrackedOperation فاشلة تسجل lastOutcome = failure (لا "unknown" — القيمة دي محجوزة لسيناريو مستقبلي مش مستخدمة حاليًا)', async () => {
+    await runTrackedOperation('test_op_lo_tracked_failure', { label: 'عملية', message: 'تعذّر.' }, async () => { throw new Error('x'); });
+    expect(getServiceStatus('test_op_lo_tracked_failure').lastOutcome).toBe('failure');
+  });
+
+  it('نجاح لاحق بعد فشل يحدّث lastOutcome من failure لـsuccess', () => {
+    recordError('test_op_lo_flip', 'err');
+    expect(getServiceStatus('test_op_lo_flip').lastOutcome).toBe('failure');
+    recordSuccess('test_op_lo_flip');
+    expect(getServiceStatus('test_op_lo_flip').lastOutcome).toBe('success');
+  });
+});
