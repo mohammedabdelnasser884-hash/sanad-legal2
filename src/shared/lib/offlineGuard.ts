@@ -15,6 +15,8 @@
 //  الاتصال فعلاً، بنقفله بعد 8 ثواني كحد أقصى.
 // ══════════════════════════════════════════════════════════════
 
+import { classifyError } from '../../systemHealth';
+
 export interface FetchGuard {
     /** true لو navigator.onLine=false من الأساس (مفيش داعي نحاول نتصل خالص) */
     offline: boolean;
@@ -78,4 +80,92 @@ export async function runDuplicateCheckOfflineAware<T>(
     } finally {
         guard.cleanup();
     }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  🔁 runReadWithRetry — خطة "تصنيف الرسائل ودورة حياة العمليات"،
+//  بند ٣-ج (٥ سبتمبر ٢٠٢٦، بعد قرار ٣-ب: Retry تلقائي للقراءة بس).
+//
+//  ليه هنا مش في systemHealth.ts: القراءة الفعلية في المشروع (db_cases/
+//  db_dashboard/...) بتستخدم نمط Supabase {data, error} (createFetchGuard
+//  فوق بالظبط)، مش throw-based، فـ`runTrackedOperation` (systemHealth.ts)
+//  مش الشكل المناسب هنا. الأداة دي بتلف *نفس* نمط createFetchGuard
+//  الموجود فعلاً في كل نقطة قراءة، وبتضيف إعادة محاولة تلقائية بس لما
+//  يكون فيه دليل إن الفشل عابر (transient) — التصنيف بيتحدد بنفس
+//  `classifyError` المستخدم في systemHealth.ts، عشان معيار واحد بس في
+//  المشروع كله لتحديد "هل الخطأ ده يستاهل إعادة محاولة".
+//
+//  ✅ بترجّع retry بس لو التصنيف `timeout` أو `network` (الاتنين transient
+//     فعلاً، وأكتر احتمال يزول لوحده). أي تصنيف تاني (`session`/
+//     `permission`/`server`) بيرجع فورًا من غير إعادة محاولة — إعادة
+//     محاولة خطأ منطقي/صلاحية/سيرفر حقيقي مش هتغيّر النتيجة.
+//  ✅ لو `navigator.onLine === false` وقت أي محاولة، بترجع فورًا من غير
+//     إعادة محاولة تانية — بالظبط نفس فلسفة `createFetchGuard.offline`.
+//  ✅ Opt-in بحتة: أي نقطة قراءة قديمة تفضل زي ما هي (صفر تغيير) لحد ما
+//     تتحول بنفسها لاستخدام الدالة دي.
+// ══════════════════════════════════════════════════════════════
+
+export interface ReadRetryOptions {
+    /** إجمالي عدد المحاولات (شاملة الأولى). افتراضي: 2 (يعني محاولة إضافية واحدة بس). */
+    maxAttempts?: number;
+    /** مدة الانتظار قبل أول إعادة محاولة، بالميلي ثانية. كل محاولة تالية تتضاعف (backoff بسيط). افتراضي: 800ms. */
+    baseDelayMs?: number;
+    /**
+     * بينادَى قبل كل إعادة محاولة (مش قبل المحاولة الأولى) — استخدمها لعرض
+     * مؤشر بسيط للمستخدم (زي toast('جارِ إعادة المحاولة...')). attempt هو
+     * رقم المحاولة الجاية (2 يعني "بنعمل المحاولة التانية دلوقتي").
+     */
+    onRetry?: (attempt: number, maxAttempts: number) => void;
+}
+
+export interface ReadAttemptOutcome<T> {
+    error: unknown;
+    /** لازم تتحط بس لو مفيش error — أي شكل بيانات يحتاجه المنادي (data/count/إلخ). */
+    result?: T;
+}
+
+export interface ReadRetryResult<T> extends ReadAttemptOutcome<T> {
+    /** عدد المحاولات اللي فعليًا اتنفذت (1 يعني نجحت أو فشلت من غير إعادة محاولة). */
+    attempts: number;
+}
+
+/**
+ * ينفّذ `attemptFn` مرة، ولو فشلت بخطأ transient (timeout/network) وفيه
+ * محاولات باقية وإحنا أونلاين، يعيد المحاولة تلقائيًا. `attemptFn` مسؤولة
+ * عن فحص `guard.offline` بنفسها وبناء الـerror المناسب (بالظبط زي أي نقطة
+ * قراءة موجودة حاليًا) — الدالة دي بس بتوفّر guard جديد لكل محاولة
+ * وتقرر هل تعيد المحاولة ولا لأ.
+ */
+export async function runReadWithRetry<T>(
+    attemptFn: (guard: FetchGuard) => Promise<ReadAttemptOutcome<T>>,
+    opts: ReadRetryOptions = {}
+): Promise<ReadRetryResult<T>> {
+    const maxAttempts = Math.max(1, opts.maxAttempts ?? 2);
+    const baseDelayMs = opts.baseDelayMs ?? 800;
+    let outcome: ReadAttemptOutcome<T> = { error: null };
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const guard = createFetchGuard();
+        try {
+            outcome = await attemptFn(guard);
+        } catch (err) {
+            outcome = { error: guard.didTimeOut() ? { message: 'timeout' } : err };
+        } finally {
+            guard.cleanup();
+        }
+
+        if (!outcome.error) return { ...outcome, attempts: attempt };
+
+        const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+        const classification = classifyError(outcome.error);
+        const isTransient = classification === 'timeout' || classification === 'network';
+        const attemptsLeft = attempt < maxAttempts;
+
+        if (isOffline || !isTransient || !attemptsLeft) return { ...outcome, attempts: attempt };
+
+        opts.onRetry?.(attempt + 1, maxAttempts);
+        await new Promise((resolve) => setTimeout(resolve, baseDelayMs * attempt));
+    }
+
+    return { ...outcome, attempts: maxAttempts };
 }
