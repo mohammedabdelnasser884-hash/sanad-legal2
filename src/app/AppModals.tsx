@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../supabaseClient';
-import { recordError } from '../systemHealth';
+import { recordError, recordSuccess } from '../systemHealth';
 import { COUNTRY_CONFIGS, I } from '../constants';
 import type { TabName } from '../useNavigation';
 import type { NavigationState } from '../useNavigation';
@@ -225,7 +225,9 @@ function AppModals({
                 db.from('cases').select('id').eq('client_id', selectedClientId).is('deleted_at', null),
             ]);
             if (partyRes.error) recordError('db_case_parties_by_client', partyRes.error.message);
+            else recordSuccess('db_case_parties_by_client');
             if (legacyRes.error) recordError('db_cases_by_client_id', legacyRes.error.message);
+            else recordSuccess('db_cases_by_client_id');
             if (cancelled) return;
             const idSet = new Set<string>();
             (partyRes.data || []).forEach((r: { case_id: string | null }) => { if (r.case_id) idSet.add(r.case_id); });
