@@ -539,6 +539,7 @@ describe('useFeesActions', () => {
       expect(mockDb.rpcSpy).toHaveBeenCalledWith('record_fee_payment', {
         p_fee_id: 'fee-99', p_amount: 300, p_payment_date: '2026-07-20', p_notes: 'ملاحظة الدفعة',
         p_received_by: 'المحاسب', p_client_id: 'client-1', p_client_name: 'أحمد محمد',
+        p_idempotency_key: null,
       });
       expect(toast).toHaveBeenCalledWith('✅ تم تسجيل الدفعة');
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تسجيل دفعة', expect.objectContaining({
@@ -708,6 +709,117 @@ describe('useFeesActions', () => {
 
       expect(toast).toHaveBeenCalledWith('❌ فشل استرجاع الأتعاب — تحقق من الاتصال وأعد المحاولة', true);
       expect(logActivity).not.toHaveBeenCalled();
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════
+  // 🆕 (خطة "تصنيف الرسائل ودورة حياة العمليات" — البند ٣-د، ٥ سبتمبر 2026):
+  // مفتاح idempotency بيتولّد وقت "فتح النية" (مودال تسجيل دفعة / فورم
+  // إضافة أتعاب جديدة)، بيتبعت زي ما هو مع أي محاولة تانية، ويتصفّر عند
+  // النجاح أو الإغلاق. التستات هنا بتتأكد من دورة الحياة دي، مش من منطق
+  // الـRPC نفسه (ده بالفعل مغطى فى database migrations، مفيش وصول لقاعدة
+  // بيانات حقيقية من الـsandbox).
+  // ══════════════════════════════════════════════════════════════════
+  describe('Idempotency keys (٣-د)', () => {
+    it('فتح مودال تسجيل دفعة (setAddPaymentFor) → مفتاح بيتولّد ويتبعت لـrecord_fee_payment', async () => {
+      const { result } = await renderFeesHook();
+      const fee = makeFee({ id: 'fee-idmp-1', client_id: 'client-1' });
+
+      act(() => { result.current.setAddPaymentFor(fee.id); });
+      act(() => {
+        result.current.setPayAmount('200');
+        result.current.setPayClientName('client-1');
+        result.current.setPayDate('2026-09-05');
+        result.current.setPayReceiver('المحاسب');
+      });
+      await act(async () => { await result.current.handleAddPayment(fee); });
+
+      const call = mockDb.rpcSpy.mock.calls.find((c) => c[0] === 'record_fee_payment');
+      expect(call?.[1].p_idempotency_key).toEqual(expect.any(String));
+      expect(call?.[1].p_idempotency_key).not.toBeNull();
+    });
+
+    it('فشل النداء → نفس المفتاح بيتبعت تاني فى إعادة المحاولة اليدوية (المودال لسه مفتوح)', async () => {
+      mockDb.setResult('rpc:record_fee_payment', { data: null, error: { message: 'rpc failed' } });
+      const { result } = await renderFeesHook();
+      const fee = makeFee({ id: 'fee-idmp-2', client_id: 'client-1' });
+
+      act(() => { result.current.setAddPaymentFor(fee.id); });
+      act(() => {
+        result.current.setPayAmount('200');
+        result.current.setPayClientName('client-1');
+        result.current.setPayDate('2026-09-05');
+        result.current.setPayReceiver('المحاسب');
+      });
+      await act(async () => { await result.current.handleAddPayment(fee); });
+      const firstKey = mockDb.rpcSpy.mock.calls.find((c) => c[0] === 'record_fee_payment')?.[1].p_idempotency_key;
+      expect(firstKey).toEqual(expect.any(String));
+
+      // إعادة محاولة يدوية بعد الفشل — المودال لسه مفتوح (مفيش setAddPaymentFor جديد)
+      mockDb.rpcSpy.mockClear();
+      mockDb.setResult('rpc:record_fee_payment', { data: { id: fee.id }, error: null });
+      await act(async () => { await result.current.handleAddPayment(fee); });
+      const secondKey = mockDb.rpcSpy.mock.calls.find((c) => c[0] === 'record_fee_payment')?.[1].p_idempotency_key;
+      expect(secondKey).toBe(firstKey);
+    });
+
+    it('إغلاق المودال (setAddPaymentFor(null)) → المفتاح يترجع لـnull، فتح تاني بعده يولّد مفتاح جديد', async () => {
+      const { result } = await renderFeesHook();
+      const fee = makeFee({ id: 'fee-idmp-3', client_id: 'client-1' });
+
+      act(() => { result.current.setAddPaymentFor(fee.id); });
+      act(() => {
+        result.current.setPayAmount('200');
+        result.current.setPayClientName('client-1');
+        result.current.setPayDate('2026-09-05');
+        result.current.setPayReceiver('المحاسب');
+      });
+      act(() => { result.current.setAddPaymentFor(null); }); // إلغاء من غير حفظ
+      act(() => { result.current.setAddPaymentFor(fee.id); }); // فتح تاني — نية جديدة
+      act(() => {
+        result.current.setPayAmount('200');
+        result.current.setPayClientName('client-1');
+        result.current.setPayDate('2026-09-05');
+        result.current.setPayReceiver('المحاسب');
+      });
+      await act(async () => { await result.current.handleAddPayment(fee); });
+
+      const key = mockDb.rpcSpy.mock.calls.find((c) => c[0] === 'record_fee_payment')?.[1].p_idempotency_key;
+      expect(key).toEqual(expect.any(String));
+    });
+
+    it('markNewFeeFormOpened → مفتاح بيتبعت لـcreate_fee_with_advance، وmarkNewFeeFormClosed بيصفّره', async () => {
+      mockDb.setResult('rpc:create_fee_with_advance', { data: { id: 'new-fee-idmp' }, error: null });
+      const { result } = await renderFeesHook();
+
+      act(() => { result.current.markNewFeeFormOpened(); });
+      act(() => {
+        result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: 'المحاسب', total: '1000', paid: '300', payment_date: '2026-09-05' });
+      });
+      await act(async () => { await result.current.handleSave(); });
+
+      const call = mockDb.rpcSpy.mock.calls.find((c) => c[0] === 'create_fee_with_advance');
+      expect(call?.[1].p_idempotency_key).toEqual(expect.any(String));
+
+      // بعد النجاح، المفتاح اتصفّر — نداء تاني من غير فتح جديد يبعت null
+      mockDb.rpcSpy.mockClear();
+      act(() => {
+        result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: 'المحاسب', total: '1000', paid: '300', payment_date: '2026-09-05' });
+      });
+      await act(async () => { await result.current.handleSave(); });
+      const secondCall = mockDb.rpcSpy.mock.calls.find((c) => c[0] === 'create_fee_with_advance');
+      expect(secondCall?.[1].p_idempotency_key).toBeNull();
+
+      // markNewFeeFormClosed بيصفّر مفتاح مفتوح من غير حفظ
+      mockDb.rpcSpy.mockClear();
+      act(() => { result.current.markNewFeeFormOpened(); });
+      act(() => { result.current.markNewFeeFormClosed(); });
+      act(() => {
+        result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: 'المحاسب', total: '1000', paid: '300', payment_date: '2026-09-05' });
+      });
+      await act(async () => { await result.current.handleSave(); });
+      const thirdCall = mockDb.rpcSpy.mock.calls.find((c) => c[0] === 'create_fee_with_advance');
+      expect(thirdCall?.[1].p_idempotency_key).toBeNull();
     });
   });
 });
