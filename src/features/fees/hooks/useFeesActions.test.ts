@@ -88,9 +88,20 @@ function makeMockDb() {
   // غير متوقع/غير ممسوك كان بيسرّب unhandled rejection يضرب تستات تانية في نفس
   // الملف. افتراضيًا بترجع نجاح ({error:null})؛ تقدر تتحكم فيها بـ
   // setResult('rpc:record_fee_payment', {...}).
+  // 🆕 (٣-هـ، ٥ سبتمبر ٢٠٢٦): useFeesActions.ts بقى بينادي .abortSignal(...)
+  // على db.rpc(...) (نفس نمط createFetchGuard المستخدم فى كل نداءات القراءة
+  // فى الملف — راجع systemHealth.ts::recordWriteFailure) — الموك القديم كان
+  // بيرجّع Promise مباشر (مفيهوش .abortSignal خالص)، فكان هيرمي
+  // "rpc(...).abortSignal is not a function". دلوقتي بيرجّع chain بسيط
+  // (thenable + abortSignal ترجّع نفس الـthenable) زي buildSelectChain فوق.
   const rpc = vi.fn((name: string, params: unknown) => {
     rpcSpy(name, params);
-    return Promise.resolve(get(`rpc:${name}`) ?? { data: null, error: null });
+    const result = get(`rpc:${name}`) ?? { data: null, error: null };
+    const chain = {
+      abortSignal: vi.fn(() => chain),
+      then: (resolve: (r: Result) => void) => resolve(result),
+    };
+    return chain;
   });
 
   return { from, rpc, setResult, insertSpy, updateSpy, deleteSpy, rpcSpy };
@@ -348,6 +359,21 @@ describe('useFeesActions', () => {
       expect(logActivity).not.toHaveBeenCalled();
       expect(toast).not.toHaveBeenCalledWith('✅ تم إضافة الأتعاب');
     });
+
+    // 🆕 (خطة "تصنيف الرسائل ودورة حياة العمليات" — البند ٣-هـ، ٥ سبتمبر ٢٠٢٦):
+    // نفس فكرة handleAddPayment فوق — timeout على create_fee_with_advance
+    // لازم يعرض توست "ambiguous" مختلف، مش توست الفشل القطعي العادي.
+    it('فشل بسبب timeout → توست تحذير "قد يكون تم فعلاً" (ambiguous)، مش توست فشل قطعي', async () => {
+      mockDb.setResult('rpc:create_fee_with_advance', { data: null, error: { message: 'timeout' } });
+      const { result } = await renderFeesHook();
+
+      act(() => { result.current.setForm({ ...result.current.form, case_id: 'case-1', client_id: 'client-1', receiver: 'المحاسب', total: '1000', paid: '300', payment_date: '2026-07-16' }); });
+      await act(async () => { await result.current.handleSave(); });
+
+      expect(toast).toHaveBeenCalledWith('⚠️ تعذّر تأكيد نتيجة الحفظ — قد يكون تم فعلاً. أعد المحاولة (لن تتكرر).', true);
+      expect(toast).not.toHaveBeenCalledWith('❌ فشل حفظ الأتعاب الجديدة — تحقق من الاتصال وأعد المحاولة', true);
+      expect(logActivity).not.toHaveBeenCalled();
+    });
   });
 
   describe('handleSave — تعديل سجل موجود', () => {
@@ -584,6 +610,27 @@ describe('useFeesActions', () => {
       await act(async () => { await result.current.handleAddPayment(makeFee()); });
 
       expect(toast).toHaveBeenCalledWith('❌ فشل تسجيل الدفعة، يرجى المحاولة مرة أخرى', true);
+      expect(logActivity).not.toHaveBeenCalled();
+    });
+
+    // 🆕 (خطة "تصنيف الرسائل ودورة حياة العمليات" — البند ٣-هـ، ٥ سبتمبر ٢٠٢٦):
+    // فشل بـ{message:'timeout'} (نفس نمط guard.didTimeOut() الحقيقي) لازم
+    // يعرض توست "تحذير/قد تكون تمت فعلاً" مختلف عن توست الفشل القطعي العادي
+    // فوق — دي أول استفادة فعلية من idempotency key (٣-د) + lastOutcome
+    // (٣-هـ) مع بعض.
+    it('فشل بسبب timeout → توست تحذير "قد تكون سُجّلت فعلاً" (ambiguous)، مش توست فشل قطعي', async () => {
+      mockDb.setResult('rpc:record_fee_payment', { error: { message: 'timeout' } });
+      const { result } = await renderFeesHook();
+      act(() => {
+        result.current.setPayAmount('200');
+        result.current.setPayClientName('client-1');
+        result.current.setPayDate('2026-07-20');
+        result.current.setPayReceiver('المحاسب');
+      });
+      await act(async () => { await result.current.handleAddPayment(makeFee()); });
+
+      expect(toast).toHaveBeenCalledWith('⚠️ تعذّر تأكيد نتيجة تسجيل الدفعة — قد تكون سُجّلت فعلاً. أعد المحاولة (لن تتكرر).', true);
+      expect(toast).not.toHaveBeenCalledWith('❌ فشل تسجيل الدفعة، يرجى المحاولة مرة أخرى', true);
       expect(logActivity).not.toHaveBeenCalled();
     });
   });
