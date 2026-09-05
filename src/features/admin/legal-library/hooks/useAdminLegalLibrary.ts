@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { toast } from '../../../../shared/lib/notifications';
 import { logActivity, buildFieldDiff, buildAddSnapshot, buildDeleteSnapshot, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
 import { showErrorToast } from '../../../../shared/lib/errorReporting';
+import { recordSuccess } from '../../../../systemHealth';
 import { getEdgeFunctionErrorMessage, type EdgeFunctionError } from '../../../../shared/lib/edgeFunctionErrors';
 import { db } from '../../../../supabaseClient';
 import type { ProfileRow, LawRow, LegalCategoryRow } from '../../../../types';
@@ -123,6 +124,7 @@ export function useAdminLegalLibrary(profile?: ProfileRow | null) {
       setShowLawModal(false);
       setEditingLaw(null);
       fetchLaws();
+      recordSuccess('legal_library_upload');
     } catch(e) {
       showErrorToast('legal_library_upload', e, 'تعذّر رفع الملف. تأكد من نوع وحجم الملف وحاول تاني. لو المشكلة استمرت، تواصل مع الدعم.', 'المكتبة القانونية');
     }
@@ -130,17 +132,6 @@ export function useAdminLegalLibrary(profile?: ProfileRow | null) {
   };
 
   // ── المكتبة القانونية: معالجة قانون (استخراج المواد + توليد embeddings) ──
-  // ── استخراج رسالة الخطأ الحقيقية من Edge Function (supabase-js بيرجع رسالة عامة بشكل افتراضي) ──
-  // 🔧 توحيد (خطة إعادة تصميم رسائل الأخطاء، P1): بتستخدم دلوقتي المصدر
-  // الموحد `edgeFunctionErrors.ts` بدل نسخة محلية مكررة. الفولباك
-  // ('حدث خطأ غير متوقع') اتحافظ عليه بنفس النص بالظبط لأن `handleProcessLaw`
-  // تحت بيقارن عليه حرفيًا لتمييز فشل غير متوقع عن رسالة الفانكشن نفسها.
-  const getFnErrorMessage = async (error: EdgeFunctionError | null | undefined): Promise<string> => {
-    if (!error) return '';
-    const extracted = await getEdgeFunctionErrorMessage(error);
-    return extracted || 'حدث خطأ غير متوقع';
-  };
-
   const handleProcessLaw = async (law: LawRow) => {
     // ملحوظة: المعالجة هنا خطوة واحدة فقط (استخراج المواد من PDF) — المساعد
     // القانوني يعتمد على بحث نصي (search_law_articles) فلا توجد خطوة
@@ -148,16 +139,22 @@ export function useAdminLegalLibrary(profile?: ProfileRow | null) {
     setProcessingLaw({ id: law.id });
     try {
       const { data: extractData, error: extractErr } = await db.functions.invoke('process-law-extract', { body: { law_id: law.id } });
-      if (extractErr) throw new Error(await getFnErrorMessage(extractErr as EdgeFunctionError));
+      // 🔧 FIX (المرحلة ١ من خطة إعادة تصميم رسائل الأخطاء — ٤ سبتمبر
+      // ٢٠٢٦): كانت هنا نسخة محلية مكررة من نفس فكرة الاستخراج (موجودة
+      // كمان بنفس السلوك تقريبًا في useAILegalEngine.ts، بفولباك مختلف
+      // شوية) — دلوقتي بنستخدم الدالة الموحدة المشتركة بدل ما يكون عندنا
+      // ٣ نسخ ممكن يتصرفوا بشكل مختلف مع نفس نوع الخطأ.
+      if (extractErr) throw new Error((await getEdgeFunctionErrorMessage(extractErr as EdgeFunctionError)) || 'حدث خطأ غير متوقع');
       if (extractData?.error) throw new Error(extractData.error);
 
       toast('✅ تمت معالجة القانون وفهرسته بنجاح — ' + (extractData?.articles_count || 0) + ' مادة');
+      recordSuccess('legal_library_process');
       logActivity(db, 'معالجة قانون', { userName: _userName, entity_type: 'law', entity_id: law.id, details: law.title + ' — ' + (extractData?.articles_count || 0) + ' مادة' });
     } catch (e) {
       const _msg = e instanceof Error ? e.message : String(e);
       // 🆕 process-law-extract بقى (بعد إصلاح المرحلة 2) بيرجّع رسائل عربية
       // آمنة ومفيدة أصلاً (زي "الملف قد يكون صور ممسوحة")، مش تسريب خام —
-      // نعرضها زي ما هي. الاستثناء الوحيد هو الفولباك العام لـ getFnErrorMessage
+      // نعرضها زي ما هي. الاستثناء الوحيد هو الفولباك العام أعلاه
       // (استثناء غير متوقع من غير الفانكشن، زي فشل شبكة)، وده بياخد الرسالة الموحدة.
       const message = (_msg && _msg !== 'حدث خطأ غير متوقع')
         ? _msg
@@ -188,6 +185,7 @@ export function useAdminLegalLibrary(profile?: ProfileRow | null) {
       });
       setConfirmDeleteLaw(null);
       fetchLaws();
+      recordSuccess('legal_library_delete');
     } catch(e) {
       showErrorToast('legal_library_delete', e, 'تعذّر حذف الملف. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'المكتبة القانونية');
     }
