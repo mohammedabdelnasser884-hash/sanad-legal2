@@ -62,7 +62,11 @@ const setCurrentTenantId = vi.fn();
 vi.mock('../constants', () => ({ setCurrentTenantId: (...a: unknown[]) => setCurrentTenantId(...a) }));
 
 const recordError = vi.fn();
-vi.mock('../systemHealth', () => ({ recordError: (...a: unknown[]) => recordError(...a) }));
+const recordSuccess = vi.fn();
+vi.mock('../systemHealth', () => ({
+  recordError: (...a: unknown[]) => recordError(...a),
+  recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+}));
 
 let useAuthProfile: typeof import('./useAuthProfile').useAuthProfile;
 
