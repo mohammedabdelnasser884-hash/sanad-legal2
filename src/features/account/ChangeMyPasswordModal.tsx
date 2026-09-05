@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { db } from '../../supabaseClient';
 import { I } from '../../constants';
 import { toast } from '@/shared/lib/notifications';
-import { recordError } from '../../systemHealth';
+import { recordError, recordSuccess } from '../../systemHealth';
 import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { ProfileRow } from '../../types';
 
@@ -70,6 +70,7 @@ function ChangeMyPasswordModal({ profile, onClose }: ChangeMyPasswordModalProps)
     }
 
     toast('✅ تم تحديث كلمة المرور بنجاح');
+    recordSuccess('change_my_password');
     onClose();
   };
 
