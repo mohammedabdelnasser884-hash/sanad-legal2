@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { I } from '../../constants';
 import type { MappedCase, MappedClient } from '../../hooks/useAppData';
 import { db } from '../../supabaseClient';
-import { recordError, recordSuccess } from '../../systemHealth';
+import { trackQueryOutcome } from '../../systemHealth';
 // 🆕 (مرحلة D3 — خطة Desktop Experience، 14 أغسطس 2026): جدول الموكلين
 // على الديسكتوب، بنفس نمط جدول القضايا (D1/D2). راجع تعليقات
 // ClientTableRow.tsx لتفاصيل اختيار الأعمدة.
@@ -88,8 +88,15 @@ function ClientsTab({ cases, clients, clientSearch, setClientSearch, clientsPage
     let cancelled = false;
     (async () => {
       const { data, error } = await db.from('case_parties').select('client_id, case_id').in('client_id', clientIds);
-      if (error) { recordError('db_case_parties_by_client_ids', error.message); return; }
-      recordSuccess('db_case_parties_by_client_ids');
+      // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٥ من ٢-ج-٣، ٥ سبتمبر 2026):
+      // تحويل لـtrackQueryOutcome بدل recordError/recordSuccess اليدويين
+      // — نقطة {error} بسيطة، مفيش أي تعقيد إضافي. الـreturn المبكر عند
+      // الفشل فضل زي ما هو تمامًا.
+      const result = await trackQueryOutcome('db_case_parties_by_client_ids', error, {
+        label: 'جلب قضايا الموكلين',
+        message: 'تعذّر تحميل عدد قضايا الموكلين. تحقق من الاتصال بالإنترنت.',
+      });
+      if (!result.ok) return;
       if (cancelled) return;
       const grouped: Record<string, string[]> = {};
       (data || []).forEach((row: { client_id: string | null; case_id: string | null }) => {
