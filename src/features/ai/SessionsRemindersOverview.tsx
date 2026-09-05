@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../supabaseClient';
 import { toDateStr } from '../calendar/sessions-calendar/constants';
 import { LoadingState, ErrorState, SummaryBanner, SectionCard, CopyButton } from '../../shared/ui/TaskResultKit';
-import { recordError } from '../../systemHealth';
+import { recordError, recordSuccess } from '../../systemHealth';
 import type { MappedCase } from '../../hooks/useAppData';
 
 // ─────────────────────────────────────────────────────────
@@ -143,6 +143,7 @@ function SessionsRemindersOverview({ cases, onOpenCase }: SessionsRemindersOverv
       setOverdueReminders((overdueRes.data || []) as unknown as OverviewReminderRow[]);
       setUpcomingReminders((upRes.data || []) as unknown as OverviewReminderRow[]);
       setLoading(false);
+      recordSuccess('ai_sessions_reminders');
     }).catch((e) => {
       if (cancelled) return;
       const _msg = e instanceof Error ? e.message : String(e);
