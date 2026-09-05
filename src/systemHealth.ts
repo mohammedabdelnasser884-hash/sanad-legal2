@@ -7,6 +7,8 @@
  * بدون داعي لأي شاشة تكون مفتوحة وقتها.
  */
 
+import { getEdgeFunctionErrorMessage, looksArabicUserMessage, type EdgeFunctionError } from './shared/lib/edgeFunctionErrors';
+
 // ─── مفاتيح معروفة (لها اسم ورسالة جاهزة بالعربي) ───────────────────────────
 // أي مفتاح تاني غير الموجودين هنا لسه يعمل بشكل طبيعي، وهياخد اسم/رسالة
 // عامة افتراضية إلا لو تم تمرير label/message مخصصة عند التسجيل.
@@ -268,6 +270,100 @@ export function getServiceStatus(key: ServiceKey): ServiceStatus {
 /** امسح خطأ خدمة (بعد ما المستخدم يعمل retry ناجح) */
 export function clearError(key: ServiceKey) {
   recordSuccess(key);
+}
+
+// ─── تصنيف الأخطاء + Operation Lifecycle ──────────────────────────────────
+// (خطة "تصنيف الرسائل ودورة حياة العمليات"، ٥ سبتمبر ٢٠٢٦ — قسم ١ + قسم ٢
+// المرحلة أ فقط. لا تعديل على أي نقطة recordError/showErrorToast قائمة.)
+
+export type ErrorClassification = 'session' | 'permission' | 'timeout' | 'network' | 'server';
+
+/**
+ * تصنيف سبب فشل عملية — evidence-first مش network-first: الدليل اللي جوه
+ * الخطأ نفسه (session/permission/timeout) له أولوية دايمًا، وفحص الشبكة
+ * اللحظي (navigator.onLine) يبقى آخر حاجة نلجأ لها كـfallback لو مفيش أي
+ * دليل تاني — كونه أوفلاين لحظة كتابة الرسالة مش دليل إن ده كان السبب
+ * الحقيقي وراء الفشل.
+ */
+export function classifyError(rawError: unknown): ErrorClassification {
+  const err = rawError as { code?: string; message?: string } | null | undefined;
+  const message = err?.message || '';
+
+  if (/JWT|session|refresh_token/i.test(message)) return 'session';
+  if (err?.code === '42501' || /permission denied|RLS/i.test(message)) return 'permission';
+  // 🔧 تصحيح (فحص كود فعلي وقت التنفيذ): المسودة الأولى كانت بتفترض خاصية
+  // `didTimeOut` على الخطأ نفسه — دي مش موجودة فعليًا في أي مكان بالمشروع.
+  // النمط الحقيقي (createFetchGuard + didTimeOut() في offlineGuard.ts،
+  // مستخدم في ~20 نقطة زي useDashboardFeed.ts/useAppData.ts/useRemindersTab.ts/
+  // useFeesActions.ts وغيرهم) بيبني كائن خطأ صناعي `{ message: 'timeout' }`
+  // بالحرف لما `guard.didTimeOut()` ترجع true، مش خاصية على الخطأ الأصلي.
+  if (message === 'timeout') return 'timeout';
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'network';
+  return 'server';
+}
+
+/** سياق خطأ موحّد — يمنع كل مستهلك لاحق (Retry مستقبلي، عرض بانر عام،
+ * observability) من إعادة تفكيك الـraw error بطريقته الخاصة. */
+export interface NormalizedErrorContext {
+  rawError: unknown;
+  classification: ErrorClassification;
+  safeMessage: string;
+  operationKey: ServiceKey;
+  operationLabel: string;
+}
+
+/**
+ * استخراج نص الخطأ الحقيقي للتخزين — حسب شكل الخطأ فعليًا، مش `.message`
+ * موحّد للكل. **ممنوع استخدام `(rawError as Error)?.message` كـfallback
+ * عام** لأنه بيفشل مع FunctionsHttpError (رسالته الحقيقية جوه
+ * context.json()/.text() بشكل async، مش في .message المباشر — نفس النص
+ * العام "Edge Function returned a non-2xx status code" اللي كان بيتسرب
+ * للمستخدم قبل إصلاحه في خطة "إعادة تصميم رسائل الأخطاء").
+ */
+async function extractSafeErrorText(rawError: unknown): Promise<string | undefined> {
+  const asEdgeFnError = rawError as EdgeFunctionError | null | undefined;
+  if (
+    asEdgeFnError?.context &&
+    (typeof asEdgeFnError.context.json === 'function' || typeof asEdgeFnError.context.text === 'function')
+  ) {
+    const extracted = await getEdgeFunctionErrorMessage(asEdgeFnError);
+    if (extracted && looksArabicUserMessage(extracted)) return extracted;
+  }
+  // PostgrestError وError العادي عندهم .message مباشر ومفيد
+  return (rawError as { message?: string } | null | undefined)?.message;
+}
+
+/**
+ * يلف أي عملية (نجاح/فشل) ويضمن تسجيل دورة حياتها تلقائيًا في systemHealth
+ * — مستحيل تنسى recordSuccess لأنها جوه الدالة نفسها. **قرار محسوم: مفيش
+ * تحويل لأي نقطة recordError/showErrorToast قائمة (٦٩ نقطة) — الدالة دي
+ * foundation للعمليات الجديدة بس، والتحويل التدريجي بيحصل مع أي لمسة
+ * مستقبلية طبيعية لنفس الملف.**
+ */
+export async function runTrackedOperation<T>(
+  key: ServiceKey,
+  opts: { label: string; message: string },
+  fn: () => Promise<T>
+): Promise<{ ok: true; data: T } | { ok: false; failure: NormalizedErrorContext }> {
+  try {
+    const data = await fn();
+    recordSuccess(key);
+    return { ok: true, data };
+  } catch (rawError) {
+    const classification = classifyError(rawError);
+    const safeErrorText = await extractSafeErrorText(rawError);
+    recordError(key, safeErrorText, opts);
+    return {
+      ok: false,
+      failure: {
+        rawError,
+        classification,
+        safeMessage: opts.message,
+        operationKey: key,
+        operationLabel: opts.label,
+      },
+    };
+  }
 }
 
 /**
