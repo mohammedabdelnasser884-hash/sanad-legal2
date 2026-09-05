@@ -80,7 +80,11 @@ const getCurrentTenantId = vi.fn();
 vi.mock('../../../constants', () => ({ getCurrentTenantId: () => getCurrentTenantId() }));
 
 const recordError = vi.fn();
-vi.mock('../../../systemHealth', () => ({ recordError: (...a: unknown[]) => recordError(...a) }));
+const recordSuccess = vi.fn();
+vi.mock('../../../systemHealth', () => ({
+  recordError: (...a: unknown[]) => recordError(...a),
+  recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+}));
 
 import { useCaseDocuments } from './useCaseDocuments';
 
