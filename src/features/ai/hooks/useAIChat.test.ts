@@ -15,7 +15,11 @@ import type { AIMessage } from './aiAssistantTypes';
 // ══════════════════════════════════════════════════════════════════
 
 const recordError = vi.fn();
-vi.mock('../../../systemHealth', () => ({ recordError: (...a: unknown[]) => recordError(...a) }));
+const recordSuccess = vi.fn();
+vi.mock('../../../systemHealth', () => ({
+  recordError: (...a: unknown[]) => recordError(...a),
+  recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+}));
 
 function setup(callAIImpl?: () => Promise<string>) {
   const callAI = vi.fn(callAIImpl || (() => Promise.resolve('رد المساعد')));
