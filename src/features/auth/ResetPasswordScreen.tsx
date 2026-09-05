@@ -83,7 +83,7 @@ function ResetPasswordScreen() {
                 setSendErr(data.error);
             } else {
                 const serverMessage = await getEdgeFunctionErrorMessage(error as EdgeFunctionError);
-                recordError('reset_password_otp_send', (error as EdgeFunctionError)?.message);
+                recordError('reset_password_otp_send', serverMessage as string);
                 setSendErr(looksArabicUserMessage(serverMessage) ? (serverMessage as string) : 'تعذّر إرسال كود التحقق. تحقق من اتصال الإنترنت، أو اطلب لينك استعادة جديد.');
             }
             return;
@@ -132,7 +132,7 @@ function ResetPasswordScreen() {
                 setOtpErr(data.error);
             } else {
                 const serverMessage = await getEdgeFunctionErrorMessage(error as EdgeFunctionError);
-                recordError('reset_password_otp_verify', (error as EdgeFunctionError)?.message);
+                recordError('reset_password_otp_verify', serverMessage as string);
                 setOtpErr(looksArabicUserMessage(serverMessage) ? (serverMessage as string) : 'الكود غير صحيح أو منتهي الصلاحية. تأكد من آخر كود وصلك، أو اطلب كود جديد.');
             }
             return;
@@ -163,7 +163,7 @@ function ResetPasswordScreen() {
                 setErr(data.error);
             } else {
                 const serverMessage = await getEdgeFunctionErrorMessage(error as EdgeFunctionError);
-                recordError('reset_password', (error as EdgeFunctionError)?.message);
+                recordError('reset_password', serverMessage as string);
                 setErr(looksArabicUserMessage(serverMessage) ? (serverMessage as string) : 'تعذّر تحديث كلمة المرور. تحقق من اتصال الإنترنت وحاول مرة أخرى، أو اطلب لينك استعادة جديد.');
             }
             return;
