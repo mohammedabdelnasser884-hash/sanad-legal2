@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../../supabaseClient';
 import { toast } from '../../../shared/lib/notifications';
-import { recordError, recordSuccess } from '../../../systemHealth';
+import { recordError, recordSuccess, trackQueryOutcome } from '../../../systemHealth';
 import { I } from '../../../constants';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
 import { exportSessionToGoogleCalendar } from '@/shared/ui/calendarExport';
@@ -92,7 +92,7 @@ function MonthListTab({ cases, clients, onOpenCase, onOpenReminders, onOpenStand
           .lte('session_date', endStr)
           .order('session_date', { ascending: true })
           .abortSignal(guard.controller.signal)
-          .then(({ data, error }) => {
+          .then(async ({ data, error }) => {
               guard.cleanup();
               // ⚡ NEW (فيكس "الجلسات مش موجودة نهائي" — 9 أغسطس 2026): نفس
               // فكرة الكاش المطبّقة في CalendarTab.tsx بالضبط (مفتاح مشترك
@@ -104,7 +104,14 @@ function MonthListTab({ cases, clients, onOpenCase, onOpenReminders, onOpenStand
                       if (isMonthNavigation) toast('أنت أوف لاين — بتشوف آخر نسخة محفوظة من جلسات الشهر ده');
                   } else {
                       setSessions([]);
-                      recordError('db_calendar_sessions', error.message);
+                      // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٢، ٢-ج-٣، فئة B): تحويل
+                      // لـtrackQueryOutcome بدل recordError(error.message) المباشر.
+                      // نفس القرار الشرطي المطبَّق في CalendarTab.tsx (تخطي
+                      // التسجيل لو الكاش رجع بيانات).
+                      await trackQueryOutcome('db_calendar_sessions', error, {
+                          label: 'جلب جلسات الشهر',
+                          message: 'تعذّر تحميل جلسات الشهر. تحقق من الاتصال بالإنترنت.',
+                      });
                   }
                   setTasks([]); setLoading(false);
                   return;
