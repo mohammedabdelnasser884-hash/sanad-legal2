@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { recordError } from './systemHealth';
+import { recordError, recordSuccess } from './systemHealth';
 import { getEdgeFunctionErrorMessage, looksArabicUserMessage, type EdgeFunctionError } from './shared/lib/edgeFunctionErrors';
 import type { PermissionsMap } from './shared/lib/permissions';
 import type { Database } from './database.types';
@@ -57,5 +57,6 @@ export async function callAdminAction(payload: AdminActionPayload) {
   // data?.error يرجع من الفانكشن نفسها — إما رسالة مقصودة (KnownError) أو
   // رسالة عامة ثابتة بالفعل (بعد إصلاح المرحلة 2)، مفيهاش e.message خام.
   if (data?.error) throw new Error(data.error);
+  recordSuccess('generic_operation');
   return data;
 }
