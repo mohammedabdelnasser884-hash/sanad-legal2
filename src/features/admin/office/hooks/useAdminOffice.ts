@@ -4,6 +4,7 @@ import { validateUploadFile, resolveStorageUrl } from '../../../../shared/lib/st
 import { logActivity, buildFieldDiff, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
 import { db } from '../../../../supabaseClient';
 import { showErrorToast } from '../../../../shared/lib/errorReporting';
+import { recordSuccess } from '../../../../systemHealth';
 import { invalidateOfficeCache } from '../../../../constants';
 import type { ProfileRow } from '../../../../types';
 
@@ -127,6 +128,7 @@ export function useAdminOffice(tenantId: string | null, profile?: ProfileRow | n
           setSavingOffice(false);
           return;
         }
+        recordSuccess('office_logo_upload');
         // الباكت client-docs private دلوقتي — بنولّد رابط موقّع مؤقت بدل
         // الرابط العام (كسر الكاش هنا مش لازم، التوقيع بيغيّر الرابط أصلاً).
         logoUrl = (await resolveStorageUrl('client-docs', path)) || '';
@@ -199,6 +201,7 @@ export function useAdminOffice(tenantId: string | null, profile?: ProfileRow | n
         userName: _userName, entity_type: 'office', details: payload.name || null,
         changes: officeChanges,
       });
+      recordSuccess('save_office_settings');
     } catch(e) {
       showErrorToast('save_office_settings', e, 'تعذّر حفظ إعدادات المكتب. تحقق من الاتصال بالإنترنت وحاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'حفظ إعدادات المكتب');
     }
