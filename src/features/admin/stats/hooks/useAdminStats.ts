@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { db } from '../../../../supabaseClient';
 import { createFetchGuard } from '../../../../shared/lib/offlineGuard';
-import { recordError, recordSuccess } from '../../../../systemHealth';
+import { recordError, recordSuccess, trackQueryOutcome } from '../../../../systemHealth';
 import { toast } from '../../../../shared/lib/notifications';
 import { MONTHS_AR } from '../../../../shared/ui/arabicLocale';
 import type { ProfileRow } from '../../../../types';
@@ -208,8 +208,16 @@ export function useAdminStats(profile: ProfileRow | null, casesTotal: number = 0
             setLastUpdatedAt(Date.now());
             setIsStale(false);
         } catch (err) {
-            const msg = guard.didTimeOut() ? 'timeout' : (err as { message?: string })?.message || 'fetch failed';
-            recordError('db_admin_stats', msg);
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٣، ٢-ج-٣، فئة B): تحويل
+            // لـtrackQueryOutcome بدل recordError(msg) المباشر. db_admin_stats
+            // مش مفتاح معروف (مفيش له label/message افتراضيين في القاموس)،
+            // فبنمرر label/message صريحين زي ما اتعمل مع db_calendar_sessions
+            // في الدفعة ٢. err هنا الكائن الخام من أول throw فشل في السلسلة
+            // (feesRes.error/paymentsRes.error/إلخ)، بيتمرر كما هو.
+            await trackQueryOutcome('db_admin_stats', guard.didTimeOut() ? new Error('timeout') : err, {
+                label: 'إحصائيات لوحة التحكم',
+                message: 'تعذّر تحميل إحصائيات لوحة التحكم. تحقق من الاتصال بالإنترنت.',
+            });
             const cached = loadCache<{ total: number; paid: number }>(ADMIN_STATS_SUMMARY_CACHE_KEY, profile.tenant_id);
             if (cached) { setGrandTotal(cached.data.total); setGrandPaid(cached.data.paid); setLastUpdatedAt(cached.savedAt); setIsStale(true); }
             const cachedTrend = loadCache<MonthlyTrendPoint[]>(ADMIN_STATS_TREND_CACHE_KEY, profile.tenant_id);
