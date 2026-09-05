@@ -5,7 +5,7 @@ import type { AIMessage } from './aiAssistantTypes';
 
 // ══════════════════════════════════════════════════════════════════
 // اختبار useAIChat — أول تغطية فعلية له خالص (كان الملف الوحيد بين
-// وحدات المساعد الذكي المعتمدة على callAI/recordError من غير أي تست).
+// وحدات المساعد الذكي المعتمدة على callAI/trackQueryOutcome من غير أي تست).
 // المرحلة 5 (sanad-ai-assistant-plan-20.md قسم 6، نفس نمط
 // useAIDocumentGenerator.test.ts / ClientMessage.test.tsx): معالجة أخطاء
 // callAI (مفتاح غلط / نفاد السقف اليومي / رسالة عربية واضحة من السيرفر /
@@ -16,9 +16,15 @@ import type { AIMessage } from './aiAssistantTypes';
 
 const recordError = vi.fn();
 const recordSuccess = vi.fn();
+const trackQueryOutcome = vi.fn(async (_key: string, error: unknown) => {
+  if (!error) { recordSuccess(_key); return { ok: true }; }
+  recordError(_key, (error as { message?: string })?.message);
+  return { ok: false };
+});
 vi.mock('../../../systemHealth', () => ({
   recordError: (...a: unknown[]) => recordError(...a),
   recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+  trackQueryOutcome: (...a: [string, unknown, unknown?]) => trackQueryOutcome(...a),
 }));
 
 function setup(callAIImpl?: () => Promise<string>) {
@@ -67,17 +73,17 @@ describe('useAIChat — sendMessage ومعالجة الأخطاء', () => {
     expect(callAI).not.toHaveBeenCalled();
   });
 
-  it('مفتاح غلط (401): رسالة "🔑 API Key غير صحيح"، من غير setShowKeyInput ومن غير recordError', async () => {
+  it('مفتاح غلط (401): رسالة "🔑 API Key غير صحيح"، من غير setShowKeyInput ومن غير trackQueryOutcome', async () => {
     const { result, setShowKeyInput, setMessages } = setup(() => Promise.reject(new Error('401 Unauthorized')));
     act(() => { result.current.setInput('سؤال'); });
     await act(async () => { await result.current.sendMessage(); });
     const lastUpdater = setMessages.mock.calls.at(-1)?.[0] as (p: AIMessage[]) => AIMessage[];
     expect(lastUpdater([]).at(-1)?.text).toBe('🔑 API Key غير صحيح. اضغط زر المفتاح لتحديثه.');
     expect(setShowKeyInput).not.toHaveBeenCalled();
-    expect(recordError).not.toHaveBeenCalled();
+    expect(trackQueryOutcome).not.toHaveBeenCalled();
   });
 
-  it('نفاد السقف اليومي: الرسالة بتتذيّل بتنويه فتح النافذة، وsetShowKeyInput(true) بيتنادى، من غير recordError', async () => {
+  it('نفاد السقف اليومي: الرسالة بتتذيّل بتنويه فتح النافذة، وsetShowKeyInput(true) بيتنادى، من غير trackQueryOutcome', async () => {
     const quotaMsg = 'وصلت للحد المجاني اليومي للمساعد الذكي. تقدر تضيف مفتاح Groq شخصي مجاني من الإعدادات لاستخدام أكبر.';
     const { result, setShowKeyInput, setMessages } = setup(() => Promise.reject(new Error(quotaMsg)));
     act(() => { result.current.setInput('سؤال'); });
@@ -87,10 +93,10 @@ describe('useAIChat — sendMessage ومعالجة الأخطاء', () => {
     expect(shown.startsWith(quotaMsg)).toBe(true);
     expect(shown).toContain('فتحنا لك نافذة إضافة المفتاح');
     expect(setShowKeyInput).toHaveBeenCalledWith(true);
-    expect(recordError).not.toHaveBeenCalled();
+    expect(trackQueryOutcome).not.toHaveBeenCalled();
   });
 
-  it('رسالة عربية واضحة تانية من السيرفر (زي "الحساب معطّل"): بتتعرض زي ما هي من غير recordError ومن غير فتح المودال', async () => {
+  it('رسالة عربية واضحة تانية من السيرفر (زي "الحساب معطّل"): بتتعرض زي ما هي من غير trackQueryOutcome ومن غير فتح المودال', async () => {
     const serverMsg = 'الحساب معطّل';
     const { result, setShowKeyInput, setMessages } = setup(() => Promise.reject(new Error(serverMsg)));
     act(() => { result.current.setInput('سؤال'); });
@@ -98,16 +104,20 @@ describe('useAIChat — sendMessage ومعالجة الأخطاء', () => {
     const lastUpdater = setMessages.mock.calls.at(-1)?.[0] as (p: AIMessage[]) => AIMessage[];
     expect(lastUpdater([]).at(-1)?.text).toBe(serverMsg);
     expect(setShowKeyInput).not.toHaveBeenCalled();
-    expect(recordError).not.toHaveBeenCalled();
+    expect(trackQueryOutcome).not.toHaveBeenCalled();
   });
 
-  it('فشل تقني عام (رسالة غير عربية): رسالة عامة بـ⚠️ وrecordError بيتنادى بمفتاح ai_chat', async () => {
+  it('فشل تقني عام (رسالة غير عربية): رسالة عامة بـ⚠️ وtrackQueryOutcome بيتنادى بمفتاح ai_chat', async () => {
     const { result, setMessages } = setup(() => Promise.reject(new Error('Failed to fetch')));
     act(() => { result.current.setInput('سؤال'); });
     await act(async () => { await result.current.sendMessage(); });
     const lastUpdater = setMessages.mock.calls.at(-1)?.[0] as (p: AIMessage[]) => AIMessage[];
     const shown = lastUpdater([]).at(-1)?.text as string;
     expect(shown.startsWith('⚠️ تعذّر الحصول على رد')).toBe(true);
-    expect(recordError).toHaveBeenCalledWith('ai_chat', 'Failed to fetch', expect.objectContaining({ label: 'المساعد الذكي' }));
+    expect(trackQueryOutcome).toHaveBeenCalledWith(
+      'ai_chat',
+      expect.objectContaining({ message: 'Failed to fetch' }),
+      expect.objectContaining({ label: 'المساعد الذكي' })
+    );
   });
 });
