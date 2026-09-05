@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { toast } from '../../../shared/lib/notifications';
 import { db } from '../../../supabaseClient';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
+import { recordSuccess } from '../../../systemHealth';
 import { recalcNextHearing } from '../../../shared/lib/dataAccess';
 import { checkCaseNumberDuplicate } from '../../../shared/lib/caseValidation';
 import { runDuplicateCheckOfflineAware } from '../../../shared/lib/offlineGuard';
@@ -393,10 +394,11 @@ export function useClientLinking(
         // ⚠️ ممكن نوصل هنا حتى لو أونلاين فعليًا (لو createdCaseId تمبيد —
         // شوف forceQueueForSelfTempId في __dbWrite): الرسالة لسه صحيحة
         // لأن الربط فعليًا هيتم بعد اكتمال مزامنة القضية، مش دلوقتي.
+        recordSuccess('session_client_link');
         toast('📥 الربط محفوظ محلياً — سيُزامن عند عودة الإنترنت');
         setClientStep('done');
       }
-      else { toast('✅ تم ربط الموكل بالقضية'); setClientStep('done'); }
+      else { recordSuccess('session_client_link'); toast('✅ تم ربط الموكل بالقضية'); setClientStep('done'); }
     } catch { toast('❌ خطأ غير متوقع', true); }
     finally { setLinkingToCase(false); }
   };
