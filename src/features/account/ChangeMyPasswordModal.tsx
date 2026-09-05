@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { db } from '../../supabaseClient';
 import { I } from '../../constants';
 import { toast } from '@/shared/lib/notifications';
-import { recordError, recordSuccess } from '../../systemHealth';
+import { recordSuccess, trackQueryOutcome } from '../../systemHealth';
 import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { ProfileRow } from '../../types';
 
@@ -64,7 +64,16 @@ function ChangeMyPasswordModal({ profile, onClose }: ChangeMyPasswordModalProps)
     const { error: updateError } = await db.auth.updateUser({ password: newPass });
     setSaving(false);
     if (updateError) {
-      recordError('change_my_password', updateError.message);
+      // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٥ من ٢-ج-٣، ٥ سبتمبر 2026):
+      // تحويل لـtrackQueryOutcome بدل recordError(msg) المباشر.
+      // change_my_password مش مفتاح معروف، فبنمرر label/message صريحين.
+      // updateError الخام (من db.auth.updateUser) بيتمرر كما هو بدل
+      // .message المستخرج مسبقًا. الرسالة المعروضة للمستخدم (setErr)
+      // متلمستش خالص.
+      await trackQueryOutcome('change_my_password', updateError, {
+        label: 'تغيير كلمة المرور',
+        message: 'تعذّر تحديث كلمة المرور. تحقق من الاتصال بالإنترنت.',
+      });
       setErr('تعذّر تحديث كلمة المرور. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.');
       return;
     }
