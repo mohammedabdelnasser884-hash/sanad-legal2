@@ -3,7 +3,7 @@ import { db } from '../supabaseClient';
 import { recordSuccess, trackQueryOutcome } from '../systemHealth';
 import { ilikeOrClause } from '../shared/lib/sanitize';
 import { toast } from '../shared/lib/notifications';
-import { createFetchGuard } from '../shared/lib/offlineGuard';
+import { createFetchGuard, runReadWithRetry } from '../shared/lib/offlineGuard';
 import { isAdminRole } from '../shared/lib/permissions';
 import type { CaseRow, ClientRow, ProfileRow } from '../types';
 // ⚡ NEW (خطة تفكيك الأعمدة القديمة، المرحلة B.4 — 6 أغسطس 2026): نفس
@@ -403,31 +403,33 @@ export function useAppData(profile: ProfileRow | null) {
         // نفس نمط useDbConnectivity/useAuthProfile — لو offline من الأساس
         // منحاولش نتصل بالسيرفر خالص، ولو هنحاول فعلاً بنقفله بعد 8 ثواني
         // كحد أقصى بدل ما يفضل معلّق لحد ما يفشل من نفسه.
-        const guard = createFetchGuard();
-        let data: CaseRow[] | null = null;
-        let error: { message: string } | null = null;
-        let count: number | null = null;
-        if (guard.offline) {
-            error = { message: 'offline' };
-        } else {
-            try {
-                const res = await db
-                    .from('cases')
-                    .select('*', { count: 'exact' })
-                    .eq('status', filter)
-                    .is('deleted_at', null)
-                    .order('created_at', { ascending: false })
-                    .range(from, to)
-                    .abortSignal(guard.controller.signal);
-                data = res.data;
-                error = res.error;
-                count = res.count;
-            } catch (err) {
-                error = { message: guard.didTimeOut() ? 'timeout' : (err as { message?: string })?.message || 'fetch failed' };
-            } finally {
-                guard.cleanup();
-            }
-        }
+        // 🔁 FIX (خطة "تصنيف الرسائل" — بند ٣-ج، ٥ سبتمبر ٢٠٢٦): تفعيل
+        // إعادة محاولة تلقائية (محاولة واحدة إضافية) لو الفشل transient
+        // (timeout/network) — انظر runReadWithRetry في offlineGuard.ts.
+        // مفيش أي تغيير في المنطق اللي بعد كده (كاش/trackQueryOutcome) —
+        // النقطة دي بترجع نفس الشكل {data, error, count} بالظبط زي الأول.
+        const { error, result, attempts } = await runReadWithRetry<{ data: CaseRow[] | null; count: number | null }>(
+            async (guard) => {
+                if (guard.offline) return { error: { message: 'offline' } };
+                try {
+                    const res = await db
+                        .from('cases')
+                        .select('*', { count: 'exact' })
+                        .eq('status', filter)
+                        .is('deleted_at', null)
+                        .order('created_at', { ascending: false })
+                        .range(from, to)
+                        .abortSignal(guard.controller.signal);
+                    return { error: res.error, result: { data: res.data, count: res.count } };
+                } catch (err) {
+                    return { error: guard.didTimeOut() ? { message: 'timeout' } : err };
+                }
+            },
+            { onRetry: () => toast('تعذّر الاتصال، جارِ إعادة المحاولة...') }
+        );
+        if (attempts > 1 && !error) toast('تم تحميل القضايا بنجاح بعد إعادة المحاولة');
+        const data = result?.data ?? null;
+        const count = result?.count ?? null;
 
         if (error) {
             // ⚡ NEW: لو الصفحة الأولى (اللي بتظهر فعليًا في الشاشة
