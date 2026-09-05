@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../supabaseClient';
-import { recordError, recordSuccess } from '../systemHealth';
+import { trackQueryOutcome } from '../systemHealth';
 import { COUNTRY_CONFIGS, I } from '../constants';
 import type { TabName } from '../useNavigation';
 import type { NavigationState } from '../useNavigation';
@@ -224,10 +224,17 @@ function AppModals({
                 db.from('case_parties').select('case_id').eq('client_id', selectedClientId),
                 db.from('cases').select('id').eq('client_id', selectedClientId).is('deleted_at', null),
             ]);
-            if (partyRes.error) recordError('db_case_parties_by_client', partyRes.error.message);
-            else recordSuccess('db_case_parties_by_client');
-            if (legacyRes.error) recordError('db_cases_by_client_id', legacyRes.error.message);
-            else recordSuccess('db_cases_by_client_id');
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٥ من ٢-ج-٣، ٥ سبتمبر
+            // 2026): تحويل لـtrackQueryOutcome بدل recordError/recordSuccess
+            // اليدويين — نقطتين {error} بسيطتين من غير أي فرع شرطي إضافي.
+            await trackQueryOutcome('db_case_parties_by_client', partyRes.error, {
+                label: 'جلب قضايا الموكل',
+                message: 'تعذّر تحميل قضايا هذا الموكل. تحقق من الاتصال بالإنترنت.',
+            });
+            await trackQueryOutcome('db_cases_by_client_id', legacyRes.error, {
+                label: 'جلب قضايا الموكل',
+                message: 'تعذّر تحميل قضايا هذا الموكل. تحقق من الاتصال بالإنترنت.',
+            });
             if (cancelled) return;
             const idSet = new Set<string>();
             (partyRes.data || []).forEach((r: { case_id: string | null }) => { if (r.case_id) idSet.add(r.case_id); });
