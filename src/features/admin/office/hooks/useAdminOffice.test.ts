@@ -88,7 +88,11 @@ const invalidateOfficeCache = vi.fn();
 vi.mock('../../../../constants', () => ({ invalidateOfficeCache: () => invalidateOfficeCache() }));
 
 const recordError = vi.fn();
-vi.mock('../../../../systemHealth', () => ({ recordError: (...a: unknown[]) => recordError(...a) }));
+const recordSuccess = vi.fn();
+vi.mock('../../../../systemHealth', () => ({
+  recordError: (...a: unknown[]) => recordError(...a),
+  recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+}));
 
 const PROFILE = { id: 'admin-1', full_name: 'أحمد المدير' } as unknown as ProfileRow;
 
