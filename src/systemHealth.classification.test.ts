@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { classifyError, runTrackedOperation, getServiceStatus, recordSuccess } from './systemHealth';
+import { classifyError, runTrackedOperation, getServiceStatus, recordSuccess, recordError } from './systemHealth';
 
 beforeEach(() => {
   localStorage.clear();
