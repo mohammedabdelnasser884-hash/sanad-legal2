@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { db } from '../supabaseClient';
-import { recordError, recordSuccess, trackQueryOutcome } from '../systemHealth';
+import { recordSuccess, trackQueryOutcome } from '../systemHealth';
 import { ilikeOrClause } from '../shared/lib/sanitize';
 import { toast } from '../shared/lib/notifications';
 import { createFetchGuard } from '../shared/lib/offlineGuard';
@@ -197,7 +197,18 @@ export function mapCaseRow(
 // أونلاين بس بعد نجاح تحويل جلسة مستقلة لقضية.
 export async function fetchMappedCaseById(caseId: string): Promise<MappedCase | null> {
     const { data, error } = await db.from('cases').select('*').eq('id', caseId).maybeSingle();
-    if (error || !data) { recordError('db_case_by_id', error?.message); return null; }
+    if (error || !data) {
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_case_by_id
+        // لـtrackQueryOutcome. `!data` من غير `error` (maybeSingle مرجعش
+        // صف) مش خطأ Supabase حقيقي، فمفيش كائن error نمرره لـclassifyError؛
+        // بنبني واحد صناعي بسيط عشان يتسجل كفشل زي ما كان يحصل بالظبط قبل
+        // التحويل (نفس السلوك، بس دلوقتي مصنّف).
+        await trackQueryOutcome('db_case_by_id', error || { message: 'not_found' }, {
+            label: 'جلب بيانات القضية',
+            message: 'تعذّر تحميل بيانات هذه القضية. تحقق من الاتصال بالإنترنت.',
+        });
+        return null;
+    }
     recordSuccess('db_case_by_id');
     const row = data as CaseRow;
     let sessionsMap: { [k: string]: string } = {};
@@ -353,8 +364,14 @@ export function useAppData(profile: ProfileRow | null) {
             .from('case_sessions')
             .select('case_id,session_date')
             .in('case_id', caseIds);
-        if (sessErr) recordError('db_sessions_by_case_ids', sessErr.message);
-        else { sessionsMap = buildNearestSessionMap(sessionsData || []); recordSuccess('db_sessions_by_case_ids'); }
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_sessions_by_case_ids
+        // (النقطة الثانية جوه ensureCasesLoaded) لـtrackQueryOutcome — نفس تحويل
+        // النقطة الأولى بتاعتها في fetchMappedCaseById فوق، من غير أي فرع شرطي هنا.
+        const sessResult2 = await trackQueryOutcome('db_sessions_by_case_ids', sessErr, {
+            label: 'جلب جلسات القضايا',
+            message: 'تعذّر تحميل الجلسات المرتبطة بالقضايا. تحقق من الاتصال بالإنترنت.',
+        });
+        if (sessResult2.ok) sessionsMap = buildNearestSessionMap(sessionsData || []);
         const partiesMap = await fetchPartiesMapByCaseIds(caseIds);
 
         const mapped = rows.map((r) => mapCaseRow(r, sessionsMap, partiesMap));
@@ -428,7 +445,14 @@ export function useAppData(profile: ProfileRow | null) {
             }
             setDbError('فشل تحميل القضايا — تحقق من الاتصال وأعد المحاولة');
             setCasesLoading(false);
-            recordError('db_cases', error.message);
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_cases
+            // لـtrackQueryOutcome. القرار الشرطي (تخطي التسجيل لو الكاش رجع
+            // بيانات) فضل زي ما هو في نقطة الاستدعاء فوق — مفيش تغيير فيه؛
+            // النقطة دي بتتنادى بس في الفرع اللي فعلاً محتاج يتسجل كفشل.
+            await trackQueryOutcome('db_cases', error, {
+                label: 'جلب القضايا',
+                message: 'تعذّر تحميل قائمة القضايا. تحقق من الاتصال بالإنترنت.',
+            });
             return;
         }
 
@@ -504,7 +528,11 @@ export function useAppData(profile: ProfileRow | null) {
         if (error) {
             setDbError('فشل البحث في القضايا — تحقق من الاتصال وأعد المحاولة');
             setCasesLoading(false);
-            recordError('db_cases_search', error.message);
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_cases_search لـtrackQueryOutcome.
+            await trackQueryOutcome('db_cases_search', error, {
+                label: 'البحث في القضايا',
+                message: 'تعذّر البحث في القضايا. تحقق من الاتصال بالإنترنت.',
+            });
             return;
         }
 
@@ -611,7 +639,13 @@ export function useAppData(profile: ProfileRow | null) {
                     return;
                 }
             }
-            recordError('db_clients', error.message);
+            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل db_clients
+            // لـtrackQueryOutcome. القرار الشرطي (تخطي التسجيل لو الكاش رجع
+            // بيانات، فيكس ٩ أغسطس) فضل زي ما هو في نقطة الاستدعاء فوق من غير أي لمس.
+            await trackQueryOutcome('db_clients', error, {
+                label: 'جلب الموكلين',
+                message: 'تعذّر تحميل قائمة الموكلين. تحقق من الاتصال بالإنترنت.',
+            });
         } else {
             const mapped: MappedClient[] = (data || []).map((c: ClientRow) => ({
                 ...c,
