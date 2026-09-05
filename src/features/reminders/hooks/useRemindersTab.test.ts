@@ -90,9 +90,38 @@ vi.mock('../../../shared/lib/dataAccess', async (importOriginal) => {
 
 const recordError = vi.fn();
 const recordSuccess = vi.fn();
+// ⚡ FIX (trackQueryOutcome مفقودة من الـmock — خطة "تصنيف الرسائل" دفعة
+// تحويل ٢-ج-٣): useRemindersTab.ts بقى بينادي trackQueryOutcome بدل
+// recordError المباشرة في كل مسارات الفشل (fetchUpcoming/fetchOverdue/
+// fetchDone/handleSave/handleToggleDone/handleDelete/handleEdit) — الموك
+// القديم مكانش مصدّرها، فأي مسار بيوصلها كان بيرمي "trackQueryOutcome غير
+// معرّفة" فعليًا (اكتشفناها في الـCI). نفس منطق trackQueryOutcome الحقيقي
+// (systemHealth.ts): من غير error → recordSuccess، مع error → recordError
+// بنفس التوقيع الثلاثي (key, rawError.message, opts) بالظبط.
+const trackQueryOutcome = vi.fn(
+  async (key: string, error: unknown, opts?: { label?: string; message?: string }) => {
+    if (!error) {
+      recordSuccess(key);
+      return { ok: true as const };
+    }
+    const message = (error as { message?: string } | null | undefined)?.message;
+    recordError(key, message, opts);
+    return {
+      ok: false as const,
+      failure: {
+        rawError: error,
+        classification: 'server' as const,
+        safeMessage: opts?.message ?? '',
+        operationKey: key,
+        operationLabel: opts?.label ?? '',
+      },
+    };
+  }
+);
 vi.mock('../../../systemHealth', () => ({
   recordError: (...a: unknown[]) => recordError(...a),
   recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+  trackQueryOutcome: (...a: Parameters<typeof trackQueryOutcome>) => trackQueryOutcome(...a),
 }));
 
 import { useRemindersTab } from './useRemindersTab';
@@ -162,7 +191,7 @@ describe('useRemindersTab', () => {
       mockDb.setResult('reminders:upcoming', { data: null, error: { message: 'fetch failed' } });
       const { result } = await renderReady();
 
-      expect(recordError).toHaveBeenCalledWith('db_reminders', 'fetch failed');
+      expect(recordError).toHaveBeenCalledWith('db_reminders', 'fetch failed', expect.objectContaining({ label: 'جلب التذكيرات' }));
       expect(result.current.pillSections.find((s) => s.key === 'upcoming')!.data).toEqual([]);
     });
 
@@ -195,7 +224,7 @@ describe('useRemindersTab', () => {
       const { result } = await renderReady(undefined, otherTenantProfile);
 
       expect(result.current.pillSections.find((s) => s.key === 'upcoming')!.data).toEqual([]);
-      expect(recordError).toHaveBeenCalledWith('db_reminders', 'network error');
+      expect(recordError).toHaveBeenCalledWith('db_reminders', 'network error', expect.objectContaining({ label: 'جلب التذكيرات' }));
     });
   });
 
@@ -251,7 +280,7 @@ describe('useRemindersTab', () => {
       mockDb.setResult('reminders:overdue', { data: null, error: { message: 'fetch failed' } });
       const { result } = await renderReady();
 
-      expect(recordError).toHaveBeenCalledWith('db_reminders', 'fetch failed');
+      expect(recordError).toHaveBeenCalledWith('db_reminders', 'fetch failed', expect.objectContaining({ label: 'جلب التذكيرات' }));
       expect(result.current.pillSections.find((s) => s.key === 'overdue')!.data).toEqual([]);
     });
 
@@ -301,7 +330,7 @@ describe('useRemindersTab', () => {
       const { result } = await renderReady(undefined, otherTenantProfile);
 
       expect(result.current.pillSections.find((s) => s.key === 'overdue')!.data).toEqual([]);
-      expect(recordError).toHaveBeenCalledWith('db_reminders', 'network error');
+      expect(recordError).toHaveBeenCalledWith('db_reminders', 'network error', expect.objectContaining({ label: 'جلب التذكيرات' }));
     });
 
     it('فشل loadMore (صفحة تانية غير صفحة 0) → recordError عادي، من غير رجوع للكاش (الكاش لصفحة 0 بس)', async () => {
@@ -311,7 +340,7 @@ describe('useRemindersTab', () => {
       mockDb.setResult('reminders:overdue', { data: null, error: { message: 'page 2 failed' } });
       await act(async () => { result.current.pillSections.find((s) => s.key === 'overdue')!.loadMore!(); });
 
-      expect(recordError).toHaveBeenCalledWith('db_reminders', 'page 2 failed');
+      expect(recordError).toHaveBeenCalledWith('db_reminders', 'page 2 failed', expect.objectContaining({ label: 'جلب التذكيرات' }));
       // القائمة تفضل كما هي (صفحة 0 بس)، من غير ما تتمسح أو تتبدّل بكاش
       expect(result.current.pillSections.find((s) => s.key === 'overdue')!.data.map((r) => r.id)).toEqual(['over-page0']);
     });
