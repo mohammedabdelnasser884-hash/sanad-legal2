@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../supabaseClient';
 import { formatArDate } from '../../shared/ui/arabicLocale';
 import { CasePicker, EmptyState, SectionCard, InfoRow, CopyButton, ErrorState } from '../../shared/ui/TaskResultKit';
-import { recordError } from '../../systemHealth';
+import { recordError, recordSuccess } from '../../systemHealth';
 import type { MappedCase, MappedClient } from '../../hooks/useAppData';
 import type { CasePartyRow } from '../cases/hooks/useCaseDetailActions';
 import { buildFullPartiesText, effectiveLegalTitleForDisplay } from '../../shared/parties/partyDisplay';
@@ -83,6 +83,7 @@ function CaseDataExtract({ cases, clients }: CaseDataExtractProps) {
       setCounts({ sessions: sessRes.count || 0, documents: docRes.count || 0 });
       setCaseParties(partiesRes.error ? [] : ((partiesRes.data as unknown as CasePartyRow[]) || []));
       setLoadingCounts(false);
+      recordSuccess('ai_case_data_extract');
     }).catch((e) => {
       if (cancelled) return;
       const _msg = e instanceof Error ? e.message : String(e);
