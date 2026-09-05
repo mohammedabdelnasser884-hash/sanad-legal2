@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../../../supabaseClient';
 import { toast } from '../../../shared/lib/notifications';
-import { recordError, recordSuccess } from '../../../systemHealth';
+import { recordError, recordSuccess, trackQueryOutcome } from '../../../systemHealth';
 import { getCurrentTenantId } from '../../../constants';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
 import { exportSessionToGoogleCalendar } from '@/shared/ui/calendarExport';
@@ -141,7 +141,7 @@ function CalendarTab({ cases, clients, onOpenCase, onOpenStandalone, refreshKey 
           .gte('session_date', `${viewYear}-${mm}-01`)
           .lte('session_date', `${viewYear}-${mm}-${String(last).padStart(2,'0')}`)
           .abortSignal(guard.controller.signal)
-          .then(({ data, error }) => {
+          .then(async ({ data, error }) => {
               guard.cleanup();
               if (error) {
                   const cached = loadCalendarSessionsCache(viewYear, viewMonth);
@@ -150,7 +150,15 @@ function CalendarTab({ cases, clients, onOpenCase, onOpenStandalone, refreshKey 
                       if (isMonthNavigation) toast('أنت أوف لاين — بتشوف آخر نسخة محفوظة من جلسات الشهر ده');
                   } else {
                       setAllSessions([]);
-                      recordError('db_calendar_sessions', error.message);
+                      // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٢، ٢-ج-٣، فئة B): تحويل
+                      // لـtrackQueryOutcome بدل recordError(error.message) المباشر.
+                      // القرار الشرطي (تخطي التسجيل لو الكاش رجع بيانات، نفس فيكس
+                      // ٩ أغسطس في useAppData.ts::fetchClients) فضل زي ما هو —
+                      // trackQueryOutcome بتتنادى بس في الـelse ده (مفيش كاش).
+                      await trackQueryOutcome('db_calendar_sessions', error, {
+                          label: 'جلب جلسات الشهر',
+                          message: 'تعذّر تحميل جلسات الشهر. تحقق من الاتصال بالإنترنت.',
+                      });
                   }
                   setLoading(false);
                   if (isMonthNavigation) setSelectedDay(null);
