@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { recordError, recordSuccess } from './systemHealth';
+import { recordSuccess, trackQueryOutcome } from './systemHealth';
 import { getEdgeFunctionErrorMessage, looksArabicUserMessage, type EdgeFunctionError } from './shared/lib/edgeFunctionErrors';
 import type { PermissionsMap } from './shared/lib/permissions';
 import type { Database } from './database.types';
@@ -41,14 +41,28 @@ export async function callAdminAction(payload: AdminActionPayload) {
     // ضايعتين دايمًا خلف GENERIC_OPERATION_MSG. نجرّب نستخرج الرسالة
     // الحقيقية، ونعرضها بس لو فعلاً عربية (مش نص تقني خام زي فشل شبكة).
     const serverMessage = await getEdgeFunctionErrorMessage(error as EdgeFunctionError);
+    // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٤، فحص نقطة نقطة): error.context هنا
+    // Response حقيقي، وجسمه اتقرا بالفعل جوه getEdgeFunctionErrorMessage
+    // فوق (سطر واحد قبل كده). لو مررنا error الخام زي ما هو لـtrackQueryOutcome،
+    // extractSafeErrorText جوّاها هيحاول يقرا نفس الـcontext تاني
+    // (json()/text()) وده بيفشل بصمت (stream already read في الـfetch Response)
+    // فهيرجع rawError فاضي بدل النص التقني — تراجع فعلي عن السلوك الحالي،
+    // مش تحسين. الحل: نمرر نسخة بـ.message/.code بس من غير .context —
+    // classifyError محتاجة .message/.code بس أصلاً (مبتلمسش context خالص)،
+    // وextractSafeErrorText هترجع .message مباشرة من غير أي محاولة قراءة
+    // تانية للـstream.
+    const errorForTracking = {
+      message: (error as { message?: string })?.message,
+      code: (error as { code?: string })?.code,
+    };
     if (looksArabicUserMessage(serverMessage)) {
-      recordError('generic_operation', serverMessage as string, {
+      await trackQueryOutcome('generic_operation', errorForTracking, {
         label: 'عملية إدارية',
         message: serverMessage as string,
       });
       throw new Error(serverMessage as string);
     }
-    recordError('generic_operation', error.message || String(error), {
+    await trackQueryOutcome('generic_operation', errorForTracking, {
       label: 'عملية إدارية',
       message: GENERIC_OPERATION_MSG,
     });
