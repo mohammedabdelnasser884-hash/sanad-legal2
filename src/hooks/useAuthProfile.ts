@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../supabaseClient';
 import { toast } from '../shared/lib/notifications';
-import { recordError } from '../systemHealth';
+import { recordError, recordSuccess } from '../systemHealth';
 import { setCurrentTenantId } from '../constants';
 import type { ProfileRow } from '../types';
 
@@ -150,6 +150,7 @@ export function useAuthProfile() {
         }
         saveProfileCache(user.id, data);
         setProfile(data);
+        recordSuccess('auth_profile_load');
         setAuthLoading(false);
     }, []);
 
