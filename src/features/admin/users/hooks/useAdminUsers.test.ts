@@ -39,7 +39,11 @@ vi.mock('../../../../shared/lib/dataAccess', async (importOriginal) => {
 });
 
 const recordError = vi.fn();
-vi.mock('../../../../systemHealth', () => ({ recordError: (...a: unknown[]) => recordError(...a) }));
+const recordSuccess = vi.fn();
+vi.mock('../../../../systemHealth', () => ({
+  recordError: (...a: unknown[]) => recordError(...a),
+  recordSuccess: (...a: unknown[]) => recordSuccess(...a),
+}));
 
 const PROFILE = { id: 'admin-1', full_name: 'أحمد المدير' } as unknown as ProfileRow;
 const TARGET_USER = { id: 'u1', user_id: 'auth-u1', full_name: 'محمد المحامي', is_active: true, is_locked: false, failed_login_attempts: 3 } as unknown as ProfileRow;
