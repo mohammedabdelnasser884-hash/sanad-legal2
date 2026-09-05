@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { loadOfficeSetting } from '../../constants';
 import { toast } from '../../shared/lib/notifications';
 import { formatPhoneForWhatsApp } from '../../shared/lib/validation';
-import { recordError, recordSuccess } from '../../systemHealth';
+import { recordSuccess, trackQueryOutcome } from '../../systemHealth';
 import {
   CasePicker, EmptyState, SectionCard, CopyButton, DisclaimerNote, ErrorState,
   UsageLimitState, isQuotaExceededMessage,
@@ -97,7 +97,12 @@ function ClientMessage({ cases, clients, callAI }: ClientMessageProps) {
         ? _msg
         : 'تعذّر كتابة الرسالة. حاول تاني بعد قليل. لو المشكلة استمرت، تواصل مع الدعم.';
       if (!isUserFacingMessage) {
-        recordError('ai_client_message', _msg, { label: 'رسالة عميل مختصرة', message: displayMsg });
+        // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة ٦ (٢-ج-٣)، نقطة ٧/٨): تحويل
+        // لـtrackQueryOutcome بدل recordError(_msg) المستخرج مسبقًا. نفس
+        // منطق useAIChat.ts/useAIDocumentGenerator.ts — callAI بترمي
+        // Error(...) نظيفة، فمرور e الخام آمن. الشرط والرسالة المعروضة
+        // للمستخدم متلمستش.
+        await trackQueryOutcome('ai_client_message', e, { label: 'رسالة عميل مختصرة', message: displayMsg });
       }
       setError(displayMsg);
     }
