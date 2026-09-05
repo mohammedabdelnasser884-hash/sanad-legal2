@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from '../../../shared/lib/notifications';
 import { safeUpdate, logActivity, buildFieldDiff, buildDeleteSnapshot, buildAddSnapshot, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import { ilikeOrClause } from '../../../shared/lib/sanitize';
@@ -14,6 +14,19 @@ import type { ClientRow, CaseFeeRow, FeePaymentRow, ProfileRow, PaymentsByFeeId 
 import type { MappedCase } from '../../../hooks/useAppData';
 
 const PAGE_SIZE = 15;
+
+// ── Idempotency keys (خطة "تصنيف الرسائل ودورة حياة العمليات" — البند
+// ٣-د، ٥ سبتمبر 2026): مفتاح واحد بيتولّد لكل "نية" (فتح مودال إضافة
+// أتعاب/تسجيل دفعة)، بيتبعت زي ما هو مع أي إعادة محاولة يدوية بعد فشل،
+// ويتصفّر بس عند النجاح أو إغلاق المودال بدون حفظ. نفس نمط
+// caseSessionLinkingShared.ts::makeSessionGroupId (crypto.randomUUID
+// مع fallback للمتصفحات القديمة).
+function makeIdempotencyKey(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return `idmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 // ── نتيجة اشتقاق "اسم الموكل" من القضية (طلب المستخدم — 29 أغسطس 2026) ──
 export interface ResolvedCaseClient {
@@ -144,6 +157,29 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
     const [saving, setSaving] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
     const [addPaymentFor, setAddPaymentFor] = useState<string | null>(null);
+    // 🆕 (٣-د) مفتاح idempotency لنية "تسجيل دفعة" الحالية — بيتولّد وقت
+    // فتح المودال (setAddPaymentFor(feeId))، ويتصفّر عند الإغلاق
+    // (setAddPaymentFor(null)) أو النجاح. راجع setAddPaymentForTracked
+    // تحت وnewFeeIdempotencyKeyRef لنفس الفكرة في فورم "إضافة أتعاب".
+    const payIdempotencyKeyRef = useRef<string | null>(null);
+    const setAddPaymentForTracked = useCallback((v: string | null) => {
+        payIdempotencyKeyRef.current = v ? makeIdempotencyKey() : null;
+        setAddPaymentFor(v);
+    }, []);
+    // 🆕 (٣-د) نفس الفكرة لفورم "إضافة أتعاب جديدة" (create_fee_with_advance).
+    // بيتولّد بس وقت فتح الفورم لسجل *جديد* (مش تعديل). العملية الفعلية
+    // لفتح/قفل الفورم (setShowForm/setEditId) فضلت زي ما هي بالكامل في
+    // FeesTab.tsx (فيها تكامل مع nav.openModal/closeModal محتاج يفضل زي
+    // ما هو) — الدالتين دول بس بيديروا المفتاح جنبها، بينادوا عليهم
+    // FeesTab.tsx إضافةً لنداءات setShowForm/setEditId الموجودة، مش بدلاً
+    // منها.
+    const newFeeIdempotencyKeyRef = useRef<string | null>(null);
+    const markNewFeeFormOpened = useCallback(() => {
+        newFeeIdempotencyKeyRef.current = makeIdempotencyKey();
+    }, []);
+    const markNewFeeFormClosed = useCallback(() => {
+        newFeeIdempotencyKeyRef.current = null;
+    }, []);
     // 🔒 FIX (تقرير الموثوقية الشامل — H-1): زرار "تسجيل" دفعة أتعاب كان الوحيد
     // من غير حماية دبل كليك/دبل تاب (بعكس باقي أزرار الحفظ في المشروع). بنقفل
     // بـ id الأتعاب الحالية فورًا في أول سطر من handleAddPayment، نفس فلسفة
@@ -615,6 +651,10 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
                 p_notes: payload.notes,
                 p_paid_amount: initialPaidAmount,
                 p_payment_date: form.payment_date || null,
+                // 🆕 (٣-د): نفس المفتاح بيتبعت فى أي إعادة محاولة يدوية بعد
+                // فشل — لو الطلب الأول نجح فعليًا والرد بس ضاع، الـRPC
+                // هترجع نفس السجل القديم بدل إنشاء سجل أتعاب مكرر.
+                p_idempotency_key: newFeeIdempotencyKeyRef.current,
             });
             if(error){ toast('❌ فشل حفظ الأتعاب الجديدة — تحقق من الاتصال وأعد المحاولة', true); setSaving(false); return; }
             toast('✅ تم إضافة الأتعاب');
@@ -646,6 +686,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
                 }),
             });
         }
+        newFeeIdempotencyKeyRef.current = null; // 🆕 (٣-د) الحفظ نجح — صفّر المفتاح استعدادًا لأي فتح تالي
         setSaving(false);
         setShowForm(false); setForm({case_id:'',client_id:'',receiver:'',total:'',paid:'',payment_date:'',notes:''}); setEditId(null);
         refetchFees();
@@ -706,8 +747,14 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             p_received_by: payReceiver || null,
             p_client_id: resolvedClientId,
             p_client_name: resolvedClientName,
+            // 🆕 (٣-د): نفس المفتاح بيتبعت فى أي إعادة محاولة يدوية بعد فشل
+            // (المودال لسه مفتوح، payIdempotencyKeyRef متلمسش) — لو الدفعة
+            // الأولى نجحت فعليًا والرد بس ضاع، الـRPC هترجع سجل case_fees
+            // الحالي بدل تسجيل دفعة مكررة.
+            p_idempotency_key: payIdempotencyKeyRef.current,
         });
         if(rpcError){ toast('❌ فشل تسجيل الدفعة، يرجى المحاولة مرة أخرى', true); setPayingFeeId(null); return; }
+        payIdempotencyKeyRef.current = null; // 🆕 (٣-د) الدفعة اتسجلت — صفّر المفتاح استعدادًا لأي فتح تالي
         toast('✅ تم تسجيل الدفعة');
         logActivity(db, 'تسجيل دفعة', {
             entity_type: 'fee', entity_id: fee.id,
@@ -893,7 +940,11 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
   return {
     fees, setFees, payments, setPayments, expandedPayments, setExpandedPayments,
     loading, showForm, setShowForm, form, setForm, saving, editId, setEditId,
-    addPaymentFor, setAddPaymentFor, payingFeeId, payAmount, setPayAmount, payDate, setPayDate,
+    // 🆕 (٣-د): نادِ markNewFeeFormOpened عند فتح فورم "إضافة أتعاب جديدة"
+    // (زرار "+" فقط، مش زرار التعديل)، وmarkNewFeeFormClosed عند أي إغلاق
+    // له (overlay/✕/إلغاء) — إضافةً لنداءات setShowForm/setEditId الموجودة.
+    markNewFeeFormOpened, markNewFeeFormClosed,
+    addPaymentFor, setAddPaymentFor: setAddPaymentForTracked, payingFeeId, payAmount, setPayAmount, payDate, setPayDate,
     payNote, setPayNote, confirmDeletePay, setConfirmDeletePay,
     confirmDeleteFee, setConfirmDeleteFee, invoiceModal, setInvoiceModal,
     payReceiver, setPayReceiver, payClientName, setPayClientName,
