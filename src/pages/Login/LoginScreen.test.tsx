@@ -273,7 +273,7 @@ describe('LoginScreen (تدفق تكاملي مع office-login)', () => {
       fireEvent.click(screen.getByTestId('forgot-password-submit'));
 
       await waitFor(() => expect(screen.getByTestId('forgot-password-success')).toBeTruthy());
-      expect(resetPasswordForEmail).toHaveBeenCalledWith('lawyer@sanad.test', { redirectTo: 'https://sanad-nizam.vercel.app/reset-password' });
+      expect(resetPasswordForEmail).toHaveBeenCalledWith('lawyer@sanad.test', { redirectTo: 'https://sanad.nizzam.workers.dev/reset-password' });
     });
 
     it('إرسال الفورم من غير إيميل → رسالة تحقق محلية، من غير أي نداء لـ resetPasswordForEmail', () => {
