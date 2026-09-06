@@ -446,6 +446,25 @@ async function sbFetch(path, method='GET', body=null) {
   return data;
 }
 
+// ─── نداء عام لأي action تاني غير 'query' (resetOnboardingLock وغيره) ──
+async function callAdminAction(action, extra = {}) {
+  const token = sessionStorage.getItem('saas_token');
+  const r = await fetch(FN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, token, ...extra }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (r.status === 401) {
+    doLogout();
+    throw new Error(data.error || 'الجلسة منتهية، سجّل الدخول من جديد');
+  }
+  if (!r.ok) {
+    throw new Error(data.error || data.message || r.status);
+  }
+  return data;
+}
+
 // ─── Auth ─────────────────────────────────────────────
 async function doLogin() {
   const v = document.getElementById('login-pass').value;
@@ -512,6 +531,7 @@ async function loadTenants() {
   try {
     const data = await sbFetch(TABLE + '?order=created_at.desc');
     allTenants = data || [];
+    await loadOnboardingStatuses();
     renderTable();
     renderStats();
     renderAlerts();
@@ -519,6 +539,26 @@ async function loadTenants() {
     showToast('خطأ في التحميل: ' + e.message, true);
     showTableLoading(false, true);
   }
+}
+
+// ─── تحميل حالات تجميد/قفل الـ Onboarding وربطها بكل مكتب ──
+// فشل هنا مش لازم يوقف عرض الجدول ككل — لو حصل، الجدول يفضل شغال
+// عادي وبس شارة/زرار الفك مش هيظهروا.
+async function loadOnboardingStatuses() {
+  try {
+    const rows = await callAdminAction('getOnboardingStatuses');
+    const byTenant = {};
+    (Array.isArray(rows) ? rows : []).forEach(p => { byTenant[p.tenant_id] = p; });
+    allTenants.forEach(t => { t._onboarding = byTenant[t.id] || null; });
+  } catch(e) {
+    console.error('loadOnboardingStatuses failed:', e);
+  }
+}
+
+function isOnboardingLocked(ob) {
+  if (!ob) return false;
+  if (ob.onboarding_frozen) return true;
+  return !!(ob.onboarding_locked_until && new Date(ob.onboarding_locked_until) > new Date());
 }
 
 function showTableLoading(on, empty=false) {
@@ -765,6 +805,17 @@ function renderTable() {
       </td>
       <td class="py-3 px-4">
         <div class="flex justify-center">${statusBadge[t.status]||t.status}</div>
+        ${(() => {
+          const ob = t._onboarding;
+          if (!ob) return '';
+          if (ob.onboarding_frozen) {
+            return `<div class="flex justify-center mt-1"><span class="px-2 py-0.5 bg-rose-500/10 border border-rose-500/25 text-rose-400 text-[9px] font-black rounded-full">🔒 Onboarding مجمّد</span></div>`;
+          }
+          if (ob.onboarding_locked_until && new Date(ob.onboarding_locked_until) > new Date()) {
+            return `<div class="flex justify-center mt-1"><span class="px-2 py-0.5 bg-amber-500/10 border border-amber-500/25 text-amber-400 text-[9px] font-black rounded-full">⏳ Onboarding مقفول</span></div>`;
+          }
+          return '';
+        })()}
       </td>
       <td class="py-3 px-4">
         <div class="flex items-center justify-center gap-1.5">
@@ -784,10 +835,35 @@ function renderTable() {
             class="w-7 h-7 rounded-lg bg-white/5 border border-white/5 text-slate-500 flex items-center justify-center active:scale-90 transition-transform hover:text-rose-400">
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/></svg>
           </button>
+          ${isOnboardingLocked(t._onboarding) ? `
+            <button onclick="unlockOnboarding('${t.id}')" title="فك قفل/تجميد الـ Onboarding"
+              class="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center active:scale-90 transition-transform">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 1 1 9 0v3.75M3.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H3.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
+            </button>
+          ` : ''}
         </div>
       </td>
     </tr>
   `).join('');
+}
+
+// ─── فك قفل/تجميد الـ Onboarding لمكتب ──────────────────
+async function unlockOnboarding(tenantId) {
+  const t = allTenants.find(x => x.id === tenantId);
+  const label = t?._onboarding?.onboarding_frozen ? 'تجميد كامل' : 'قفل مؤقت';
+  if (!confirm(`تأكيد فك الـ${label} عن onboarding هذا المكتب؟ الأدمن هيقدر يطلب كود تحقق جديد فورًا.`)) return;
+  try {
+    await callAdminAction('resetOnboardingLock', { tenantId });
+    if (t && t._onboarding) {
+      t._onboarding.onboarding_frozen = false;
+      t._onboarding.onboarding_locked_until = null;
+      t._onboarding.onboarding_lockout_tier = 0;
+    }
+    renderTable();
+    showToast('✅ تم فك القفل — المكتب يقدر يكمل الـ onboarding دلوقتي');
+  } catch(e) {
+    showToast('خطأ: ' + e.message, true);
+  }
 }
 
 // ─── Toggle Status ─────────────────────────────────────
