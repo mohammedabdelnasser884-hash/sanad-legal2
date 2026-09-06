@@ -103,6 +103,37 @@ export async function loginAs(page: Page, email: string, password: string): Prom
     message: `الجلسة لسه مش اتحدثت للحساب المتوقع (${email})`,
     timeout: 10_000,
   }).toBe(email);
+  // 🆕 (تحقيق فشل permissions-matrix.spec.ts فى CI — مؤكَّد بتريس Playwright
+  // فعلي، ٦ سبتمبر ٢٠٢٦): loginAs() بس (مش login()) بتسجّل دخول لحساب
+  // lawyer/viewer جديد اتعمل تواني عبر createTestUser — أول مرة يسجّل
+  // دخوله، شاشة "شروط الاستخدام" (TermsAcceptanceScreen) بتظهر لازم
+  // يوافق عليها الأول. المشكلة: بتظهر بتأخير قصير (لاحظنا فى التريس ~1.8
+  // ثانية) بعد ظهور app-shell وبعد ما التأكيدين فوق نجحوا — نفس فئة
+  // السباق اللي فيكس debugSessionEmail فوق (17 أغسطس) اتعمل لمعالجتها:
+  // أول render لسه ممكن يعكس جلسة/بروفايل الحساب القديم (اللي أصلًا
+  // موافق على الشروط) قبل ما بروفايل الحساب الجديد الحقيقي يستقر ويطلع
+  // إنه لسه محتاج يوافق. لو متسيبتلوش، أي كليك تالي على أي نافيجيشن
+  // هيتعلّق 15 ثانية لحد التايم أوت (زي فشل desktop-nav-cases اللي
+  // شخّصناه). login() المستخدم لحساب E2E_TEST_EMAIL الثابت مش محتاج
+  // نفس الفيكس لأنه أصلًا موافق على الشروط من قبل، فمينفعش تتحط هنا
+  // كمان من غير داعي (كل تست تانى فى الملف مش محتاجها).
+  await acceptTermsIfShown(page);
+}
+
+// راجع تعليق loginAs() فوق للسياق الكامل. بيتأكد إن شاشة "شروط الاستخدام"
+// مش ظاهرة (استنى فترة قصيرة كمان تحسّبًا للسباق المذكور)، ولو ظهرت
+// يوافق عليها ويرجع ينتظر app-shell قبل ما يرجّع السيطرة للتست.
+async function acceptTermsIfShown(page: Page): Promise<void> {
+  const confirmButton = page.getByTestId('terms-confirm-button');
+  const alreadyVisible = await confirmButton.isVisible().catch(() => false);
+  const appeared = alreadyVisible || await confirmButton
+    .waitFor({ state: 'visible', timeout: 3_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!appeared) return;
+  await page.getByTestId('terms-agree-checkbox').click();
+  await confirmButton.click();
+  await page.getByTestId('app-shell').waitFor({ state: 'visible', timeout: 15_000 });
 }
 
 // تسجيل خروج — مفيش data-testid مخصص لزرار "تسجيل الخروج" حاليًا (جوه
