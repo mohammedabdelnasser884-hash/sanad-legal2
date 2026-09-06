@@ -17,6 +17,11 @@ import { useEffect, useState } from 'react';
 import { db } from '../../supabaseClient';
 import { createFetchGuard } from '../lib/offlineGuard';
 import type { PartyDisplayRow } from './partiesDisplay';
+// ⚡ TEMP (المرحلة 0 — خطة تحسين الأداء، 7 سبتمبر 2026): علامة مؤقتة
+// بتسجّل كل setIndex هنا كـ"self-render" منفصل عن أي re-render جاي من
+// الأب (DashboardTab)، بالظبط النقطة اللي الخطة طلبت التفرقة فيها.
+// تُشال مع باقي أدوات المرحلة 0 (src/dev/) بعد إغلاقها.
+import { logMark } from '../../dev/perfProbe';
 
 export interface SessionsPartiesIndex {
     byCaseId: Record<string, PartyDisplayRow[]>;
@@ -41,7 +46,7 @@ export function useSessionsPartiesMap(sessions: PartiesSourceSession[]): Session
     useEffect(() => {
         const caseIds = caseIdsKey ? caseIdsKey.split(',') : [];
         const standaloneIds = standaloneIdsKey ? standaloneIdsKey.split(',') : [];
-        if (caseIds.length === 0 && standaloneIds.length === 0) { setIndex(EMPTY_INDEX); return; }
+        if (caseIds.length === 0 && standaloneIds.length === 0) { logMark('useSessionsPartiesMap', 'self: لا جلسات'); setIndex(EMPTY_INDEX); return; }
 
         // ⚡ NEW (فيكس "تأخير محسوس عند التنقل أوف لاين، جزء 5" — 9 أغسطس
         // 2026): نداء مصاحب على نفس شاشات الجلسات (الداشبورد/الكالندر/قائمة
@@ -50,7 +55,7 @@ export function useSessionsPartiesMap(sessions: PartiesSourceSession[]): Session
         // الاستعلام فشل)، بدل ما يفضل معلّق. أونلاين بطيء/متقطع يتقفل بعد
         // 8 ثواني.
         const guard = createFetchGuard();
-        if (guard.offline) { setIndex(EMPTY_INDEX); return; }
+        if (guard.offline) { logMark('useSessionsPartiesMap', 'self: أوفلاين'); setIndex(EMPTY_INDEX); return; }
 
         let cancelled = false;
         Promise.all([
@@ -73,6 +78,7 @@ export function useSessionsPartiesMap(sessions: PartiesSourceSession[]): Session
                 if (!p.session_id) return;
                 (bySessionId[p.session_id as string] ||= []).push(p as unknown as PartyDisplayRow);
             });
+            logMark('useSessionsPartiesMap', 'self: أطراف اتجابت');
             setIndex({ byCaseId, bySessionId });
         });
         return () => { cancelled = true; guard.cleanup(); };
