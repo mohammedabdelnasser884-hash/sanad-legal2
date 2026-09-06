@@ -15,7 +15,7 @@ interface LoginScreenProps {
 // دومين الـredirect المؤكَّد من الخطة (قسم A.5) — لازم يكون مضاف في
 // Authentication → URL Configuration → Redirect URLs بلوحة Supabase
 // (خطوة يدوية خارج نطاق الكود، راجع A.1 في الخطة).
-const PASSWORD_RESET_REDIRECT_URL = 'https://sanad-nizam.vercel.app/reset-password';
+const PASSWORD_RESET_REDIRECT_URL = 'https://sanad.nizzam.workers.dev/reset-password';
 
 function LoginScreen({onLogin}: LoginScreenProps){
     const [email,setEmail]=useState('');
