@@ -22,7 +22,7 @@ import type { NavigationState } from '../useNavigation';
 // LoginScreen.test.tsx موثّق). من غير ده، كل تست بيرندر فوق DOM التست
 // اللي قبله في document.body بدل ما يتنضف، فالـqueries بتلاقي عناصر
 // باقية من تستات سابقة. لازم cleanup() يدوي بعد كل تست.
-afterEach(() => { cleanup(); mockGenerate.mockReset(); mockLogActivity.mockReset(); });
+afterEach(() => { cleanup(); mockFill.mockReset(); mockLogActivity.mockReset(); });
 
 // LegalDocumentsPage.tsx بيستورد { I } من ../constants، واللي بدوره بيستورد
 // db من ./supabaseClient — وده بينادي createClient() فعليًا وقت الـimport
@@ -95,6 +95,27 @@ vi.mock('../features/documentGeneration/components/CategoryPicker', () => ({
   ),
 }));
 
+// [Sanad_Legal_Documents_Library_Transition_Plan.md — مرحلة 3.1] شاشة
+// "القالب المفرد" الجديدة بين اختيار القالب وSourceModeSelector — بنموكها
+// بزرارين: "تحميل" (onDownload وهمي، مبيغيّرش خطوة) و"تعبئة" (onChooseFill،
+// بيودّي لـSourceModeSelector زي المسار القديم).
+vi.mock('../features/documentGeneration/components/TemplateActionScreen', () => ({
+  default: ({
+    template,
+    onChooseFill,
+  }: {
+    template: { name_ar: string };
+    onBack: () => void;
+    onChooseFill: () => void;
+  }) => (
+    <div data-testid="mock-template-action-screen">
+      شاشة القالب المفرد: {template.name_ar}
+      <button data-testid="mock-download-as-is" onClick={() => {}}>تحميل كما هو</button>
+      <button data-testid="mock-choose-fill" onClick={onChooseFill}>تعبئة من بيانات قضية</button>
+    </div>
+  ),
+}));
+
 vi.mock('../features/documentGeneration/components/SourceModeSelector', () => ({
   default: ({
     onSelectMode,
@@ -124,17 +145,41 @@ vi.mock('../features/documentGeneration/components/DynamicFieldsForm', () => ({
   ),
 }));
 
-vi.mock('../features/documentGeneration/components/DocumentPreviewEditor', () => ({
-  default: () => <div data-testid="mock-document-preview-editor">DocumentPreviewEditor</div>,
+// ⚡ [Sanad_Legal_Documents_Library_Transition_Plan.md — مرحلة 4.2]
+// DocumentPreviewEditor (المعاينة النصية القديمة) اتشالت من الصفحة —
+// محلها بقى DocumentFillConfirmScreen ("تأكيد وتحميل"). بنموكها بزرار
+// "تأكيد" وهمي بينادي onFill ثم onFillSuccess عند النجاح، بنفس نمط
+// mock-submit-generate القديم (زر واحد يمثل الفعل الرئيسي للشاشة).
+vi.mock('../features/documentGeneration/components/DocumentFillConfirmScreen', () => ({
+  default: ({
+    onFill,
+    onFillSuccess,
+  }: {
+    onFill: () => Promise<unknown>;
+    onFillSuccess?: () => void;
+  }) => (
+    <div data-testid="mock-document-fill-confirm-screen">
+      DocumentFillConfirmScreen
+      <button
+        data-testid="mock-confirm-fill"
+        onClick={async () => {
+          const result = await onFill();
+          if (result) onFillSuccess?.();
+        }}
+      >
+        تأكيد وتحميل
+      </button>
+    </div>
+  ),
 }));
 
-// mockGenerate قابلة لإعادة التوجيه لكل تست على حدة (mockResolvedValueOnce)
-// عشان نختبر مسار النجاح (توليد مستند بنجاح → logActivity/sendTelegram).
+// mockFill قابلة لإعادة التوجيه لكل تست على حدة (mockResolvedValueOnce)
+// عشان نختبر مسار النجاح (تعبئة مستند بنجاح → sendTelegram عبر onFillSuccess).
 // بادئة "mock" مطلوبة عشان vitest يسمح باستخدامها جوه factory معلّق (hoisted).
-const mockGenerate = vi.fn();
+const mockFill = vi.fn();
 
-vi.mock('../features/documentGeneration/hooks/useGenerateDocument', () => ({
-  useGenerateDocument: () => ({
+vi.mock('../features/documentGeneration/hooks/useFillDocument', () => ({
+  useFillDocument: () => ({
     fields: [],
     loadingFields: false,
     loadError: null,
@@ -142,9 +187,10 @@ vi.mock('../features/documentGeneration/hooks/useGenerateDocument', () => ({
     setValue: vi.fn(),
     missingRequiredFieldLabels: [],
     isValid: true,
-    generating: false,
-    generateError: null,
-    generate: mockGenerate,
+    masterFileName: 'قالب.docx',
+    filling: false,
+    fillError: null,
+    fill: mockFill,
   }),
 }));
 
@@ -173,8 +219,29 @@ const navStub: NavigationState = {
   isOpen: vi.fn(() => false),
 };
 
-describe('LegalDocumentsPage — [قرار جيمي 26 أغسطس 2026] SourceModeSelector واجبة الظهور دايمًا', () => {
-  it('حتى لو جاي من قضية مفتوحة (hasCaseContext=true)، اختيار قالب لازم يعدّي على SourceModeSelector أول، مش يقفز للفورم مباشرة', () => {
+describe('LegalDocumentsPage — [Sanad_Legal_Documents_Library_Transition_Plan.md، مرحلة 3.1] شاشة القالب المفرد بين اختيار القالب وSourceModeSelector', () => {
+  it('اختيار قالب لازم يعدّي على شاشة "القالب المفرد" أول، مش SourceModeSelector مباشرة', () => {
+    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
+
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+
+    expect(screen.getByTestId('mock-template-action-screen')).toBeTruthy();
+    expect(screen.queryByTestId('mock-source-mode-selector')).toBeNull();
+  });
+
+  it('زرار "تعبئة من بيانات قضية" جوه شاشة القالب المفرد لازم يودّي لـSourceModeSelector', () => {
+    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
+
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-choose-fill'));
+
+    expect(screen.getByTestId('mock-source-mode-selector')).toBeTruthy();
+    expect(screen.queryByTestId('mock-template-action-screen')).toBeNull();
+  });
+});
+
+describe('LegalDocumentsPage — [قرار جيمي 26 أغسطس 2026] SourceModeSelector واجبة الظهور دايمًا (بعد اختيار "تعبئة من بيانات قضية")', () => {
+  it('حتى لو جاي من قضية مفتوحة (hasCaseContext=true)، اختيار "تعبئة من بيانات قضية" لازم يعدّي على SourceModeSelector أول، مش يقفز للفورم مباشرة', () => {
     function Wrapper() {
       const [initialCaseId, setInitialCaseId] = React.useState<string | null>('case-123');
       return (
@@ -189,6 +256,7 @@ describe('LegalDocumentsPage — [قرار جيمي 26 أغسطس 2026] SourceMo
     render(<Wrapper />);
 
     fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-choose-fill'));
 
     // لازم يظهر اختيار المصدر، ومفيش فورم لسه
     expect(screen.getByTestId('mock-source-mode-selector')).toBeTruthy();
@@ -199,6 +267,7 @@ describe('LegalDocumentsPage — [قرار جيمي 26 أغسطس 2026] SourceMo
     render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
 
     fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-choose-fill'));
 
     expect(screen.getByTestId('mock-source-mode-selector').getAttribute('data-preset-case-id')).toBe('case-123');
   });
@@ -208,6 +277,7 @@ describe('LegalDocumentsPage — [قرار جيمي 26 أغسطس 2026] SourceMo
 
     fireEvent.click(screen.getByTestId('mock-select-category'));
     fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-choose-fill'));
 
     expect(screen.getByTestId('mock-source-mode-selector').getAttribute('data-preset-case-id')).toBe('');
   });
@@ -216,6 +286,7 @@ describe('LegalDocumentsPage — [قرار جيمي 26 أغسطس 2026] SourceMo
     render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
 
     fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-choose-fill'));
     fireEvent.click(screen.getByTestId('mock-select-source-manual'));
 
     expect(screen.getByTestId('mock-dynamic-fields-form')).toBeTruthy();
@@ -255,13 +326,16 @@ describe('LegalDocumentsPage — [أولوية 3] خطوة "القسم" الجد
     expect(screen.getByTestId('mock-select-template')).toBeTruthy();
   });
 
-  it('نتيجة بحث موحّد من CategoryPicker لازم تقفز لـSourceModeSelector مباشرة (زي أي اختيار قالب تاني)، من غير المرور بخطوة "المستند"', () => {
+  it('نتيجة بحث موحّد من CategoryPicker لازم تقفز لشاشة "القالب المفرد" مباشرة (زي أي اختيار قالب تاني)، من غير المرور بخطوة "المستند"', () => {
     render(<LegalDocumentsPage initialCaseId={null} nav={navStub} />);
 
     fireEvent.click(screen.getByTestId('mock-select-template-from-search'));
 
-    expect(screen.getByTestId('mock-source-mode-selector')).toBeTruthy();
+    expect(screen.getByTestId('mock-template-action-screen')).toBeTruthy();
     expect(screen.queryByTestId('mock-select-template')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('mock-choose-fill'));
+    expect(screen.getByTestId('mock-source-mode-selector')).toBeTruthy();
   });
 
   it('كارت "حافظة مستندات" لازم ينقّل لتاب "المستندات" (nav.navigateTo) — مش توليد مستند (القسم 8.2)', () => {
@@ -285,58 +359,66 @@ describe('LegalDocumentsPage — [أولوية 3] خطوة "القسم" الجد
   });
 });
 
-describe('LegalDocumentsPage — سجل النشاط + تيليجرام عند توليد مستند (مراجعة "إيه الناقص في التقرير"، 26 أغسطس 2026)', () => {
-  it('نجاح التوليد لازم يستدعي logActivity بـentity_type: document وentity_id/details صح', async () => {
-    mockGenerate.mockResolvedValueOnce({ id: 'doc-1', case_id: null });
-
+describe('LegalDocumentsPage — [Sanad_Legal_Documents_Library_Transition_Plan.md، مرحلة 4.2] الانتقال لخطوة "تأكيد وتحميل" + تيليجرام عند التعبئة', () => {
+  // ⚡ [مرحلة 4.2] logActivity('تعبئة مستند قانوني') بقت مسؤولية
+  // DocumentFillConfirmScreen نفسها (مش الصفحة) — مغطاة يدويًا (القسم 7،
+  // خطوة 4.3)، مش هنا. التستات دي بتتحقق من آلة الحالات نفسها بس: زرار
+  // "توليد" جوه DynamicFieldsForm (submit) بيودّي لخطوة "تأكيد وتحميل"
+  // فورًا (صفر نداء شبكة في الخطوة دي)، وonFillSuccess (بعد نجاح fill
+  // فعليًا جوه الشاشة الجديدة) هو اللي بيبعت تيليجرام الاختياري.
+  it('زرار "توليد" جوه DynamicFieldsForm لازم يودّي لخطوة "تأكيد وتحميل" فورًا', () => {
     render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
     fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-choose-fill')); // ⚡ [مرحلة 3.1] شاشة القالب المفرد أول، بعدين "تعبئة"
     fireEvent.click(screen.getByTestId('mock-select-source-case')); // ⚡ SourceModeSelector واجبة دلوقتي حتى مع hasCaseContext=true
     fireEvent.click(screen.getByTestId('mock-submit-generate'));
 
-    await screen.findByTestId('mock-document-preview-editor');
-
-    expect(mockLogActivity).toHaveBeenCalledTimes(1);
-    const [, action, opts] = mockLogActivity.mock.calls[0];
-    expect(action).toBe('توليد مستند قانوني');
-    expect(opts).toMatchObject({ entity_type: 'document', entity_id: 'doc-1' });
-    expect(opts.details).toContain('قالب تجريبي');
+    expect(screen.getByTestId('mock-document-fill-confirm-screen')).toBeTruthy();
+    expect(screen.queryByTestId('mock-dynamic-fields-form')).toBeNull();
   });
 
-  it('فشل التوليد (generate بيرجّع null) — مفيش logActivity ولا انتقال لخطوة المعاينة', async () => {
-    mockGenerate.mockResolvedValueOnce(null);
-
-    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
-    fireEvent.click(screen.getByTestId('mock-select-template'));
-    fireEvent.click(screen.getByTestId('mock-select-source-case'));
-    fireEvent.click(screen.getByTestId('mock-submit-generate'));
-
-    await Promise.resolve();
-    expect(mockLogActivity).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('mock-document-preview-editor')).toBeNull();
-  });
-
-  it('sendTelegram اختياري — نجاح التوليد من غيره مايكسرش الصفحة أبدًا', async () => {
-    mockGenerate.mockResolvedValueOnce({ id: 'doc-2', case_id: 'case-123' });
-
-    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
-    fireEvent.click(screen.getByTestId('mock-select-template'));
-    fireEvent.click(screen.getByTestId('mock-select-source-case'));
-    fireEvent.click(screen.getByTestId('mock-submit-generate'));
-
-    expect(await screen.findByTestId('mock-document-preview-editor')).toBeTruthy();
-  });
-
-  it('لما sendTelegram متمرر، نجاح التوليد لازم يستدعيه برسالة فيها اسم القالب والتصنيف', async () => {
-    mockGenerate.mockResolvedValueOnce({ id: 'doc-3', case_id: 'case-123' });
+  it('فشل التعبئة (fill بيرجّع null) — sendTelegram مايتنادوش (onFillSuccess مايتناداش)', async () => {
+    mockFill.mockResolvedValueOnce(null);
     const sendTelegram = vi.fn();
 
     render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} sendTelegram={sendTelegram} />);
     fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-choose-fill'));
     fireEvent.click(screen.getByTestId('mock-select-source-case'));
     fireEvent.click(screen.getByTestId('mock-submit-generate'));
+    fireEvent.click(screen.getByTestId('mock-confirm-fill'));
 
-    await screen.findByTestId('mock-document-preview-editor');
+    await Promise.resolve();
+    expect(sendTelegram).not.toHaveBeenCalled();
+  });
+
+  it('sendTelegram اختياري — نجاح التعبئة من غيره مايكسرش الصفحة أبدًا', async () => {
+    mockFill.mockResolvedValueOnce(new Blob(['x']));
+
+    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} />);
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-choose-fill'));
+    fireEvent.click(screen.getByTestId('mock-select-source-case'));
+    fireEvent.click(screen.getByTestId('mock-submit-generate'));
+    fireEvent.click(screen.getByTestId('mock-confirm-fill'));
+
+    await Promise.resolve();
+    expect(screen.getByTestId('mock-document-fill-confirm-screen')).toBeTruthy();
+  });
+
+  it('لما sendTelegram متمرر، نجاح التعبئة لازم يستدعيه برسالة فيها اسم القالب والتصنيف', async () => {
+    mockFill.mockResolvedValueOnce(new Blob(['x']));
+    const sendTelegram = vi.fn();
+
+    render(<LegalDocumentsPage initialCaseId="case-123" nav={navStub} sendTelegram={sendTelegram} />);
+    fireEvent.click(screen.getByTestId('mock-select-template'));
+    fireEvent.click(screen.getByTestId('mock-choose-fill'));
+    fireEvent.click(screen.getByTestId('mock-select-source-case'));
+    fireEvent.click(screen.getByTestId('mock-submit-generate'));
+    fireEvent.click(screen.getByTestId('mock-confirm-fill'));
+
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(sendTelegram).toHaveBeenCalledTimes(1);
     const msg = sendTelegram.mock.calls[0][0] as string;
