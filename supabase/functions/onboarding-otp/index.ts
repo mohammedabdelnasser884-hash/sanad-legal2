@@ -76,7 +76,7 @@ const LOCK_DURATIONS_MS: Record<number, number> = {
 };
 
 const SUPPORT_TAIL =
-  'للتواصل مع الدعم: sanad-nizam-site.vercel.app | facebook.com/sanadnizam | sanadnizam@gmail.com';
+  'للتواصل مع الدعم: sanad.nizzam.workers.dev | facebook.com/sanadnizam | sanadnizam@gmail.com';
 
 const FROZEN_MESSAGE = `تم تجميد هذا الحساب مؤقتًا لحين تدخل الدعم الفني. ${SUPPORT_TAIL}`;
 
