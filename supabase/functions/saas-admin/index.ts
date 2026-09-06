@@ -15,6 +15,10 @@
 //   createOfficeWithAdmin { token, tenant, adminEmail, adminName }
 //     → { tenant, tempPassword }
 //
+//   resetOnboardingLock   { token, userId }
+//     → { ok }  — يصفّر onboarding_lockout_tier/onboarding_locked_until/
+//                 onboarding_frozen، الحل الوحيد بعد تجميد كامل (frozen)
+//
 //  الأمان:
 //   - الباسورد بيتقارن من SAAS_ADMIN_PASSWORD (env secret)
 //   - الـ token: JWT موقّع بـ SAAS_JWT_SECRET، صلاحيته 8 ساعات
@@ -273,7 +277,7 @@ async function actionCreateOffice(body: Record<string, unknown>) {
     email: adminEmail,
     role: 'admin',
     is_active: true,
-    force_password_change: true, // إجباري يغير الباسورد أول دخول
+    onboarding_status: 'pending_verification', // يبدأ رحلة الـonboarding — تحقق إيميل ثم إعداد باسورد+بيانات المكتب
   });
 
   // 4. إنشاء صف office_settings افتراضي خاص بالمكتب الجديد — لازم يتعمل
@@ -286,6 +290,20 @@ async function actionCreateOffice(body: Record<string, unknown>) {
   }).catch(() => { /* لو فشل، لوحة الإعدادات هتنشئه تلقائيًا أول مرة يحفظ فيها الأدمن */ });
 
   return json({ tenant: newTenant, tempPassword });
+}
+
+/** resetOnboardingLock: فك التجميد الكامل/القفل المؤقت لمكتب يدويًا — الحل الوحيد بعد تجميد onboarding_frozen */
+async function actionResetOnboardingLock(body: Record<string, unknown>) {
+  const { userId } = body as { userId?: string };
+  if (!userId) return json({ error: 'userId مطلوب' }, 400);
+
+  await supabaseRest(`profiles?user_id=eq.${userId}`, 'PATCH', {
+    onboarding_lockout_tier: 0,
+    onboarding_locked_until: null,
+    onboarding_frozen: false,
+  });
+
+  return json({ ok: true });
 }
 
 // ── Main handler ──────────────────────────────────────
@@ -310,9 +328,10 @@ Deno.serve(async (req: Request) => {
     if (!valid) return json({ error: 'الجلسة منتهية، سجّل الدخول من جديد' }, 401);
 
     switch (action) {
-      case 'query':                return await actionQuery(rest);
+      case 'query':                 return await actionQuery(rest);
       case 'createOfficeWithAdmin': return await actionCreateOffice(rest);
-      default:                     return json({ error: `action غير معروف: ${action}` }, 400);
+      case 'resetOnboardingLock':   return await actionResetOnboardingLock(rest);
+      default:                      return json({ error: `action غير معروف: ${action}` }, 400);
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'خطأ غير متوقع';
