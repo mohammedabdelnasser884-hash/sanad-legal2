@@ -398,6 +398,23 @@ export async function createClient(
   return { nationalId: finalNationalId };
 }
 
+// 🆕 (تحقيق فشل e2e/admin-portal.spec.ts فى CI — استمرار بعد تشغيلتين
+// متطابقتين، ٦ سبتمبر ٢٠٢٦): توست الخطأ العام مش بيوضح رسالة الفشل
+// الحقيقية من الـRPC، وملفات trace.zip اللي فيها تفاصيل الشبكة مش
+// بتترفع لينا مباشرة (بس artifacts فى GitHub Actions). الهيلبر ده
+// بيسجّل جسم أي رد RPC فاشل (status غير 2xx) مباشرة بـconsole.log —
+// وده stdout بتاع عملية Playwright نفسها، يعني هيظهر فعليًا جوه نفس
+// ملف اللوج النصي (0_e2e.txt) اللي بيترفع فى الـCI، من غير ما نحتاج
+// أي artifact إضافي.
+export function logFailedRpcResponses(page: Page): void {
+  page.on('response', (response) => {
+    if (!response.url().includes('/rest/v1/rpc/') || response.ok()) return;
+    response.text()
+      .then((body) => console.log(`[RPC FAILED] ${response.status()} ${response.url()} → ${body}`))
+      .catch(() => { /* بعض الردود (زي aborted) مش قابلة للقراءة — تجاهل */ });
+  });
+}
+
 // خطوة 6 (فاليديشن) — التأكد من ظهور رسالة توست بنص معيّن ولونها بيطابق
 // حالة الخطأ (نفس آلية toast() في shared/lib/notifications.ts — بتلوّن
 // الحدود/النص بالأحمر #f87171 لما isErr=true، وبتضيف class 'show').
