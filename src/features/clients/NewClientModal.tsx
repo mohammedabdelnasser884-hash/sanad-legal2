@@ -30,7 +30,7 @@ interface NewClientForm {
 
 interface NewClientModalProps {
     onClose: () => void;
-    onSave: (form: NewClientForm, idFile: File | null, poaFile: File | null) => void | boolean | Promise<void | boolean>;
+    onSave: (form: NewClientForm, idFile: File | null, poaFile: File | null, idBackFile?: File | null) => void | boolean | Promise<void | boolean>;
     loading?: boolean;
     // ⚡ NEW: بيانات مبدئية بتيجي من قضية/جلسة مستقلة (اسم المدعي، رقمه
     // القومي، رقم توكيله) — بتتعمل بيها pre-fill للفورم بدل ما يبدأ فاضي.
@@ -56,6 +56,8 @@ function NewClientModal({onClose,onSave,loading,initialData,contextLabel}: NewCl
     const [form,setForm]=useState<NewClientForm>({full_name:'',type:'individual',phone:'',phone2:'',email:'',address:'',notes:'',national_id:'',cr_number:'',kin_name:'',kin_phone:'',...initialData});
     const [idFile,setIdFile]=useState<File | null>(null);
     const [idPreview,setIdPreview]=useState<string | null>(null);
+    const [idBackFile,setIdBackFile]=useState<File | null>(null);
+    const [idBackPreview,setIdBackPreview]=useState<string | null>(null);
     const [poaFile,setPoaFile]=useState<File | null>(null);
     const [poaPreview,setPoaPreview]=useState<string | null>(null);
     const s=<K extends keyof NewClientForm>(k: K,v: NewClientForm[K])=>setForm((p) =>({...p,[k]:v}));
@@ -101,6 +103,11 @@ function NewClientModal({onClose,onSave,loading,initialData,contextLabel}: NewCl
         if(!file)return;
         setIdFile(file);
         setIdPreview(URL.createObjectURL(file));
+    };
+    const pickIdBack=(file: File | null | undefined)=>{
+        if(!file)return;
+        setIdBackFile(file);
+        setIdBackPreview(URL.createObjectURL(file));
     };
     const pickPoa=(file: File | null | undefined)=>{
         if(!file)return;
@@ -192,10 +199,16 @@ function NewClientModal({onClose,onSave,loading,initialData,contextLabel}: NewCl
 
                 // رفع الصور
                 React.createElement(FileUploadField,{
-                    label:"صورة البطاقة الشخصية",
+                    label:"صورة البطاقة - وش",
                     hint:"JPG أو PNG — حجم أقصى 5MB",
                     onChange:pickId,
                     preview:idPreview
+                }),
+                React.createElement(FileUploadField,{
+                    label:"صورة البطاقة - ضهر",
+                    hint:"JPG أو PNG — حجم أقصى 5MB",
+                    onChange:pickIdBack,
+                    preview:idBackPreview
                 }),
                 React.createElement(FileUploadField,{
                     label:"صورة التوكيل",
@@ -239,7 +252,7 @@ function NewClientModal({onClose,onSave,loading,initialData,contextLabel}: NewCl
                         if(poaErr){toast(poaErr,true);return;}
                         const warnings = [phoneWarn, phoneWarn2, emailWarn].filter(Boolean);
                         if(warnings.length>0) toast('⚠️ تنبيه: '+warnings[0]+' — تم الحفظ رغم ذلك');
-                        const result = await onSave(form,idFile,poaFile);
+                        const result = await onSave(form,idFile,poaFile,idBackFile);
                         // 🔒 FIX (قرارات مفتوحة — خطة حفظ المسودات، 3 أغسطس 2026):
                         // بننتظر نتيجة onSave ونمسح المسودة بس لو نجح الحفظ فعلاً
                         // (result !== false)، مش بمجرد الضغط على الزرار زي الأول.
