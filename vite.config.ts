@@ -25,6 +25,13 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      // ⚡ TEMP (المرحلة 0 — خطة تحسين الأداء، 7 سبتمبر 2026): من غير alias
+      // ده، React.Profiler's onRender بيتشال تمامًا من build الـproduction
+      // العادي (React بيشيله عمدًا توفيرًا للأداء) — ده اللي كان بيخلي
+      // overlay القياس يرجع فاضي دايمًا رغم إن التطبيق شغال صح. النسخة دي
+      // ("profiling") بتحافظ على قياسات onRender بس بأوفرهيد بسيط إضافي.
+      // ⚠️ لازم تتشال بعد إغلاق المرحلة 0 (هي وباقي أدوات src/dev/).
+      'react-dom/client': 'react-dom/profiling',
     },
   },
   build: {
