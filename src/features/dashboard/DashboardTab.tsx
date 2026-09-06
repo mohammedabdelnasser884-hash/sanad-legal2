@@ -3,12 +3,17 @@ import { I } from '../../constants';
 import { PartiesLine } from '@/shared/ui/PartiesLine';
 import { formatTime, ServiceStatus } from '../../systemHealth';
 import { db } from '../../supabaseClient';
-import StandaloneSessionDetailModal from '@/features/calendar/sessions-calendar/StandaloneSessionDetailModal';
 import type { ProfileRow } from '../../types';
 import type { MappedCase, MappedClient } from '../../hooks/useAppData';
 import type { SessionFeedItem, TaskFeedItem, SessionCaseEmbed } from '@/shared/hooks/useDashboardFeed';
 import type { CaseSessionRow } from '../../types';
 import type { TabName } from '../../useNavigation';
+// ⚡ PERF (خطة تحسين الأداء، المرحلة 2 — 6 سبتمبر 2026): كان static import
+// رغم إن المودال بيتعرض بس لما standaloneTarget يتحدد (شرط `&&` تحت) —
+// يعني كان بيتحمّل مع تاب الداشبورد كله حتى لو المودال متفتحش خالص. حوّلناه
+// لـReact.lazy بنفس نمط باقي lazy imports في المشروع (راجع App.tsx)، مع
+// Suspense في نقطة الرندر تحت. صفر تغيير في props أو سلوك المودال نفسه.
+const StandaloneSessionDetailModal = React.lazy(() => import('@/features/calendar/sessions-calendar/StandaloneSessionDetailModal'));
 // ⚡ NEW (خطة تفكيك الأعمدة القديمة، المرحلة B.2 — 6 أغسطس 2026): نفس
 // أساس العرض القرائي المستخدم فعليًا في الكالندر (B.1) — بيجيب صفوف
 // case_parties دفعة واحدة لكل جلسات الداشبورد (اليوم/القادم/الفائتة)
@@ -603,7 +608,14 @@ function DashboardTab({
     );
 
   return React.createElement(React.Fragment, null,
-        standaloneTarget && React.createElement(StandaloneSessionDetailModal, {
+        // ⚡ PERF (المرحلة 2 — Suspense مطلوب هنا لأن StandaloneSessionDetailModal
+        // بقى React.lazy فوق؛ نفس fallback المستخدم لباقي lazy tabs في App.tsx).
+        standaloneTarget && React.createElement(React.Suspense, {
+            fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                React.createElement(I.Spin)
+            )
+        },
+        React.createElement(StandaloneSessionDetailModal, {
             // كاست موثق: standaloneTarget شكله SessionFeedItem (نتيجة استعلام مُطبَّع جزئي)،
             // بينما المودال بيتوقع CaseSessionRow كامل — نفس نمط الكاست المستخدم
             // لكائنات مصطنعة/جزئية في دفعات سابقة (مفيش تغيير في القيمة وقت التشغيل).
@@ -621,7 +633,7 @@ function DashboardTab({
             onOpenCase: (c: MappedCase) => setSelectedCase(c, 'timeline'),
             countryCourts,
             countryCaseTypes,
-        }),
+        })),
         Dashboard
   );
 }
