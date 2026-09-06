@@ -2,8 +2,8 @@
 
 ### تحويل معماري كامل لقسم "المستندات القانونية"، مبني على فحص فعلي للكود الحالي (مش افتراضات)
 
-**التاريخ:** 4 سبتمبر 2026
-**الحالة:** مسودة خطة أولى — قرار استراتيجي متفق عليه، التفاصيل التقنية دي للمراجعة قبل التنفيذ
+**التاريخ:** 4 سبتمبر 2026 (آخر تحديث: 6 سبتمبر 2026)
+**الحالة:** مراحل 1-4 كود جاهز ومؤكَّد بـCI حقيقي (1178/1178 تست، build نضيف) + الماجريشن والباكت اتنفذوا فعليًا على الإنتاج. المتبقي: 3.3/4.3 (اختبار يدوي حقيقي، معلّق على مرحلة 5) ثم مرحلة 5 (تصميم/رفع 4 ملفات Word حقيقية — شغل Gemy) ثم مرحلة 6 (تنظيف الكود القديم).
 **نطاق هذا المستند:** المعمارية والبيانات وتدفق الشاشات فقط. **محتوى/صياغة كل نموذج (ملفات Word نفسها) خارج نطاق هذه الخطة تمامًا** — شغل قانوني منفصل يقع عليك.
 
 ---
@@ -184,12 +184,12 @@ CategoryPicker (زي ما هو، صفر تغيير)
 
 | # | الخطوة | الحالة | تاريخ الإنجاز | ملاحظات |
 |---|---|---|---|---|
-| 1.1 | Migration: إضافة `master_file_path`/`master_file_name` (additive-only) | ✅ الكود جاهز | 4 سبتمبر 2026 | محتاج منك تشغّل `sql-migrations-phase12/01-...sql` فعليًا على الإنتاج |
-| 1.2 | إنشاء باكت `legal-doc-templates` + RLS قراءة | ✅ الكود جاهز | 4 سبتمبر 2026 | محتاج منك تنشئ الباكت من Dashboard ثم تشغّل `sql-migrations-phase12/02-...sql` |
+| 1.1 | Migration: إضافة `master_file_path`/`master_file_name` (additive-only) | ✅ نُفِّذ فعليًا على الإنتاج | 6 سبتمبر 2026 | `sql-migrations-phase12/01-legal-doc-library-columns.sql` — شغّله Gemy فعليًا |
+| 1.2 | إنشاء باكت `legal-doc-templates` + RLS قراءة | ✅ نُفِّذ فعليًا على الإنتاج | 6 سبتمبر 2026 | الباكت اتعمل من Dashboard (Private) + `sql-migrations-phase12/02-legal-doc-library-storage-bucket.sql` اتشغّل بعده — شغّلهم Gemy فعليًا |
 | 1.3 | تحديث `types.ts` | ✅ مكتمل | 4 سبتمبر 2026 | `body_template`/`box_template` اتوسموا `@deprecated`، مش متشالين |
 | 2.1 | Edge Function `fill-document-template` | ✅ الكود جاهز | 4 سبتمبر 2026 | `docxtemplater@3.62.2`/`pizzip@3.1.7` عبر `npm:` مباشر جوه الفانكشن (بدون تبعية جديدة في `package.json` — نفس نمط `npm:unpdf` في `process-law-extract`). ملف قائم بذاته (self-contained، CORS+auth منسوخين محليًا) زي باقي الفانكشنز — لوحة النشر مش بتدعم مجلدات مشتركة |
-| 2.2 | اختبار منفرد للـEdge Function | ✅ الكود جاهز | 4 سبتمبر 2026 | `fill-document-template/index.test.ts` (14 حالة: CORS، هوية الطالب، تحقق مدخلات، تحميل Storage، نجاح التعبئة، خطأ docxtemplater). Mocks جديدة لـ`pizzip`/`docxtemplater` (`_shared/pizzipMock.ts`/`docxtemplaterMock.ts` + alias في `vitest.config.ts`) بنفس نمط `unpdfMock.ts`. ⚠️ **لم يُشغَّل فعليًا** — مفيش اتصال إنترنت في جلسة التنفيذ دي (`npm install` فشل بـ403)، فـ`node_modules` غير مثبَّتة. راجعت الكود يدويًا (تطابق الـmocks مع توقيعات الاستدعاء الفعلية) ومتأكد إنه سليم منطقيًا، لكن يفضّل تشغيل `npm test -- fill-document-template` عندك قبل الاعتماد النهائي |
-| 2.3 | تحديث `templatesApi.ts` | ✅ الكود جاهز | 4 سبتمبر 2026 | `getMasterFileUrl` (رابط موقّع لملف الـmaster) + `fillDocumentTemplate` (نداء الـEdge Function، بيرجّع Blob) — إضافة بس، صفر حذف لـ`generationApi.ts` القديم. تست وحدة `__tests__/templatesApi.test.ts` (10 حالات) — **لم يُشغَّل فعليًا** لنفس سبب 2.2 بالضبط (مفيش `node_modules`) |
+| 2.2 | اختبار منفرد للـEdge Function | ✅ مؤكَّد بـCI حقيقي | 4 سبتمبر 2026 (تأكيد 6 سبتمبر) | `fill-document-template/index.test.ts` (14 حالة: CORS، هوية الطالب، تحقق مدخلات، تحميل Storage، نجاح التعبئة، خطأ docxtemplater). Mocks جديدة لـ`pizzip`/`docxtemplater` (`_shared/pizzipMock.ts`/`docxtemplaterMock.ts` + alias في `vitest.config.ts`) بنفس نمط `unpdfMock.ts`. ✅ CI حقيقي (6 سبتمبر) أكّد نجاح الـ14 حالة كلها |
+| 2.3 | تحديث `templatesApi.ts` | ✅ مؤكَّد بـCI حقيقي | 4 سبتمبر 2026 (تأكيد 6 سبتمبر) | `getMasterFileUrl` (رابط موقّع لملف الـmaster) + `fillDocumentTemplate` (نداء الـEdge Function، بيرجّع Blob) — إضافة بس، صفر حذف لـ`generationApi.ts` القديم. تست وحدة `__tests__/templatesApi.test.ts` (10 حالات) — ✅ CI حقيقي (6 سبتمبر) أكّد نجاح الـ10 حالة كلها |
 | 3.1 | شاشة "القالب المفرد" (`TemplateActionScreen.tsx`) | ✅ الكود جاهز | 4 سبتمبر 2026 | خطوة `action` جديدة في `LegalDocumentsPage.tsx` بين `templates`/`sourceMode` (Stepper بقى 6 خطوات: +"الإجراء"). زرار "تعبئة من بيانات قضية" يكمّل المسار القديم زي ما هو بالظبط (`onChooseFill` → `sourceMode`) — صفر تغيير في `SourceModeSelector`/`DynamicFieldsForm`/`DocumentPreviewEditor` |
 | 3.2 | تفعيل "تحميل كما هو" | ✅ الكود جاهز | 4 سبتمبر 2026 | زرار داخل `TemplateActionScreen.tsx` بينادي `getMasterFileUrl` (مرحلة 2.3) + تحميل مباشر (`<a download>`) + `logActivity` بنوع "تحميل مستند قانوني" (`entity_type: 'document'`, `entity_id: template.id`) — فوري، من غير أي انتقال خطوة. رسالة خطأ عربية واضحة لو مفيش نسخة منشورة/ملف مرفوع بعد |
 | 3.3 | اختبار يدوي — تحميل بس | لم يبدأ | — | ⚠️ محتاج منك تشغّله فعليًا (قالب وهمي بـmaster_file_path حقيقي مرفوع على `legal-doc-templates`) — بيئة التنفيذ دي من غير `node_modules`/اتصال إنترنت، فمقدرش أشغّل `npm test`/`npm run build` على التعديلات دي. حدّثت `LegalDocumentsPage.test.tsx` (تستات آلة الحالات) و`e2e/document-generation.spec.ts` (خطوة جديدة قبل `doc-gen-source-mode-case`) يدويًا لتعكس الخطوة الجديدة، لكن لسه محتاجين تشغيل فعلي للتأكيد |
@@ -205,3 +205,30 @@ CategoryPicker (زي ما هو، صفر تغيير)
 | 6.4 | تحديث/حذف التستات القديمة | لم يبدأ | — | `useGenerateDocument.test.ts`/`generationApi.test.ts` لسه موجودين زي ما هما (بيغطّوا كود لسه موجود بالملف، مجرد غير مستخدم من الصفحة) — الحذف الفعلي هنا زي ما الخطة بتنص |
 | 6.5 | build + test كامل نهائي | لم يبدأ | — | — |
 | 6.6 | استخراج كامل الملفات الجديدة/المعدَّلة (كل المراحل 1-6 + كل الـmigrations/SQL) في زيب واحد للنشر دفعة واحدة | ✅ مكتمل (جزئيًا — لغاية مرحلة 4 حاليًا) | 4 سبتمبر 2026 | `sanad-legal2-main-updated-phase1-4.zip` — إضافة على زيب المراحل 1-3 السابق: `useFillDocument.ts` (جديد)، `DocumentFillConfirmScreen.tsx` (جديد)، `LegalDocumentsPage.tsx`/`.test.tsx` (معدَّلين تاني)، `e2e/document-generation.spec.ts` (معدَّل تاني)، وهذا الملف نفسه محدَّث. هيتحدّث الزيب نفسه تراكميًا كل ما مرحلة جديدة تخلص |
+| — | دمج ملفات المراحل 1-4 فوق المشروع الحالي الفعلي (اللي فيه شغل تاني موازي غير متعلق بالخطة دي) + أول CI حقيقي كامل | ✅ نجح بالكامل | 6 سبتمبر 2026 | Gemy رفع زيب المشروع الحالي الحقيقي (فيه تحديثات موازية زي fee RPC idempotency وsystemHealth trackQueryOutcome مش موجودة في الزيب اللي كنا شغالين عليه أصلًا) — اتعمل دمج مستهدف (16 ملف بس اتغيروا/اتضافوا، تأكيد بـ`diff -rq`) بدل استبدال شامل كان هيضيع الشغل التاني. أول CI حقيقي كامل بعد كده كشف خطأين tsc: (1) `generationApi.test.ts`'s `makeVersion()` fixture ناقصة `master_file_path`/`master_file_name` (نفس نوع غلطة `box_template` القديمة في 26 أغسطس) — اتصلحت بإضافتهم كـnull؛ (2) `DocumentFillConfirmScreen.tsx` بعت `className` غلط لأيقونة `I.Download` (صفر-props) — اتصلحت بشيل الـprop. بعد الإصلاحين: CI ثاني كامل نجح 100% (1178/1178 تست، build/lint/tsc/vite كله نضيف) |
+
+**ملاحظة مهمة:** CI الأخضر ده بيأكد **صحة الكود** (unit tests + build) بس — مش بديل عن 3.3/4.3 (الاختبار اليدوي الفعلي بحساب حقيقي على قالب حقيقي مرفوع على `legal-doc-templates`)، اللي لسه معلّق على وجود قالب وملف Word حقيقي (مرحلة 5) — السيناريوهين e2e لسه `test.skip` لنفس السبب.
+
+---
+
+## 10. الماجريشن المطلوب تشغيلها يدويًا على الإنتاج (بالترتيب، خاص بهذه الخطة فقط)
+
+✅ **الاتنين دول اتنفذوا فعليًا على الإنتاج (6 سبتمبر 2026)** — مفيش حاجة متبقية من البند ده حاليًا:
+
+1. ✅ **`database/migrations/sql-migrations-phase12/01-legal-doc-library-columns.sql`** — نُفِّذ.
+2. ✅ **الباكت `legal-doc-templates`** — اتعمل من الـDashboard (Private).
+3. ✅ **`database/migrations/sql-migrations-phase12/02-legal-doc-library-storage-bucket.sql`** — نُفِّذ بعد الباكت مباشرة.
+
+بعد ما القوالب الأربعة الحقيقية تترحّل (مرحلة 5)، هيبقى فيه ماجريشن إضافي واحد بس (تحديث صفوف `template_versions` بمسارات الملفات — مش عندنا ملف SQL جاهز له لسه، هيتكتب وقتها) — ومرحلة 6 (حذف `body_template`/`box_template`/`generated_documents`/`case_document_links`) هيكون ليها ماجريشن تاني بعد كده.
+
+---
+
+## 11. ملفات كانت في المشروع أصبحت غير صالحة (خطة box_template الملغاة، 26 أغسطس) — تم حذفها
+
+✅ **تم حذفهم فعليًا من الريبو (6 سبتمبر 2026):**
+- ~~`database/migrations/sql-migrations-phase8/02-document-box-template-column.sql`~~
+- ~~`database/migrations/sql-migrations-phase8/03-elanat-asl-saheefa-seed.sql`~~
+
+كانوا مبنيين على المحرك النصي القديم (`box_template`/`body_template`) اللي قرار 4 سبتمبر لغاه تمامًا لصالح ملفات Word حقيقية — ومفيش أعمدة كانت اتضافت في DB منهم أصلًا، فالحذف كان بلا أي أثر جانبي.
+
+`sql-migrations-phase8/01-remove-tawkilat-category.sql` في نفس المجلد **فضل زي ما هو** — قرار مستقل (أرشفة تصنيف "توكيلات") مش له علاقة بمحرك التوليد، لسه صالح ومحتاج تشغيله وقتك المناسب لو لسه متشغّلش.
