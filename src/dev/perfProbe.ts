@@ -8,12 +8,12 @@
 // لعلامات يدوية (logMark) بتفرّق re-render الجاي من الأب عن re-render
 // ذاتي من hook داخلي زي useSessionsPartiesMap.
 //
-// ⚠️ الأداة دي بالكامل مؤقتة وهتتشال بعد إغلاق المرحلة 0. مقفولة
-// بالكامل افتراضيًا (صفر تأثير على أي مستخدم) — بتتفعّل بس عن طريق
-// ?perf=1 في الرابط (بتتخزن في localStorage لحد ما تتقفل بـ?perf=0).
+// ⚠️ الأداة دي بالكامل مؤقتة وهتتشال بعد إغلاق المرحلة 0. الزرار
+// العائم (⏱️) بيظهر دايمًا تلقائي — مفيش أي رابط أو flag محتاج تفعيله،
+// عشان تفادي مشكلة الـURL bar بتاع المتصفح على الموبايل (بيدّي وهم
+// "بيحولني" لما التطبيق يعمل history.replaceState('/') عند التحميل).
 // ══════════════════════════════════════════════════════════════
 
-const STORAGE_KEY = 'sanad_perf_overlay';
 const MAX_RECORDS = 400;
 
 export type PerfPhase = 'mount' | 'update' | 'nested-update' | 'self';
@@ -35,28 +35,6 @@ function notify() {
     listeners.forEach((l) => l());
 }
 
-/** بيتأكد هل الأوفرلاي مفعّل (عبر ?perf=1/0 في الرابط أو localStorage). */
-export function isPerfOverlayEnabled(): boolean {
-    if (typeof window === 'undefined') return false;
-    try {
-        const params = new URLSearchParams(window.location.search);
-        if (params.has('perf')) {
-            const v = params.get('perf');
-            if (v === '0') {
-                window.localStorage.removeItem(STORAGE_KEY);
-                return false;
-            }
-            if (v === '1') {
-                window.localStorage.setItem(STORAGE_KEY, '1');
-                return true;
-            }
-        }
-        return window.localStorage.getItem(STORAGE_KEY) === '1';
-    } catch {
-        return false;
-    }
-}
-
 export function setPaused(v: boolean) {
     paused = v;
 }
@@ -66,7 +44,7 @@ export function isPaused() {
 
 /** توقيع React.Profiler's onRender بالظبط — تُمرَّر مباشرة كـonRender. */
 export function onRenderPerf(id: string, phase: PerfPhase, actualDuration: number, baseDuration: number) {
-    if (paused || !isPerfOverlayEnabled()) return;
+    if (paused) return;
     records.push({ id, phase, actualDuration, baseDuration, ts: Date.now() });
     if (records.length > MAX_RECORDS) records = records.slice(-MAX_RECORDS);
     notify();
@@ -75,7 +53,7 @@ export function onRenderPerf(id: string, phase: PerfPhase, actualDuration: numbe
 /** علامة يدوية لسبب مش React.Profiler قادر يميّزه لوحده (زي self-render
  * جاي من setState داخل hook مستقل). */
 export function logMark(id: string, note: string) {
-    if (paused || !isPerfOverlayEnabled()) return;
+    if (paused) return;
     records.push({ id, phase: 'self', actualDuration: 0, baseDuration: 0, ts: Date.now(), note });
     if (records.length > MAX_RECORDS) records = records.slice(-MAX_RECORDS);
     notify();
