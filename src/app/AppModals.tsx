@@ -164,9 +164,9 @@ interface AppModalsProps {
     // لـ CaseDetailView — زرار "إنشاء موكل" لكل طرف عليه ⭐ ومش مربوط في
     // تفاصيل القضية (InfoSection.tsx)، مش بس وسط wizard الجلسة المستقلة.
     handleOpenCreateClientForCaseParty: OpenCreateClientForParty;
-    handleSaveClient: (form: ClientFormData, idFile: File | null, poaFile: File | null) => void | boolean | Promise<void | boolean>;
+    handleSaveClient: (form: ClientFormData, idFile: File | null, poaFile: File | null, idBackFile?: File | null) => void | boolean | Promise<void | boolean>;
     handleDeleteClient: (clientId: string) => void | Promise<void>;
-    handleUpdateClient: (clientId: string, form: ClientFormData, idFile?: File | null, poaFile?: File | null) => void | boolean | Promise<void | boolean>;
+    handleUpdateClient: (clientId: string, form: ClientFormData, idFile?: File | null, poaFile?: File | null, idBackFile?: File | null) => void | boolean | Promise<void | boolean>;
     handleSaveLawyer: (form: { email: string; password: string; full_name: string; role?: string }) => void | Promise<void>;
     sendTelegram: (msg: string) => void | Promise<void>;
 }
