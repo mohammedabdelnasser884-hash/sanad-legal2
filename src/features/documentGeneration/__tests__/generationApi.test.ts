@@ -248,6 +248,8 @@ function makeVersion(fixture: TemplateFixture): TemplateVersion {
     version_number: 1,
     body_template: fixture.bodyTemplate,
     box_template: null,
+    master_file_path: null,
+    master_file_name: null,
     status: 'published',
     published_at: '2026-08-16T00:00:00Z',
     created_by: null,
