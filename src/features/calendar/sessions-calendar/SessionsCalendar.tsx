@@ -4,10 +4,15 @@ import MonthListTab from './MonthListTab';
 import CalendarTab, { type CalendarSessionRow } from './CalendarTab';
 import MissedTab from './MissedTab';
 import { db } from '../../../supabaseClient';
-import StandaloneSessionDetailModal from './StandaloneSessionDetailModal';
+import { I } from '../../../constants';
 import type { MappedCase, MappedClient } from '../../../hooks/useAppData';
 import type { CaseSessionRow } from '../../../types';
 import type { NavigationState } from '../../../useNavigation';
+// ⚡ PERF (خطة تحسين الأداء، المرحلة 2 — 6 سبتمبر 2026): كان static import
+// رغم إن المودال بيتعرض بس لما standaloneTarget يتحدد (شرط `&&` تحت) —
+// نفس الفيكس المطبَّق في DashboardTab.tsx. حوّلناه لـReact.lazy مع Suspense
+// في نقطة الرندر تحت. صفر تغيير في props أو سلوك المودال نفسه.
+const StandaloneSessionDetailModal = React.lazy(() => import('./StandaloneSessionDetailModal'));
 
 interface SessionsCalendarProps {
     cases: MappedCase[];
@@ -120,7 +125,14 @@ function SessionsCalendar({ cases, clients, onOpenCase, onOpenReminders, onClien
     ] as const;
 
     return React.createElement(React.Fragment, null,
-        standaloneTarget && React.createElement(StandaloneSessionDetailModal, {
+        // ⚡ PERF (المرحلة 2 — Suspense مطلوب هنا لأن StandaloneSessionDetailModal
+        // بقى React.lazy فوق؛ نفس fallback المستخدم لباقي lazy tabs في App.tsx).
+        standaloneTarget && React.createElement(React.Suspense, {
+            fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                React.createElement(I.Spin)
+            )
+        },
+        React.createElement(StandaloneSessionDetailModal, {
             session: standaloneTarget as unknown as CaseSessionRow,
             db,
             onClose: () => setStandaloneTarget(null),
@@ -139,7 +151,7 @@ function SessionsCalendar({ cases, clients, onOpenCase, onOpenReminders, onClien
             onOpenCase,
             countryCourts,
             countryCaseTypes,
-        }),
+        })),
         React.createElement('div', { className: "space-y-2 fade-in" },
 
         // ── التابس ──
