@@ -161,11 +161,18 @@ export async function fetchPartiesMapByCaseIds(caseIds: string[]): Promise<{ [k:
 // لمستندات القيد، مش له علاقة بالعرض هنا). deleted_at مش محتاج يتحط في
 // select أصلًا لأنه مستخدم كـfilter بس (.is('deleted_at', null)) مش
 // كقيمة بتتقرا في الواجهة.
+// 🔧 FIX (تحليل لوج CI فعلي — 7 سبتمبر 2026، أول تشغيلة build بعد
+// المرحلة 3): tsc فشل بالظبط على استهلاك النتيجة تحت (GenericStringError
+// بدل CaseRow[]) — السبب: القيمة كانت متبنية بعملية `+` بين أجزاء
+// ('a,b,' + 'c,d'), وده بيخلي TypeScript يوسّع النوع لـ`string` عادي
+// (widened)، مش literal type. supabase-js محتاج literal type فعلي عشان
+// يحلل أسماء الأعمدة وقت الـcompile ويبني نوع النتيجة الصحيح — لو النوع
+// `string` عادي، بيرجع نوع فشل (`GenericStringError`) بصمت بدل CaseRow[]،
+// وده اللي فجّر 3 أخطاء tsc في fetchCases/searchCases (كلهم نفس السبب
+// الجذري، مش 3 مشاكل منفصلة). الحل: سطر واحد literal كامل + `as const`
+// (مفيش عمليات + على السطر ده خالص).
 const CASE_LIST_COLUMNS =
-    'id,case_number_official,title,court_name,case_type,court_level,' +
-    'circuit_number,status,next_hearing,client_id,created_at,updated_at,' +
-    'court_floor,court_hall,session_hall,secretary_hall,secretary_name,' +
-    'secretary_mobile,session_time,plaintiff_legal_title,defendant_legal_title';
+    'id,case_number_official,title,court_name,case_type,court_level,circuit_number,status,next_hearing,client_id,created_at,updated_at,court_floor,court_hall,session_hall,secretary_hall,secretary_name,secretary_mobile,session_time,plaintiff_legal_title,defendant_legal_title' as const;
 
 export function mapCaseRow(
     r: CaseRow,
