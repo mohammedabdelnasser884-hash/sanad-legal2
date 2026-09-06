@@ -1,5 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { login, openAdminSection, createClient, expectToast } from './utils';
+import { login, openAdminSection, createClient, expectToast, logFailedRpcResponses } from './utils';
+
+// 🆕 (تحقيق فشل هذا الملف فى CI — تشغيلتين متطابقتين، ٦ سبتمبر ٢٠٢٦):
+// كل الأربع تستات هنا بتحفظ بوابة موكل عبر RPC واحد (set_portal_pin)،
+// وكلهم فاشلين بنفس الرسالة العامة. الهوك ده بيسجّل جسم أي رد RPC فاشل
+// فعليًا فى لوج الـCI (راجع logFailedRpcResponses فى utils.ts) — المفروض
+// يوريني رسالة الخطأ الحقيقية من postgres فى التشغيلة الجاية.
+test.beforeEach(async ({ page }) => {
+  logFailedRpcResponses(page);
+});
 
 // المرحلة 6 (الأدمن) — دفعة 3 (جزء 1): بوابة الموكل.
 //
