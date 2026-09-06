@@ -450,7 +450,14 @@ export function useAppData(profile: ProfileRow | null) {
                         .order('created_at', { ascending: false })
                         .range(from, to)
                         .abortSignal(guard.controller.signal);
-                    return { error: res.error, result: { data: res.data, count: res.count } };
+                    // ⚡ FIX (تحليل لوج CI فعلي — 7 سبتمبر 2026، تشغيلة build تانية بعد
+                    // المرحلة 3): بعد التحويل لـCASE_LIST_COLUMNS الصريحة، res.data بقى
+                    // نوعه الفرعي (الأعمدة المختارة بس)، مش CaseRow الكاملة — فـtsc رفض
+                    // إسناده لـReadAttemptOutcome<{ data: CaseRow[] ... }> المعلن فوق في
+                    // runReadWithRetry<...>(...). نفس الكاست المستخدم فعلاً في
+                    // ensureCasesLoaded (as CaseRow[]) — mapCaseRow برضه بياخد CaseRow
+                    // وبيقرا بس الأعمدة اللي في CASE_LIST_COLUMNS فعليًا، فالكاست آمن هنا.
+                    return { error: res.error, result: { data: res.data as CaseRow[] | null, count: res.count } };
                 } catch (err) {
                     return { error: guard.didTimeOut() ? { message: 'timeout' } : err };
                 }
@@ -563,6 +570,9 @@ export function useAppData(profile: ProfileRow | null) {
             ].join(','))
             .order('created_at', { ascending: false })
             .limit(50);
+        // ⚡ FIX (نفس فيكس fetchCases فوق): نفس الكاست لنفس السبب —
+        // select(CASE_LIST_COLUMNS) بيرجع نوع فرعي، مش CaseRow الكاملة.
+        const rows = data as CaseRow[] | null;
 
         if (error) {
             setDbError('فشل البحث في القضايا — تحقق من الاتصال وأعد المحاولة');
@@ -576,7 +586,7 @@ export function useAppData(profile: ProfileRow | null) {
         }
 
         // جلب جلسات للنتائج
-        const caseIds = (data || []).map((r: CaseRow) => r.id);
+        const caseIds = (rows || []).map((r: CaseRow) => r.id);
         let sessionsMap: { [k: string]: string } = {};
         if (caseIds.length > 0) {
             const { data: sessionsData } = await db
@@ -588,7 +598,7 @@ export function useAppData(profile: ProfileRow | null) {
         // ⚡ B.4: نفس المنطق اللي في fetchCases فوق.
         const partiesMap = await fetchPartiesMapByCaseIds(caseIds);
 
-        const mapped: MappedCase[] = (data || []).map((r: CaseRow) => mapCaseRow(r, sessionsMap, partiesMap));
+        const mapped: MappedCase[] = (rows || []).map((r: CaseRow) => mapCaseRow(r, sessionsMap, partiesMap));
 
         setCases(mapped);
         setCasesTotal(count || 0);
