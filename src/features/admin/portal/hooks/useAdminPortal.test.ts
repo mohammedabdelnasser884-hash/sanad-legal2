@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAdminPortal } from './useAdminPortal';
+import { getServiceStatus } from '../../../../systemHealth';
 import type { ProfileRow, ClientRow } from '../../../../types';
 
 // ══════════════════════════════════════════════════════════════════
@@ -53,6 +54,7 @@ beforeEach(() => {
   logActivity.mockClear();
   selectResult = { data: null, error: null };
   rpcResult = { data: null, error: null };
+  localStorage.clear(); // 🆕 (تحقيق فشل e2e/admin-portal.spec.ts، ٦ سبتمبر ٢٠٢٦): recordWriteFailure/recordSuccess بيكتبوا فى localStorage فعليًا (systemHealth مش موكّه هنا)، فلازم نصفّرها بين كل تست.
 });
 
 function setup(profile: ProfileRow | null | undefined = PROFILE) {
@@ -119,6 +121,47 @@ describe('useAdminPortal', () => {
       expect(result.current.portalClient).not.toBeNull();
       expect(selectSpy).not.toHaveBeenCalled();
       expect(result.current.savingPortal).toBe(false);
+    });
+
+    // 🆕 (تحقيق فشل e2e/admin-portal.spec.ts فى CI، ٦ سبتمبر ٢٠٢٦): قبل
+    // كده الخطأ الحقيقي من set_portal_pin كان بيتبلع بالكامل — مفيش أي أثر
+    // تشخيصي (لا console.error ولا systemHealth)، فمستحيل نعرف سبب أي فشل
+    // مستقبلي من لوجات الـCI لوحدها. recordWriteFailure دلوقتي بيحفظ رسالة
+    // الخطأ الخام فعليًا فى بانر لوحة الصحة (مفتاح 'portal_write').
+    it('فشل الـ rpc → بيتسجل فعليًا فى systemHealth (مفتاح portal_write) برسالة الخطأ الخام، مش مبلوع بصمت', async () => {
+      rpcResult = { error: { message: 'غير مصرح بتعديل بوابة عميل خارج مكتبك' } };
+      const { result } = setup();
+      await act(async () => { await result.current.handleSavePortal(SAVE_FORM); });
+
+      const status = getServiceStatus('portal_write');
+      expect(status.status).toBe('error');
+      expect(status.lastOutcome).toBe('failure'); // مش transient (timeout/network)، فمش 'unknown'
+      expect(status.rawError).toBe('غير مصرح بتعديل بوابة عميل خارج مكتبك');
+    });
+
+    it('فشل بسبب timeout → بيتسجل فى systemHealth كـ lastOutcome:"unknown" (ambiguous)، مش "failure" قطعية', async () => {
+      rpcResult = { error: { message: 'timeout' } };
+      const { result } = setup();
+      await act(async () => { await result.current.handleSavePortal(SAVE_FORM); });
+
+      expect(getServiceStatus('portal_write').lastOutcome).toBe('unknown');
+      // التوست المعروض للمستخدم لسه ثابت زي أي فشل — set_portal_pin
+      // idempotent طبيعيًا (ON CONFLICT DO UPDATE بمفتاح client_id)، فمفيش
+      // داعي لتوست "ambiguous" منفصل زي حالة الأتعاب (٣-د محتاجة مفتاح
+      // idempotency صريح لأنها INSERT عادي مش upsert).
+      expect(toast).toHaveBeenCalledWith('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
+    });
+
+    it('نجاح → بيتسجل فى systemHealth كنجاح (بيمسح أي فشل سابق مسجّل لنفس المفتاح)', async () => {
+      rpcResult = { error: { message: 'db error' } };
+      const { result: failResult } = setup();
+      await act(async () => { await failResult.current.handleSavePortal(SAVE_FORM); });
+      expect(getServiceStatus('portal_write').status).toBe('error');
+
+      rpcResult = { error: null };
+      const { result } = setup();
+      await act(async () => { await result.current.handleSavePortal(SAVE_FORM); });
+      expect(getServiceStatus('portal_write').status).toBe('ok');
     });
 
     it('من غير profile (undefined) → logActivity بـ userName:null', async () => {
