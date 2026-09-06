@@ -121,7 +121,7 @@ export default function DocumentFillConfirmScreen({
         className="w-full py-3.5 rounded-xl text-xs font-black text-premium-bg transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
         style={{ background: 'linear-gradient(135deg,#d4af37,#f0c040)' }}
       >
-        {filling ? <><I.Spin /> جارِ التعبئة...</> : <><I.Download className="w-4 h-4" /> تأكيد وتحميل</>}
+        {filling ? <><I.Spin /> جارِ التعبئة...</> : <><I.Download /> تأكيد وتحميل</>}
       </button>
     </div>
   );
