@@ -14,7 +14,7 @@
 //  بالظبط من غير أي تغيير تاني.
 //
 //  action: login { email, password }
-//    → نجاح: { access_token, refresh_token, user }
+//    → نجاح: { access_token, refresh_token, user, onboarding_status }
 //    → فشل:  { error } بحالة 401/403/429
 //
 //  ⚠️ نسخة self-contained (بلا استيراد من ../_shared/) بنفس نمط
@@ -137,7 +137,7 @@ async function actionLogin(email: string, password: string, ip: string) {
 
   // ── هل الحساب مرتبط بمكتب ومفعّل وغير مقفول؟ ──
   const profiles = await rest(
-    `profiles?user_id=eq.${user.id}&select=user_id,tenant_id,role,is_active,is_locked,full_name&limit=1`,
+    `profiles?user_id=eq.${user.id}&select=user_id,tenant_id,role,is_active,is_locked,full_name,onboarding_status&limit=1`,
   );
   const profile = profiles[0];
 
@@ -200,6 +200,7 @@ async function actionLogin(email: string, password: string, ip: string) {
     access_token: authData.access_token,
     refresh_token: authData.refresh_token,
     user,
+    onboarding_status: profile.onboarding_status,
   });
 }
 
