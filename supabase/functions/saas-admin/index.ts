@@ -181,6 +181,27 @@ function generatePassword(length = 12): string {
   return Array.from(arr, b => chars[b % chars.length]).join('');
 }
 
+// توليد slug فريد للمكتب (٨ خانات عشوائية). العمود ده NOT NULL في
+// جدول tenants، ومفيش حقل ليه في فورم "إضافة مكتب جديد"، فكان الإدراج
+// بيفشل بـ "null value in column slug" — بنولّده هنا تلقائيًا بدل ما
+// نعتمد على الفرونت إند يبعته.
+function generateSlugCandidate(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const arr = new Uint8Array(8);
+  crypto.getRandomValues(arr);
+  return 'office-' + Array.from(arr, b => chars[b % chars.length]).join('');
+}
+
+async function generateUniqueSlug(): Promise<string> {
+  for (let i = 0; i < 5; i++) {
+    const slug = generateSlugCandidate();
+    const existing = await supabaseRest(`tenants?slug=eq.${slug}&select=id`);
+    if (Array.isArray(existing) && existing.length === 0) return slug;
+  }
+  // fallback نادر جدًا لو الـ٥ محاولات كلها اتصادفت (شبه مستحيل إحصائيًا)
+  return `office-${Date.now()}`;
+}
+
 // ── actions ──────────────────────────────────────────
 
 /** login: تحقق من الباسورد وأعد token */
@@ -247,7 +268,13 @@ async function actionCreateOffice(body: Record<string, unknown>) {
   if (!adminEmail)    return json({ error: 'البريد الإلكتروني للأدمن مطلوب' }, 400);
 
   // 1. إنشاء الـ tenant في جدول tenants
-  const tenantRows = await supabaseRest('tenants', 'POST', tenant);
+  // slug عمود NOT NULL بدون قيمة افتراضية في القاعدة، والفورم مش بيبعته،
+  // فبنولّد واحد فريد تلقائيًا لو مش موجود في الـ payload
+  const tenantPayload: Record<string, unknown> = { ...tenant };
+  if (!tenantPayload.slug) {
+    tenantPayload.slug = await generateUniqueSlug();
+  }
+  const tenantRows = await supabaseRest('tenants', 'POST', tenantPayload);
   const newTenant = Array.isArray(tenantRows) ? tenantRows[0] : tenantRows;
   if (!newTenant?.id) throw new Error('فشل إنشاء سجل المكتب');
 
