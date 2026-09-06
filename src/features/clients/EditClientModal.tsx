@@ -34,7 +34,7 @@ interface EditClientForm {
 interface EditClientModalProps {
     client: ClientRow;
     onClose: () => void;
-    onSave: (form: EditClientForm, idFile?: File | null, poaFile?: File | null) => void | boolean | Promise<void | boolean>;
+    onSave: (form: EditClientForm, idFile?: File | null, poaFile?: File | null, idBackFile?: File | null) => void | boolean | Promise<void | boolean>;
     // 🔒 FIX (تقرير الموثوقية — نتيجة 1): المودال ده ما كانش فيه أي حماية
     // دبل كليك خالص (بعكس NewClientModal). بنستقبل نفس savingClient state
     // من App.tsx عشان نقفل الزرار أثناء الحفظ.
@@ -66,13 +66,17 @@ function EditClientModal({client: c, onClose, onSave, saving = false}: EditClien
     // موصوف في ClientContactInfo (المُصدَّرة من useClientActions.ts).
     const contactInfo = c.contact_info as ClientContactInfo | null;
     const idResolved  = useResolvedStorageUrl('client-docs', contactInfo?.id_url);
+    const idBackResolved = useResolvedStorageUrl('client-docs', contactInfo?.id_back_url);
     const poaResolved = useResolvedStorageUrl('client-docs', contactInfo?.poa_url);
     const [idFile,    setIdFile]    = useState<File | null>(null);
     const [idPreview, setIdPreview] = useState<string|null>(null);
+    const [idBackFile,    setIdBackFile]    = useState<File | null>(null);
+    const [idBackPreview, setIdBackPreview] = useState<string|null>(null);
     const [poaFile,    setPoaFile]    = useState<File | null>(null);
     const [poaPreview, setPoaPreview] = useState<string|null>(null);
     // لو لسه ماحددش ملف جديد، نعرض المعاينة الموقّعة الطازة بمجرد جهوزيتها
     useEffect(() => { if (!idFile) setIdPreview(idResolved); }, [idResolved, idFile]);
+    useEffect(() => { if (!idBackFile) setIdBackPreview(idBackResolved); }, [idBackResolved, idBackFile]);
     useEffect(() => { if (!poaFile) setPoaPreview(poaResolved); }, [poaResolved, poaFile]);
 
     const s = <K extends keyof EditClientForm>(k: K, v: EditClientForm[K]) => setForm((p) => ({...p, [k]: v}));
@@ -98,6 +102,7 @@ function EditClientModal({client: c, onClose, onSave, saving = false}: EditClien
     const { guardedClose, confirmModal } = useUnsavedChangesGuard(form, form, onClose, draft.clearDraft);
 
     const pickId  = (file: File | null | undefined) => { if(!file) return; setIdFile(file);  setIdPreview(URL.createObjectURL(file)); };
+    const pickIdBack = (file: File | null | undefined) => { if(!file) return; setIdBackFile(file); setIdBackPreview(URL.createObjectURL(file)); };
     const pickPoa = (file: File | null | undefined) => { if(!file) return; setPoaFile(file); setPoaPreview(URL.createObjectURL(file)); };
 
     return createPortal(
@@ -159,10 +164,16 @@ function EditClientModal({client: c, onClose, onSave, saving = false}: EditClien
                     React.createElement('p', {className:"text-[10px] font-black text-slate-500 mb-3"}, "— المستندات الرسمية —")
                 ),
                 React.createElement(FileUploadField, {
-                    label:"صورة البطاقة الشخصية",
+                    label:"صورة البطاقة - وش",
                     hint:"JPG أو PNG — حجم أقصى 5MB",
                     onChange: pickId,
                     preview: idPreview
+                }),
+                React.createElement(FileUploadField, {
+                    label:"صورة البطاقة - ضهر",
+                    hint:"JPG أو PNG — حجم أقصى 5MB",
+                    onChange: pickIdBack,
+                    preview: idBackPreview
                 }),
                 React.createElement(FileUploadField, {
                     label:"صورة التوكيل",
@@ -197,7 +208,7 @@ function EditClientModal({client: c, onClose, onSave, saving = false}: EditClien
                                 'data-testid': 'edit-client-impact-confirm',
                                 disabled: saving,
                                 onClick: async () => {
-                                    const result = await onSave(form, idFile, poaFile);
+                                    const result = await onSave(form, idFile, poaFile, idBackFile);
                                     // 🔒 FIX (قرارات مفتوحة — خطة حفظ المسودات، 3 أغسطس 2026):
                                     // بننتظر نتيجة onSave ونمسح المسودة بس لو نجح
                                     // الحفظ فعلاً (result !== false)، مش فورًا زي الأول.
