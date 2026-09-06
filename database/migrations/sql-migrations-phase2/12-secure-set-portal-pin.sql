@@ -1,3 +1,8 @@
+-- ⚠️ ملحوظة تصحيح لاحقة (٦ سبتمبر ٢٠٢٦): "SET search_path = public" تحت
+-- ده كسر pgcrypto (gen_salt/crypt) لأنها مركّبة فى schema اسمه extensions
+-- مش public — راجع الفيكس فى sql-migrations-phase13/01-fix-set-portal-pin-
+-- search-path.sql (النسخة الحالية المطبَّقة فعليًا على القاعدة).
+
 -- ══════════════════════════════════════════════════════════════
 --  Migration 12 — تحصين set_portal_pin (لقطة أثناء فحص شامل للمشروع)
 --
