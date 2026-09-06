@@ -85,6 +85,14 @@ import DashboardTabRaw from './features/dashboard/DashboardTab';
 // Profiler فعلي (لسه ماتعملش) عشان نعرف نسبة كل سبب من الاتنين.
 const DashboardTab = React.memo(DashboardTabRaw);
 
+// ⚡ TEMP (المرحلة 0 — خطة تحسين الأداء، 7 سبتمبر 2026): أداة قياس مؤقتة
+// بديلة عن React DevTools Profiler (العميل بيشتغل من الموبايل بدون
+// جهاز يدعم إضافات المتصفح). مقفولة بالكامل افتراضيًا — بتتفعّل بس
+// بزيارة الرابط مع ?perf=1. تُشال بالكامل (هذا السطر + الاستدعاءات
+// تحت + مجلد src/dev) بعد إغلاق المرحلة 0.
+import { isPerfOverlayEnabled, onRenderPerf } from './dev/perfProbe';
+import PerfOverlay from './dev/PerfOverlay';
+
 // ─── Hooks ───────────────────────────────
 import { useHealthMonitor } from './hooks/useHealthMonitor';
 import { usePwaInstall } from './hooks/usePwaInstall';
@@ -587,8 +595,13 @@ function App() {
     // ─────────────────────────────────────────────────────────
     //  Render
     // ─────────────────────────────────────────────────────────
-    const Header      = React.createElement(AppHeader, { profile, setShowMenu: (v: boolean) => setShowHeaderMenu(v), setShowSearch, isAdmin, fetchCases: handleGlobalRefresh, casesFilter, loadingCases: casesLoading });
-    const Dashboard   = React.createElement(DashboardTab, {
+    // ⚡ TEMP (المرحلة 0): Profiler مؤقت — يُشال بعد إغلاق المرحلة.
+    const Header      = React.createElement(React.Profiler, { id: 'Header', onRender: onRenderPerf },
+        React.createElement(AppHeader, { profile, setShowMenu: (v: boolean) => setShowHeaderMenu(v), setShowSearch, isAdmin, fetchCases: handleGlobalRefresh, casesFilter, loadingCases: casesLoading })
+    );
+    // ⚡ TEMP (المرحلة 0): Profiler مؤقت — يُشال بعد إغلاق المرحلة.
+    const Dashboard   = React.createElement(React.Profiler, { id: 'DashboardTab', onRender: onRenderPerf },
+    React.createElement(DashboardTab, {
         profile, cases, clients: clientsWithExtras,
         todaySessions, upcomingSessions, missedSessions,
         upcomingTasks, missedTasks, loadingUrgent,
@@ -609,7 +622,7 @@ function App() {
         // 2026): نفس props بالظبط اللي AppModals.tsx بيبعتها لـNewCaseModal.
         countryCourts: COUNTRY_CONFIGS[country]?.courts,
         countryCaseTypes: COUNTRY_CONFIGS[country]?.caseTypes,
-    });
+    }));
     // ⚡ Suspense مطلوب هنا لأن CasesTab بقى React.lazy فوق — نفس فكرة
     // AdminPanel/ArchiveTab بالظبط.
     const CasesTabContent   = React.createElement(React.Suspense, {
@@ -617,6 +630,8 @@ function App() {
                 React.createElement(I.Spin)
             )
         },
+        // ⚡ TEMP (المرحلة 0): Profiler مؤقت — يُشال بعد إغلاق المرحلة.
+        React.createElement(React.Profiler, { id: 'CasesTab', onRender: onRenderPerf },
         React.createElement(CasesTab, {
             cases, casesFilter, setCasesFilter, casesPage, setCasesPage,
             casesTotal, casesLoading, fetchCases, searchCases, casesSearch, setCasesSearch,
@@ -627,7 +642,7 @@ function App() {
             // كان بيوهم إن الموكل محذوف لمجرد إنه مش من ضمن أول 15 محمّلين.
             clients: clientsWithExtras,
             profile, // ⚡ NEW (مرحلة 3 خطة الصلاحيات): لزرار "تقييد قضية" — can_add_cases
-        })
+        }))
     );
     // ⚡ Suspense مطلوب هنا لأن TeamTab بقى React.lazy فوق.
     const TeamTabContent    = React.createElement(React.Suspense, {
@@ -643,12 +658,14 @@ function App() {
                 React.createElement(I.Spin)
             )
         },
+        // ⚡ TEMP (المرحلة 0): Profiler مؤقت — يُشال بعد إغلاق المرحلة.
+        React.createElement(React.Profiler, { id: 'ClientsTab', onRender: onRenderPerf },
         React.createElement(ClientsTab, {
             cases, clients, clientSearch, setClientSearch,
             clientsPage, setClientsPage, clientsTotal, clientsLoading,
             fetchClients, setSelectedClient, setShowClientModal,
             profile, // ⚡ NEW (مرحلة 3 خطة الصلاحيات): لزرار "موكل جديد" — can_add_clients
-        })
+        }))
     );
     // ⚡ Suspense مطلوب هنا لأن ArchiveTab بقى React.lazy فوق — نفس فكرة
     // AdminPanel بالظبط (fallback سبينر بسيط، بيبان لحظيًا بس أول ما الـ
@@ -959,7 +976,12 @@ function App() {
         }),
 
         // ── Exit Confirm ──
-        React.createElement(ExitConfirmModal, { nav })
+        React.createElement(ExitConfirmModal, { nav }),
+
+        // ⚡ TEMP (المرحلة 0 — خطة تحسين الأداء): overlay القياس المؤقت.
+        // مقفول بالكامل افتراضيًا — ميترندرش أصلاً غير لو ?perf=1 مفعّلة.
+        // يُشال هذا السطر بعد إغلاق المرحلة 0.
+        isPerfOverlayEnabled() && React.createElement(PerfOverlay)
     );
 }
 
