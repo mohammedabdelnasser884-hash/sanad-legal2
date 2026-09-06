@@ -148,6 +148,25 @@ export async function fetchPartiesMapByCaseIds(caseIds: string[]): Promise<{ [k:
 // الـ .map() المكرر في fetchCases/searchCases بالحرف — مستخرج هنا كدالة
 // مشتركة عشان ensureCasesLoaded (تحت) يقدر يبني MappedCase بنفس الشكل
 // بالظبط لأي قضية بتتجاب بالـid مباشرة (برّه الصفحة/الفلتر الحالي).
+// 🆕 (خطة تحسين الأداء — المرحلة 3، 7 سبتمبر 2026): قائمة الأعمدة اللي
+// mapCaseRow تحت فعليًا بتقراها من CaseRow (بنيت عمود-عمود من جسم
+// mapCaseRow نفسه، مش من الذاكرة ولا من تخمين). مستخدمة بدل `select('*')`
+// في fetchCases/searchCases (المسارين الساخنين اللي بيستخدموا mapCaseRow) —
+// أي عمود يتضاف لـmapCaseRow لازم يتضاف هنا كمان وإلا هيرجع undefined
+// بصمت في الواجهة (مفيش تحذير من TypeScript لأن النوع MappedCase مش
+// هيتغيّر). الأعمدة المستبعدة عمدًا لأنها مش مقروءة في mapCaseRow خالص:
+// firm_id, ai_summary, last_sync_at, tenant_id, case_number, court
+// (لاحظ: "court" ده عمود تاني غير "court_name" المستخدم فعليًا — نفس
+// العمود اللي resolveCaseBindings في generationApi.ts بيسحبه لوحده
+// لمستندات القيد، مش له علاقة بالعرض هنا). deleted_at مش محتاج يتحط في
+// select أصلًا لأنه مستخدم كـfilter بس (.is('deleted_at', null)) مش
+// كقيمة بتتقرا في الواجهة.
+const CASE_LIST_COLUMNS =
+    'id,case_number_official,title,court_name,case_type,court_level,' +
+    'circuit_number,status,next_hearing,client_id,created_at,updated_at,' +
+    'court_floor,court_hall,session_hall,secretary_hall,secretary_name,' +
+    'secretary_mobile,session_time,plaintiff_legal_title,defendant_legal_title';
+
 export function mapCaseRow(
     r: CaseRow,
     sessionsMap: { [k: string]: string },
@@ -414,7 +433,11 @@ export function useAppData(profile: ProfileRow | null) {
                 try {
                     const res = await db
                         .from('cases')
-                        .select('*', { count: 'exact' })
+                        // 🆕 (خطة تحسين الأداء — المرحلة 3، 7 سبتمبر 2026):
+                        // select('*') → CASE_LIST_COLUMNS الصريحة (تعريفها
+                        // وسبب كل استبعاد فوق mapCaseRow). المسار ده أهم
+                        // مسار ساخن في التطبيق (تاب القضايا + الداشبورد).
+                        .select(CASE_LIST_COLUMNS, { count: 'exact' })
                         .eq('status', filter)
                         .is('deleted_at', null)
                         .order('created_at', { ascending: false })
@@ -516,9 +539,16 @@ export function useAppData(profile: ProfileRow | null) {
 
         // البحث في: عنوان الدعوى، رقم الدعوى، المدعي، المدعى عليه، موضوع الدعوى — في كل الحالات
         // FIX: فاصلة أو قوس في نص البحث كان بيكسر صياغة فلتر .or()
+        // 🆕 (خطة تحسين الأداء — المرحلة 3، 7 سبتمبر 2026): نفس تعديل
+        // fetchCases فوق بالظبط بنفس CASE_LIST_COLUMNS — searchCases
+        // بتستخدم نفس mapCaseRow، فنفس قائمة الأعمدة صحيحة هنا حرفيًا.
+        // ملحوظة سكوب: الخطة الأصلية ذكرت fetchCases/fetchClients بس،
+        // بس searchCases مسار ساخن بنفس القدر (بحث فعلي) وبيستخدم نفس
+        // mapCaseRow بالظبط، فمفيش سبب منطقي يتسيب على select('*') وهو
+        // بنفس درجة الخطر (صفرية هنا، لأن القائمة اتبنت من نفس الدالة).
         const { data, error, count } = await db
             .from('cases')
-            .select('*', { count: 'exact' })
+            .select(CASE_LIST_COLUMNS, { count: 'exact' })
             .is('deleted_at', null)
             .or([
                 ilikeOrClause('title', q),
