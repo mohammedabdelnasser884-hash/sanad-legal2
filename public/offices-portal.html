@@ -249,7 +249,7 @@
           </div>
         </div>
         <div>
-          <label class="text-[10px] font-black text-slate-400 block mb-1">رقم الهاتف</label>
+          <label class="text-[10px] font-black text-slate-400 block mb-1">رقم الهاتف<span class="text-rose-400 mr-1">*</span></label>
           <input id="f-phone" type="text" placeholder="+966..."
             class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 font-bold"/>
         </div>
@@ -879,10 +879,12 @@ async function saveTenant() {
   // مكتب جديد — بيتعمل له تلقائيًا حساب أدمن أول دخول
   const email = document.getElementById('f-email').value.trim();
   if (!email) { err.textContent='البريد الإلكتروني مطلوب لإنشاء حساب الدخول'; err.classList.remove('hidden'); return; }
+  const phone = document.getElementById('f-phone').value.trim();
+  if (!phone) { err.textContent='رقم الهاتف مطلوب'; err.classList.remove('hidden'); return; }
   err.classList.add('hidden');
   const tenantPayload = {
     name,
-    phone: document.getElementById('f-phone').value.trim()||null,
+    phone,
     subscription_plan: document.getElementById('f-plan').value,
     status: document.getElementById('f-status').value,
     trial_ends_at: document.getElementById('f-expires').value||null,
