@@ -26,6 +26,15 @@ export default defineConfig({
       // نفس الدالتين (`getDocumentProxy`, `extractText`) بسلوك قابل للتحكم
       // من التستات مباشرة (عن طريق استيراد نفس الملف وتعديل `__state`).
       'npm:unpdf': path.resolve(__dirname, 'supabase/functions/_shared/unpdfMock.ts'),
+      // ⚡ [Sanad_Legal_Documents_Library_Transition_Plan.md — مرحلة 2.2]
+      // نفس سبب/نمط alias 'npm:unpdf' فوق بالحرف — 'pizzip'/'docxtemplater'
+      // مش موجودين في package.json، فبنوجّههم لملفات mock محلية بديلة.
+      // ⚠️ المفتاح هنا لازم يطابق حرفيًا الـspecifier المكتوب في
+      // fill-document-template/index.ts (بما فيه رقم الإصدار بعد @) —
+      // alias الأوبچكت ده matching بالتطابق التام، مش prefix. لو رقم
+      // الإصدار في index.ts اتغيّر، لازم يتحدّث هنا بالظبط بنفس القيمة.
+      'npm:pizzip@3.1.7': path.resolve(__dirname, 'supabase/functions/_shared/pizzipMock.ts'),
+      'npm:docxtemplater@3.62.2': path.resolve(__dirname, 'supabase/functions/_shared/docxtemplaterMock.ts'),
     },
   },
   test: {
