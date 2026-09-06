@@ -1276,6 +1276,15 @@ export interface Database {
           last_seen_device: string | null
           last_seen_browser: string | null
           last_seen_ip: string | null
+          /** ⚡ NEW (خطة onboarding مكتب جديد — 6 سبتمبر 2026): مرحلة رحلة
+           *  انضمام المكتب الجديد — 'pending_verification' (لسه محتاج تحقق
+           *  كود إيميل) → 'pending_setup' (لسه محتاج باسورد دائم + بيانات
+           *  المكتب) → 'completed' (خلص، دخول عادي). كل المستخدمين الحاليين
+           *  DEFAULT 'completed' على الداتابيز. */
+          onboarding_status: string
+          onboarding_lockout_tier: number
+          onboarding_locked_until: string | null
+          onboarding_frozen: boolean
         }
         Insert: {
           id?: string
@@ -1297,6 +1306,10 @@ export interface Database {
           last_seen_device?: string | null
           last_seen_browser?: string | null
           last_seen_ip?: string | null
+          onboarding_status?: string
+          onboarding_lockout_tier?: number
+          onboarding_locked_until?: string | null
+          onboarding_frozen?: boolean
         }
         Update: {
           id?: string
@@ -1318,6 +1331,10 @@ export interface Database {
           last_seen_device?: string | null
           last_seen_browser?: string | null
           last_seen_ip?: string | null
+          onboarding_status?: string
+          onboarding_lockout_tier?: number
+          onboarding_locked_until?: string | null
+          onboarding_frozen?: boolean
         }
         // ⚠️ مطلوبة بنيويًا من supabase-js (بيتحقق منها داخليًا وقت استنتاج
         // نوع from()/insert()/update()) — من غيرها التحقق بينهار لـ `never`
