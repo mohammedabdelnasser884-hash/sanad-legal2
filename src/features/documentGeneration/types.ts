@@ -26,16 +26,25 @@ export interface DocumentTemplate {
 
 export type TemplateVersionStatus = 'draft' | 'published' | 'archived';
 
-// Template Version = النص الفعلي القابل للتوليد منه، ومُصمم على إنه immutable بعد النشر
+// Template Version = النسخة الفعلية القابلة للاستخدام، immutable بعد النشر
+// ⚡ [Sanad_Legal_Documents_Library_Transition_Plan.md — القسم 3.1، مرحلة 1.3]
+// تحويل معماري: مصدر الحقيقة بقى ملف Word أصلي (master_file_path) بدل
+// نص مُركّب. body_template/box_template اتسابوا مؤقتًا (DEPRECATED) عشان
+// الكود القديم يفضل يشتغل لحد ما المرحلتين 3/4 (الواجهة الجديدة) يخلصوا
+// — هيتشالوا فعليًا في مرحلة 6 (تنظيف الكود القديم)، ماتضافش لهم أي
+// استخدام جديد من هنا.
 export interface TemplateVersion {
   id: string;
   template_id: string;
   version_number: number; // يبدأ من 1، يزيد تلقائياً مع كل نسخة جديدة لنفس template_id
+  /** @deprecated يُشال في المرحلة 6 — استخدم master_file_path بدل منه */
   body_template: string;
-  // 🆕 [قسم 20.1] صندوق "الموضوع" الجانبي — اختياري (null لكل القوالب
-  // القديمة الأربعة، فتفضل بتترندر بشكلها الحالي بدون تغيير). لما يكون
-  // موجود، بيترندر كـsection من النوع 'subject_box' قبل باقي المتن.
+  /** @deprecated يُشال في المرحلة 6 */
   box_template: string | null;
+  /** مسار ملف الـ Word الأصلي في باكت legal-doc-templates — null لحد ما مرحلة 5 (ترحيل المحتوى) تضيفه لكل قالب */
+  master_file_path: string | null;
+  /** اسم الملف الأصلي للعرض/التحميل (مثلاً "إنذار على يد محضر.docx") */
+  master_file_name: string | null;
   status: TemplateVersionStatus;
   published_at: string | null;
   created_by: string | null;
