@@ -8,6 +8,12 @@ import type { MappedCase, MappedClient } from './hooks/useAppData';
 import LoginScreen from './pages/Login/LoginScreen';
 // ⚡ NEW (Phase 3 — خطة استعادة/تغيير كلمة المرور، 2 سبتمبر 2026)
 import ResetPasswordScreen from './features/auth/ResetPasswordScreen';
+// ⚡ NEW (خطة onboarding مكتب جديد، مرحلة 4.3 — 6 سبتمبر 2026): بوابتين
+// إجباريتين بعد أول دخول لمكتب جديد (باسورد مؤقت)، قبل أي محتوى تاني
+// في التطبيق — نفس مبدأ ResetPasswordScreen/TermsAcceptanceScreen تحت
+// بالظبط (استبدال كامل للشاشة، مش نافذة فوقها).
+import OnboardingVerifyScreen from './features/onboarding/OnboardingVerifyScreen';
+import OnboardingSetupScreen from './features/onboarding/OnboardingSetupScreen';
 import HeaderMenu from './app/HeaderMenu';
 import ExitConfirmModal from './app/ExitConfirmModal';
 import CommandDock from './app/CommandDock';
@@ -524,6 +530,25 @@ function App() {
     if (isPasswordRecovery) return React.createElement(ResetPasswordScreen);
 
     if (!authUser || !profile) return React.createElement(LoginScreen, { onLogin: (u) => loadProfile(u) });
+
+    // ⚡ NEW (خطة onboarding مكتب جديد، مرحلة 4.3 — 6 سبتمبر 2026): لازم
+    // تتفحص قبل بوابة إقرار الشروط تحت — مكتب جديد لسه ما اتحقّقش من
+    // إيميله أو ما كملش بياناته مايوصلش لأي محتوى تاني (بما فيها شاشة
+    // الشروط والأحكام) قبل ما يخلّص رحلة onboarding بالكامل.
+    // ⚡ تحديث profile محليًا (setProfile) بدل إعادة نداء loadProfile —
+    // السيرفر أكّد الحالة الجديدة فعليًا (verify/complete نجحوا)، فمفيش
+    // داعي لراوند تريب إضافي؛ نفس نمط التحديث المتفائل المستخدم في
+    // useCaseActions/useClientActions بعد أي حفظ ناجح.
+    if (profile.onboarding_status === 'pending_verification') {
+        return React.createElement(OnboardingVerifyScreen, {
+            onVerified: () => setProfile((p) => (p ? { ...p, onboarding_status: 'pending_setup' } : p)),
+        });
+    }
+    if (profile.onboarding_status === 'pending_setup') {
+        return React.createElement(OnboardingSetupScreen, {
+            onCompleted: () => setProfile((p) => (p ? { ...p, onboarding_status: 'completed' } : p)),
+        });
+    }
 
     // ⚡ NEW (خطة إقرار الشروط والأحكام، Phase 3): لسه بيتحقق من terms_acceptances
     if (needsAcceptance === null) return React.createElement(AppLoadingScreen);
