@@ -7,6 +7,7 @@ import { Inp } from '@/shared/ui/Inp';
 import { PoaInput } from '@/shared/ui/PoaInput';
 import { Sel } from '@/shared/ui/Sel';
 import { FileUploadField } from '@/shared/ui/FileUploadField';
+import { compressImageFile } from '@/shared/lib/imageCompression';
 import { useResolvedStorageUrl } from '../../shared/lib/storage';
 import { useFormDraft } from '@/shared/hooks/useFormDraft';
 import { useUnsavedChangesGuard } from '@/shared/hooks/useUnsavedChangesGuard';
@@ -101,9 +102,9 @@ function EditClientModal({client: c, onClose, onSave, saving = false}: EditClien
     // تحذير قبل الإغلاق — الـbaseline هنا بيانات الموكل المحمّلة فعليًا
     const { guardedClose, confirmModal } = useUnsavedChangesGuard(form, form, onClose, draft.clearDraft);
 
-    const pickId  = (file: File | null | undefined) => { if(!file) return; setIdFile(file);  setIdPreview(URL.createObjectURL(file)); };
-    const pickIdBack = (file: File | null | undefined) => { if(!file) return; setIdBackFile(file); setIdBackPreview(URL.createObjectURL(file)); };
-    const pickPoa = (file: File | null | undefined) => { if(!file) return; setPoaFile(file); setPoaPreview(URL.createObjectURL(file)); };
+    const pickId  = async (file: File | null | undefined) => { if(!file) return; const compressed = await compressImageFile(file); setIdFile(compressed);  setIdPreview(URL.createObjectURL(compressed)); };
+    const pickIdBack = async (file: File | null | undefined) => { if(!file) return; const compressed = await compressImageFile(file); setIdBackFile(compressed); setIdBackPreview(URL.createObjectURL(compressed)); };
+    const pickPoa = async (file: File | null | undefined) => { if(!file) return; const compressed = await compressImageFile(file); setPoaFile(compressed); setPoaPreview(URL.createObjectURL(compressed)); };
 
     return createPortal(
         React.createElement(React.Fragment, null,
