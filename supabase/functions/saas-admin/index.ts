@@ -15,9 +15,18 @@
 //   createOfficeWithAdmin { token, tenant, adminEmail, adminName }
 //     → { tenant, tempPassword }
 //
-//   resetOnboardingLock   { token, userId }
+//   resetOnboardingLock   { token, tenantId }
 //     → { ok }  — يصفّر onboarding_lockout_tier/onboarding_locked_until/
-//                 onboarding_frozen، الحل الوحيد بعد تجميد كامل (frozen)
+//                 onboarding_frozen لحساب أدمن المكتب ده، الحل الوحيد
+//                 بعد تجميد كامل (frozen). ياخد tenantId (مش userId)
+//                 عشان الواجهة أصلًا معاها الـtenant بس، وبيدوّر داخليًا
+//                 على الأدمن المرتبط بيه من profiles.
+//
+//   getOnboardingStatuses { token }
+//     → [{ tenant_id, onboarding_status, onboarding_frozen,
+//          onboarding_locked_until, onboarding_lockout_tier }]
+//     عمود ضيّق بس من profiles (حسابات الأدمن) — مش وصول عام للجدول،
+//     غرضه الوحيد إظهار شارة "مجمّد/مقفول" وزرار الفك في اللوحة.
 //
 //  الأمان:
 //   - الباسورد بيتقارن من SAAS_ADMIN_PASSWORD (env secret)
@@ -292,18 +301,41 @@ async function actionCreateOffice(body: Record<string, unknown>) {
   return json({ tenant: newTenant, tempPassword });
 }
 
-/** resetOnboardingLock: فك التجميد الكامل/القفل المؤقت لمكتب يدويًا — الحل الوحيد بعد تجميد onboarding_frozen */
+/**
+ * resetOnboardingLock: فك التجميد الكامل/القفل المؤقت لمكتب يدويًا — الحل
+ * الوحيد بعد تجميد onboarding_frozen. بتاخد tenantId (مش userId مباشرة)
+ * وتدوّر داخليًا على حساب الأدمن المرتبط بالـtenant ده — الواجهة أصلًا
+ * معاها الـtenant بس من جدول tenants، ومفيش داعي تعرف user_id.
+ */
 async function actionResetOnboardingLock(body: Record<string, unknown>) {
-  const { userId } = body as { userId?: string };
-  if (!userId) return json({ error: 'userId مطلوب' }, 400);
+  const { tenantId } = body as { tenantId?: string };
+  if (!tenantId) return json({ error: 'tenantId مطلوب' }, 400);
 
-  await supabaseRest(`profiles?user_id=eq.${userId}`, 'PATCH', {
+  const admins = await supabaseRest(
+    `profiles?tenant_id=eq.${tenantId}&role=eq.admin&select=user_id&limit=1`,
+  );
+  const admin = Array.isArray(admins) ? admins[0] : null;
+  if (!admin?.user_id) return json({ error: 'تعذر العثور على حساب أدمن مرتبط بهذا المكتب' }, 404);
+
+  await supabaseRest(`profiles?user_id=eq.${admin.user_id}`, 'PATCH', {
     onboarding_lockout_tier: 0,
     onboarding_locked_until: null,
     onboarding_frozen: false,
   });
 
   return json({ ok: true });
+}
+
+/**
+ * getOnboardingStatuses: يرجّع حالة الـonboarding (تجميد/قفل مؤقت) لكل
+ * حسابات الأدمن — أعمدة ضيّقة ومحددة بس من profiles، مش proxy عام
+ * زي actionQuery (عشان كده مش محتاجة إضافة 'profiles' لـALLOWED_TABLES).
+ */
+async function actionGetOnboardingStatuses() {
+  const rows = await supabaseRest(
+    `profiles?role=eq.admin&select=tenant_id,onboarding_status,onboarding_frozen,onboarding_locked_until,onboarding_lockout_tier`,
+  );
+  return json(Array.isArray(rows) ? rows : []);
 }
 
 // ── Main handler ──────────────────────────────────────
@@ -328,10 +360,11 @@ Deno.serve(async (req: Request) => {
     if (!valid) return json({ error: 'الجلسة منتهية، سجّل الدخول من جديد' }, 401);
 
     switch (action) {
-      case 'query':                 return await actionQuery(rest);
-      case 'createOfficeWithAdmin': return await actionCreateOffice(rest);
-      case 'resetOnboardingLock':   return await actionResetOnboardingLock(rest);
-      default:                      return json({ error: `action غير معروف: ${action}` }, 400);
+      case 'query':                  return await actionQuery(rest);
+      case 'createOfficeWithAdmin':  return await actionCreateOffice(rest);
+      case 'resetOnboardingLock':    return await actionResetOnboardingLock(rest);
+      case 'getOnboardingStatuses':  return await actionGetOnboardingStatuses();
+      default:                       return json({ error: `action غير معروف: ${action}` }, 400);
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'خطأ غير متوقع';
