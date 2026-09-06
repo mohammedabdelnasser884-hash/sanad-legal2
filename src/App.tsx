@@ -35,8 +35,17 @@ import AppShell from './app/shell/AppShell';
 // static (راجع تعليقه تحت) لأنه التاب الأغلبية المطلقة من المستخدمين
 // بيشوفوه فورًا؛ الباقي اتحول لـReact.lazy زي AdminPanel/ArchiveTab/
 // LegalDocumentsPage بالظبط (Suspense في كل مكان رندر تحت).
-const CasesTab = React.lazy(() => import('./features/dashboard/CasesTab'));
-const ClientsTab = React.lazy(() => import('./features/dashboard/ClientsTab'));
+// ⚡ PERF (خطة تحسين الأداء، المرحلة 1.1 — 6 سبتمبر 2026): لُفّوا بـReact.memo.
+// راجعنا كل الـprops الممررة لـCasesTab/ClientsTab في نقطة الرندر تحت (سطور
+// CasesTabContent/ClientsTabContent) وتأكدنا إنها كلها إما: (أ) قيم بدائية
+// (strings/numbers/booleans)، أو (ب) دوال setState من useState (مستقرة
+// تلقائيًا بضمان React)، أو (ج) دوال useCallback موجودة أصلًا (fetchCases/
+// fetchClients/searchCases) — يعني مفيش أي prop بيتجدد مرجعه بلا داعي في كل
+// render، فالـmemo هنا مضمون إنه هيمنع إعادة رندر فعلية من غير أي تعديل تاني
+// مطلوب. ⚠️ ملاحظة: التحقق ده مبني على قراءة كود ثابتة (Profiler لسه ماتعملش
+// بسبب قيود بيئة العميل)، مش قياس فعلي مؤكد.
+const CasesTab = React.memo(React.lazy(() => import('./features/dashboard/CasesTab')));
+const ClientsTab = React.memo(React.lazy(() => import('./features/dashboard/ClientsTab')));
 const TeamTab = React.lazy(() => import('./features/dashboard/TeamTab'));
 const FeesTab = React.lazy(() => import('./features/fees/FeesTab'));
 const RemindersTab = React.lazy(() => import('./features/reminders/RemindersTab'));
@@ -66,7 +75,15 @@ import AppHeader from './features/dashboard/AppHeader';
 // فتحويله lazy كان هيضيف لحظة تحميل (Suspense fallback) لأغلبية
 // المستخدمين بالظبط في أول لحظة فتح للتطبيق، وهي نفس اللحظة اللي
 // بنحاول نسرّعها من الأساس.
-import DashboardTab from './features/dashboard/DashboardTab';
+import DashboardTabRaw from './features/dashboard/DashboardTab';
+// ⚡ PERF (المرحلة 1.1 — 6 سبتمبر 2026): React.memo هنا هيمنع إعادة رندر
+// DashboardTab لما App.tsx يعيد الرندر لسبب مالوش علاقة بيه (بحث في تاب
+// تاني، toast، إلخ) — بس ⚠️ DashboardTab نفسه بينادي useSessionsPartiesMap
+// جوّاه (راجع DashboardTab.tsx)، وده hook مستقل بيسبب إعادة رندر ذاتية
+// (self-render) بغض النظر عن الـmemo — ده سلوك متوقع ومش باگ، والـmemo
+// بيحل بس الجزء الجاي من الأب مش الجزء الذاتي ده. تفصيل هذا الفرق يحتاج
+// Profiler فعلي (لسه ماتعملش) عشان نعرف نسبة كل سبب من الاتنين.
+const DashboardTab = React.memo(DashboardTabRaw);
 
 // ─── Hooks ───────────────────────────────
 import { useHealthMonitor } from './hooks/useHealthMonitor';
@@ -309,6 +326,17 @@ function App() {
         if (clientOrNull) { _setSelectedClient(clientOrNull); setSelectedClientEditMode(openInEditMode); nav.openModal('clientDetail'); }
         else              { _setSelectedClient(null); setSelectedClientEditMode(false); }
     }, [nav]);
+
+    // ⚡ PERF (خطة تحسين الأداء، المرحلة 1.2 — 6 سبتمبر 2026): كانت دالة
+    // `(c) => setSelectedClient(c as MappedClient, true)` مكتوبة inline في
+    // مكانين مختلفين تحت (props بتاعة DashboardTab وSessionsCalendar) —
+    // يعني مرجع جديد للدالة في كل render لكل الاتنين. مرجع واحد مستقر هنا
+    // بيتشارك بين الاثنين. الاعتماد الوحيد `setSelectedClient` وهو أصلاً
+    // مستقر (useCallback فوق)، فالسلوك عند الاستدعاء زي ما هو 100% —
+    // التغيير في استقرار المرجع بس.
+    const handleOpenClientProfile = useCallback((c: MappedClient) => {
+        setSelectedClient(c, true);
+    }, [setSelectedClient]);
 
     const setDeleteConfirm = useCallback((v: DeleteConfirmState | null) => {
         if (v) { _setDeleteConfirm(v); nav.openModal('delete'); }
@@ -572,7 +600,7 @@ function App() {
         fetchTodaySessions, fetchUpcomingSessions, fetchMissedSessions,
         // ⚡ NEW (خطة توحيد مصدر بيانات الموكل، مرحلة 3): زرار "عدّل من ملف
         // الموكل" جوه EditStandaloneModal — نفس آلية فتح تفاصيل الموكل.
-        onOpenClientProfile: (c) => setSelectedClient(c as MappedClient, true),
+        onOpenClientProfile: handleOpenClientProfile,
         // 🔒 FIX (نفس باگ CaseDetailView.tsx — 12 أغسطس 2026): nav متاحة
         // هنا فعلًا (استُخدمت أصلًا لـArchiveTab تحت)، فبنمررها جاهزة
         // لـDashboardTab اللي مالوش وصول مباشر لـnav.
@@ -769,7 +797,7 @@ function App() {
                         initialTab: sessionsInitialTab ?? undefined,
                         externalRefreshSignal: sessionsRefreshSignal,
                         nav,
-                        onOpenClientProfile: (c) => setSelectedClient(c as MappedClient, true),
+                        onOpenClientProfile: handleOpenClientProfile,
                         // ⚡ NEW (توحيد "المحكمة"/"نوع القضية" مع فورمي القضية —
                         // 12 أغسطس 2026): نفس props بالظبط اللي AppModals.tsx
                         // بيبعتها لـNewCaseModal.
