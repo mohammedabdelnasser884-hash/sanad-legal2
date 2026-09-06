@@ -298,7 +298,7 @@ describe('useClientActions', () => {
       expect(mockDb.uploadSpy).toHaveBeenCalledWith('client-docs', expect.stringMatching(/^tenant-1\/id_\d+\.png$/), idFile, { upsert: true });
       expect(mockDb.uploadSpy).toHaveBeenCalledWith('client-docs', expect.stringMatching(/^tenant-1\/poa_\d+\.pdf$/), poaFile, { upsert: true });
       expect(dbWriteMock()).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.objectContaining({ contact_info: { id_url: 'https://signed/id-url', poa_url: 'https://signed/poa-url' } }),
+        data: expect.objectContaining({ contact_info: { id_url: 'https://signed/id-url', id_back_url: null, poa_url: 'https://signed/poa-url' } }),
       }));
     });
 
@@ -313,7 +313,7 @@ describe('useClientActions', () => {
 
       expect(mockDb.uploadSpy).not.toHaveBeenCalled();
       expect(dbWriteMock()).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.objectContaining({ contact_info: { id_url: null, poa_url: null } }),
+        data: expect.objectContaining({ contact_info: { id_url: null, id_back_url: null, poa_url: null } }),
       }));
     });
 
@@ -353,7 +353,7 @@ describe('useClientActions', () => {
 
       expect(resolveStorageUrl).not.toHaveBeenCalled();
       expect(dbWriteMock()).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.objectContaining({ contact_info: { id_url: null, poa_url: null } }),
+        data: expect.objectContaining({ contact_info: { id_url: null, id_back_url: null, poa_url: null } }),
       }));
     });
 
@@ -704,7 +704,7 @@ describe('useClientActions', () => {
       await handleUpdateClient('client-1', makeForm());
 
       expect(safeUpdate).toHaveBeenCalledWith(expect.anything(), 'clients', 'client-1', expect.objectContaining({
-        contact_info: { id_url: 'https://old/id', poa_url: 'https://old/poa' },
+        contact_info: { id_url: 'https://old/id', id_back_url: null, poa_url: 'https://old/poa' },
       }), expect.anything());
       expect(mockDb.uploadSpy).not.toHaveBeenCalled();
     });
@@ -721,7 +721,7 @@ describe('useClientActions', () => {
 
       expect(mockDb.uploadSpy).toHaveBeenCalledWith('client-docs', expect.stringMatching(/^tenant-1\/id_\d+\.png$/), idFile, { upsert: true });
       expect(safeUpdate).toHaveBeenCalledWith(expect.anything(), 'clients', 'client-1', expect.objectContaining({
-        contact_info: { id_url: 'https://new/id-url', poa_url: 'https://old/poa' },
+        contact_info: { id_url: 'https://new/id-url', id_back_url: null, poa_url: 'https://old/poa' },
       }), expect.anything());
     });
 
@@ -733,7 +733,7 @@ describe('useClientActions', () => {
       await handleUpdateClient('client-not-found', makeForm());
 
       expect(safeUpdate).toHaveBeenCalledWith(expect.anything(), 'clients', 'client-not-found', expect.objectContaining({
-        contact_info: { id_url: null, poa_url: null },
+        contact_info: { id_url: null, id_back_url: null, poa_url: null },
       }), null);
     });
   });
