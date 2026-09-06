@@ -21,6 +21,9 @@ import { checkPermission } from '../../../shared/lib/permissions';
 // شكل contact_info (عمود jsonb) — بيتخزن فيه روابط صور الهوية/التوكيل
 export interface ClientContactInfo {
     id_url?: string | null;
+    // 🆕 وش/ضهر البطاقة الشخصية — id_url فضل زي ما هو (الوش)، والضهر بقى
+    // في حقل منفصل بنفس النمط، مش صورة مدموجة.
+    id_back_url?: string | null;
     poa_url?: string | null;
 }
 
@@ -147,7 +150,7 @@ export function useClientActions(params: {
     // 🔒 FIX (قرارات مفتوحة — خطة حفظ المسودات، 3 أغسطس 2026): بترجع
     // Promise<boolean> دلوقتي (كانت من غير return صريح) — عشان
     // NewClientModal.tsx يمسح مسودة الفورم بس لو نجح الحفظ فعلًا.
-    const handleSaveClient = async (form: ClientFormData, idFile: File | null, poaFile: File | null): Promise<boolean> => {
+    const handleSaveClient = async (form: ClientFormData, idFile: File | null, poaFile: File | null, idBackFile?: File | null): Promise<boolean> => {
         // 🔒 NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3): can_add_clients —
         // funnel واحد لكل مسارات إنشاء موكل (زرار "موكل جديد" فى تاب
         // الموكلين، وكل مسارات NewClientModal المفتوحة من جوه قضية/جلسة/طرف
@@ -213,7 +216,7 @@ export function useClientActions(params: {
         recordSuccess('client_duplicate_check');
         if (dup.duplicate) { toast(dup.message!, true); setSavingClient(false); return false; }
         // رفع الصور على Storage (يحتاج نت — مش بنحفظه offline)
-        let idUrl: string | null = null, poaUrl: string | null = null;
+        let idUrl: string | null = null, poaUrl: string | null = null, idBackUrl: string | null = null;
         if (navigator.onLine) {
             const tenantId = getCurrentTenantId();
             const uploadFile = async (file: File, prefix: string): Promise<string | null> => {
@@ -234,6 +237,7 @@ export function useClientActions(params: {
             };
             if (idFile) idUrl = await uploadFile(idFile, 'id');
             if (poaFile) poaUrl = await uploadFile(poaFile, 'poa');
+            if (idBackFile) idBackUrl = await uploadFile(idBackFile, 'id-back');
         }
 
         const payload = {
@@ -252,7 +256,7 @@ export function useClientActions(params: {
             notes: form.notes || null,
             national_id: form.national_id || null,
             cr_number: form.cr_number || null,
-            contact_info: { id_url: idUrl, poa_url: poaUrl } as ClientContactInfo,
+            contact_info: { id_url: idUrl, id_back_url: idBackUrl, poa_url: poaUrl } as ClientContactInfo,
         };
 
         // ⚡ NEW: تمبيد أوفلاين للموكل — بنفس نمط offlineTempId المستخدم في
@@ -485,7 +489,7 @@ export function useClientActions(params: {
     // ده كان بيخلي المودال يقفل حتى في حالة الفشل (اختبار E2E clients.spec.ts
     // — تكرار الرقم القومي عند التعديل). دلوقتي الكولر بينتظر النتيجة ويقفل
     // المودال بس لو true.
-    const handleUpdateClient = async (clientId: string, form: ClientFormData, idFile?: File | null, poaFile?: File | null): Promise<boolean> => {
+    const handleUpdateClient = async (clientId: string, form: ClientFormData, idFile?: File | null, poaFile?: File | null, idBackFile?: File | null): Promise<boolean> => {
         if (!form.full_name || !form.full_name.trim()) {
             toast('❌ حقل "اسم الموكل" مطلوب', true);
             return false;
@@ -540,9 +544,11 @@ export function useClientActions(params: {
 
         let idUrl: string | null  = existingContactInfo?.id_url  || null;
         let poaUrl: string | null = existingContactInfo?.poa_url || null;
+        let idBackUrl: string | null = existingContactInfo?.id_back_url || null;
         if (navigator.onLine) {
             if (idFile)  idUrl  = await uploadFile(idFile,  'id')  ?? idUrl;
             if (poaFile) poaUrl = await uploadFile(poaFile, 'poa') ?? poaUrl;
+            if (idBackFile) idBackUrl = await uploadFile(idBackFile, 'id-back') ?? idBackUrl;
         }
 
         const clientUpdatePayload = {
@@ -561,7 +567,7 @@ export function useClientActions(params: {
             // contact_info في قاعدة البيانات نوعه Json عام (بدون index signature
             // ثابت) — الكاست عبر unknown هنا موثّق ومحصور في "شكل الحقول
             // المعروفة دي فعلاً متوافق مع Json" (كلاهما قيم string|null اختيارية).
-            contact_info: { id_url: idUrl, poa_url: poaUrl } as ClientContactInfo as unknown as Json,
+            contact_info: { id_url: idUrl, id_back_url: idBackUrl, poa_url: poaUrl } as ClientContactInfo as unknown as Json,
         };
         const { success, conflict, error } = await safeUpdate(db, 'clients', clientId, clientUpdatePayload, client?.updated_at || null);
         setSavingClient(false);
@@ -603,6 +609,9 @@ export function useClientActions(params: {
         );
         if ((existingContactInfo?.id_url || null) !== (idUrl || null)) {
             clientChanges.push({ field: 'id_url', label: 'صورة البطاقة', old: existingContactInfo?.id_url ? 'مرفوعة' : '', new: idUrl ? 'مرفوعة' : '' });
+        }
+        if ((existingContactInfo?.id_back_url || null) !== (idBackUrl || null)) {
+            clientChanges.push({ field: 'id_back_url', label: 'صورة البطاقة (ضهر)', old: existingContactInfo?.id_back_url ? 'مرفوعة' : '', new: idBackUrl ? 'مرفوعة' : '' });
         }
         if ((existingContactInfo?.poa_url || null) !== (poaUrl || null)) {
             clientChanges.push({ field: 'poa_url', label: 'التوكيل', old: existingContactInfo?.poa_url ? 'مرفوع' : '', new: poaUrl ? 'مرفوع' : '' });
