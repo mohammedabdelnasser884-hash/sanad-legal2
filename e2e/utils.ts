@@ -123,11 +123,16 @@ export async function loginAs(page: Page, email: string, password: string): Prom
 // راجع تعليق loginAs() فوق للسياق الكامل. بيتأكد إن شاشة "شروط الاستخدام"
 // مش ظاهرة (استنى فترة قصيرة كمان تحسّبًا للسباق المذكور)، ولو ظهرت
 // يوافق عليها ويرجع ينتظر app-shell قبل ما يرجّع السيطرة للتست.
+// 🔧 FIX (تحليل لوج CI فعلي — تشغيلة الشاردينج الأولى، ٦ سبتمبر ٢٠٢٦):
+// 3 ثواني مكنتش كافية — تست lawyer فشل فى محاولته الأولى بالظبط بسبب
+// الشاشة دي (الصورة المرفقة من المستخدم أثبتت كده)، ونجح لوحده فى الـretry.
+// زوّدنا المهلة لـ8 ثواني — التكلفة محدودة (بس فى أسوأ حالة، وبس على
+// التستين اللي بيستخدموا loginAs أصلًا) مقابل تقليل احتمال التكرار.
 async function acceptTermsIfShown(page: Page): Promise<void> {
   const confirmButton = page.getByTestId('terms-confirm-button');
   const alreadyVisible = await confirmButton.isVisible().catch(() => false);
   const appeared = alreadyVisible || await confirmButton
-    .waitFor({ state: 'visible', timeout: 3_000 })
+    .waitFor({ state: 'visible', timeout: 8_000 })
     .then(() => true)
     .catch(() => false);
   if (!appeared) return;
