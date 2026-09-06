@@ -87,10 +87,12 @@ const DashboardTab = React.memo(DashboardTabRaw);
 
 // ⚡ TEMP (المرحلة 0 — خطة تحسين الأداء، 7 سبتمبر 2026): أداة قياس مؤقتة
 // بديلة عن React DevTools Profiler (العميل بيشتغل من الموبايل بدون
-// جهاز يدعم إضافات المتصفح). مقفولة بالكامل افتراضيًا — بتتفعّل بس
-// بزيارة الرابط مع ?perf=1. تُشال بالكامل (هذا السطر + الاستدعاءات
-// تحت + مجلد src/dev) بعد إغلاق المرحلة 0.
-import { isPerfOverlayEnabled, onRenderPerf } from './dev/perfProbe';
+// جهاز يدعم إضافات المتصفح). الزرار العائم بيظهر تلقائي دايمًا — مفيش
+// أي رابط/flag لازم تفعّله (كان في محاولة أولى بـ?perf=1 لكنها اتعقدت
+// بسبب history.replaceState('/') اللي التطبيق بيعمله عند التحميل).
+// تُشال بالكامل (هذا السطر + الاستدعاءات تحت + مجلد src/dev) بعد إغلاق
+// المرحلة 0.
+import { onRenderPerf } from './dev/perfProbe';
 import PerfOverlay from './dev/PerfOverlay';
 
 // ─── Hooks ───────────────────────────────
@@ -979,9 +981,8 @@ function App() {
         React.createElement(ExitConfirmModal, { nav }),
 
         // ⚡ TEMP (المرحلة 0 — خطة تحسين الأداء): overlay القياس المؤقت.
-        // مقفول بالكامل افتراضيًا — ميترندرش أصلاً غير لو ?perf=1 مفعّلة.
         // يُشال هذا السطر بعد إغلاق المرحلة 0.
-        isPerfOverlayEnabled() && React.createElement(PerfOverlay)
+        React.createElement(PerfOverlay)
     );
 }
 
