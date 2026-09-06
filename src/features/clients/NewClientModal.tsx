@@ -8,6 +8,7 @@ import { Inp } from '@/shared/ui/Inp';
 import { PoaInput } from '@/shared/ui/PoaInput';
 import { Sel } from '@/shared/ui/Sel';
 import { FileUploadField } from '@/shared/ui/FileUploadField';
+import { compressImageFile } from '@/shared/lib/imageCompression';
 import { useFormDraft } from '@/shared/hooks/useFormDraft';
 import { useUnsavedChangesGuard } from '@/shared/hooks/useUnsavedChangesGuard';
 // 🆕 (مرحلة F2 — خطة Desktop): عرض متوسط للمودال على الديسكتوب بدل
@@ -99,20 +100,23 @@ function NewClientModal({onClose,onSave,loading,initialData,contextLabel}: NewCl
     const phoneWarn2 = useMemo(()=>validatePhone(form.phone2), [form.phone2]);
     const emailWarn = useMemo(()=>validateEmail(form.email), [form.email]);
 
-    const pickId=(file: File | null | undefined)=>{
+    const pickId=async(file: File | null | undefined)=>{
         if(!file)return;
-        setIdFile(file);
-        setIdPreview(URL.createObjectURL(file));
+        const compressed = await compressImageFile(file);
+        setIdFile(compressed);
+        setIdPreview(URL.createObjectURL(compressed));
     };
-    const pickIdBack=(file: File | null | undefined)=>{
+    const pickIdBack=async(file: File | null | undefined)=>{
         if(!file)return;
-        setIdBackFile(file);
-        setIdBackPreview(URL.createObjectURL(file));
+        const compressed = await compressImageFile(file);
+        setIdBackFile(compressed);
+        setIdBackPreview(URL.createObjectURL(compressed));
     };
-    const pickPoa=(file: File | null | undefined)=>{
+    const pickPoa=async(file: File | null | undefined)=>{
         if(!file)return;
-        setPoaFile(file);
-        setPoaPreview(URL.createObjectURL(file));
+        const compressed = await compressImageFile(file);
+        setPoaFile(compressed);
+        setPoaPreview(URL.createObjectURL(compressed));
     };
 
     // 🔒 FIX (تشخيص لوجز E2E — 30 يوليو 2026): كانت z-50 — بعد فيكس
