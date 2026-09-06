@@ -6,6 +6,10 @@ on:
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # لو shard واحد فشل، نفضل نشوف نتيجة الباقيين بدل ما نلغيهم كلهم
+      matrix:
+        shard: [1, 2, 3, 4]
 
     steps:
       - name: Checkout
@@ -20,26 +24,75 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # ⚠️ WebKit مش زيادة — project 'mobile' في playwright.config.ts بيستخدم
+      # devices['iPhone 13']، واللي الـdefaultBrowserType بتاعه فعليًا هو
+      # webkit (مش chromium)، حتى لو الاسم مش ظاهر صراحة في الـconfig.
+      # e2e/mobile/*.spec.ts (mobile-shell + visual-regression) بتعتمد عليه.
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
 
-      - name: Run E2E tests
-        run: npm run test:e2e
+      # 🆕 Sharding (6 سبتمبر 2026): الـsuite بتتقسم لـ4 shards بالتوازي على
+      # مستوى الـjob (matrix)، مش على مستوى التستات جوه كل job — فـworkers:1
+      # وfullyParallel:false في playwright.config.ts فاضلين زي ما هم، ورحلة
+      # كل ملف (login → قضية → جلسة → أتعاب → أرشفة) لسه بتتنفذ متسلسلة زي
+      # الأول. الهدف إن الزمن الكلي يقرب من زمن أبطأ shard بدل مجموع كل
+      # الاختبارات.
+      # SKIP_GLOBAL_TEARDOWN=true: كل shard بيسجّل الدخول على نفس تينانت
+      # الاختبار الثابت (E2E_TEST_EMAIL) بالتوازي مع التلاتة التانيين. لو كل
+      # shard شغّل الـglobalTeardown الحقيقي بتاعه (اللي بيمسح كل صف عليه
+      # ماركر "اختبار E2E" في التينانت كله، من غير أي تقييد بالوقت — شوف
+      # e2e/global-teardown.ts)، أول shard يخلص هيمسح بيانات الـ3 shards
+      # اللي لسه شغالة. التنظيف الفعلي اتنقل لـjob "e2e-cleanup" تحت، اللي
+      # بيتنفذ مرة واحدة بس بعد ما الـ4 shards يخلصوا كلهم.
+      - name: Run E2E tests (shard ${{ matrix.shard }}/4)
+        run: npx playwright test --shard=${{ matrix.shard }}/4
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
           E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          SKIP_GLOBAL_TEARDOWN: 'true'
 
+      # اسم الـartifact لازم يبقى unique لكل shard (upload-artifact@v4 بيرفض
+      # نفس الاسم من jobs متوازية أكتر من مرة).
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/
             e2e-visual-snapshots/
           if-no-files-found: warn
           retention-days: 7
+
+  # 🆕 job منفصل بيتنفذ مرة واحدة بس بعد ما الـ4 shards فوق يخلصوا (needs)،
+  # وبيشغل التنظيف الحقيقي (global-teardown.ts، من غير SKIP_GLOBAL_TEARDOWN)
+  # عن طريق playwright.cleanup.config.ts. if: always() عشان التنظيف يتنفذ
+  # حتى لو shard واحد أو أكتر فشل (يعني فيه بيانات تست عالقة أكيد).
+  e2e-cleanup:
+    needs: e2e
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run global teardown (cleanup E2E test data)
+        run: npm run test:e2e:cleanup
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
