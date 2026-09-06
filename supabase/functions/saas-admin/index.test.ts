@@ -21,6 +21,10 @@ interface FetchState {
   officeSettingsPostOk: boolean;
   tenantsDeleteCalls: string[];
   queryTableRows: unknown;
+  // ── resetOnboardingLock / getOnboardingStatuses ──
+  tenantAdminLookupRows: Array<{ user_id: string }>;
+  onboardingLockPatchCalls: Array<{ url: string; body: Record<string, unknown> }>;
+  onboardingStatusRows: unknown;
 }
 
 function freshState(): FetchState {
@@ -34,6 +38,11 @@ function freshState(): FetchState {
     officeSettingsPostOk: true,
     tenantsDeleteCalls: [],
     queryTableRows: [{ id: 'tenant-1', name: 'تينانت 1' }],
+    tenantAdminLookupRows: [{ user_id: 'admin-user-1' }],
+    onboardingLockPatchCalls: [],
+    onboardingStatusRows: [
+      { tenant_id: 'tenant-1', onboarding_status: 'pending_verification', onboarding_frozen: false, onboarding_locked_until: null, onboarding_lockout_tier: 0 },
+    ],
   };
 }
 
@@ -78,6 +87,33 @@ function buildFetchMock(state: FetchState) {
       respond: () => (state.profilesPostOk
         ? { status: 201, body: [{ user_id: 'auth-user-1' }] }
         : { status: 400, body: { message: 'فشل إنشاء profile' } }),
+    },
+    // actionResetOnboardingLock: GET profiles?tenant_id=eq....&role=eq.admin (تدوير على الأدمن)
+    {
+      match: (url, init) =>
+        url.includes('/rest/v1/profiles') &&
+        url.includes('tenant_id=eq.') &&
+        url.includes('role=eq.admin') &&
+        (!init?.method || init.method === 'GET'),
+      respond: () => ({ status: 200, body: state.tenantAdminLookupRows }),
+    },
+    // actionResetOnboardingLock: PATCH profiles?user_id=eq.... (تصفير القفل/التجميد)
+    {
+      match: (url, init) =>
+        url.includes('/rest/v1/profiles') && url.includes('user_id=eq.') && init?.method === 'PATCH',
+      respond: (url, init) => {
+        state.onboardingLockPatchCalls.push({ url, body: JSON.parse(init!.body as string) });
+        return { status: 200, body: [{}] };
+      },
+    },
+    // actionGetOnboardingStatuses: GET profiles?role=eq.admin&select=... (من غير tenant_id — أعمدة ضيّقة بس)
+    {
+      match: (url, init) =>
+        url.includes('/rest/v1/profiles') &&
+        url.includes('role=eq.admin') &&
+        !url.includes('tenant_id=eq.') &&
+        (!init?.method || init.method === 'GET'),
+      respond: () => ({ status: 200, body: state.onboardingStatusRows }),
     },
     // actionCreateOffice: POST office_settings
     {
@@ -299,6 +335,81 @@ describe('saas-admin — action=createOfficeWithAdmin', () => {
     // الـ throw مباشرة، فبيتنفذ فعليًا وبيوصل الرد اللطيف كمان
     expect(state.tenantsDeleteCalls.length).toBe(1);
     expect(state.tenantsDeleteCalls[0]).toContain('tenant-new-1');
+  });
+});
+
+describe('saas-admin — action=resetOnboardingLock', () => {
+  async function resetLockWithToken(body: Record<string, unknown>) {
+    const loginRes = await login(ENV.SAAS_ADMIN_PASSWORD);
+    const { token } = await loginRes.json();
+    return handler(jsonRequest({ action: 'resetOnboardingLock', token, ...body }));
+  }
+
+  it('من غير token → 401 (نفس بوابة التحقق العامة لباقي الأكشنز المحمية)', async () => {
+    const res = await handler(jsonRequest({ action: 'resetOnboardingLock', tenantId: 'tenant-1' }));
+    expect(res.status).toBe(401);
+    const data = await res.json();
+    expect(data.error).toBe('الجلسة مطلوبة');
+  });
+
+  it('من غير tenantId → 400', async () => {
+    const res = await resetLockWithToken({});
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe('tenantId مطلوب');
+  });
+
+  it('مفيش حساب أدمن مرتبط بالـtenant ده → 404، ومفيش أي PATCH بيتنفذ', async () => {
+    state.tenantAdminLookupRows = [];
+    const res = await resetLockWithToken({ tenantId: 'tenant-ghost' });
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe('تعذر العثور على حساب أدمن مرتبط بهذا المكتب');
+    expect(state.onboardingLockPatchCalls).toEqual([]);
+  });
+
+  it('مسار النجاح → بيدوّر على الأدمن بالـtenantId، يصفّر القفل/التجميد الثلاثة، ويرجع { ok: true }', async () => {
+    state.tenantAdminLookupRows = [{ user_id: 'admin-user-9' }];
+    const res = await resetLockWithToken({ tenantId: 'tenant-9' });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toEqual({ ok: true });
+
+    expect(state.onboardingLockPatchCalls).toHaveLength(1);
+    expect(state.onboardingLockPatchCalls[0].url).toContain('user_id=eq.admin-user-9');
+    expect(state.onboardingLockPatchCalls[0].body).toEqual({
+      onboarding_lockout_tier: 0,
+      onboarding_locked_until: null,
+      onboarding_frozen: false,
+    });
+  });
+});
+
+describe('saas-admin — action=getOnboardingStatuses', () => {
+  async function getStatusesWithToken() {
+    const loginRes = await login(ENV.SAAS_ADMIN_PASSWORD);
+    const { token } = await loginRes.json();
+    return handler(jsonRequest({ action: 'getOnboardingStatuses', token }));
+  }
+
+  it('من غير token → 401', async () => {
+    const res = await handler(jsonRequest({ action: 'getOnboardingStatuses' }));
+    expect(res.status).toBe(401);
+  });
+
+  it('token صالح → 200 وبيرجع صفوف onboarding الأدمنز زي ما هي (أعمدة ضيّقة بس)', async () => {
+    const res = await getStatusesWithToken();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toEqual(state.onboardingStatusRows);
+  });
+
+  it('مفيش صفوف (كل المكاتب completed) → مصفوفة فاضية، مش خطأ', async () => {
+    state.onboardingStatusRows = [];
+    const res = await getStatusesWithToken();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toEqual([]);
   });
 });
 
