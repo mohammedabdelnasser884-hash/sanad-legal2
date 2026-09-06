@@ -80,6 +80,22 @@ async function deleteByIdIn(
 }
 
 export default async function globalTeardown(): Promise<void> {
+  // 🔒 FIX (Sharding — 6 سبتمبر 2026): من ساعة ما شلنا شرط startTime (8
+  // أغسطس)، التنظيف بقى "كنس شامل" على كل صف عليه ماركر "اختبار E2E" في
+  // التينانت كله — مش مقصور على الرن الحالي. ده كان آمن لما كان فيه رن
+  // E2E واحد بس شغال في المرة. لكن مع sharding (4 jobs بالتوازي بيشغلوا
+  // نفس الملف ده كـglobalTeardown كل واحد لوحده)، أول shard يخلص هيمسح
+  // بيانات الـ3 shards التانيين اللي لسه شغالة → فشل مضمون مش عابر.
+  // الحل: كل shard بيشغل بـSKIP_GLOBAL_TEARDOWN=true (مضبوط في e2e.yml)،
+  // والتنظيف الفعلي بيتنفذ مرة واحدة بس في job منفصل ("e2e-cleanup")
+  // بعد ما الـ4 shards يخلصوا كلهم (needs: [e2e])، عن طريق
+  // playwright.cleanup.config.ts. تشغيل محلي عادي (من غير الـenv variable
+  // ده) لسه بيشتغل زي ما هو من غير أي تغيير.
+  if (process.env.SKIP_GLOBAL_TEARDOWN === 'true') {
+    console.log('[global-teardown] SKIP_GLOBAL_TEARDOWN=true — تخطّي (هيتعمل في job التنظيف المنفصل بعد كل الـshards).');
+    return;
+  }
+
   console.log('\n[global-teardown] بدء تنظيف بيانات E2E...');
 
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
