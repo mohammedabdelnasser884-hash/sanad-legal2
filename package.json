@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:cleanup": "playwright test --config=playwright.cleanup.config.ts",
     "build:analyze": "ANALYZE=true npm run build",
     "test:visual": "playwright test e2e/mobile/visual-regression.spec.ts --project=mobile",
     "test:visual:update": "playwright test e2e/mobile/visual-regression.spec.ts --project=mobile --update-snapshots",
