@@ -13,7 +13,7 @@ interface ClientDetailModalProps {
     cases: MappedCase[];
     onClose: () => void;
     onDelete?: (clientId: string) => void;
-    onEdit?: (clientId: string, form: ClientFormData, idFile?: File | null, poaFile?: File | null) => void | boolean | Promise<void | boolean>;
+    onEdit?: (clientId: string, form: ClientFormData, idFile?: File | null, poaFile?: File | null, idBackFile?: File | null) => void | boolean | Promise<void | boolean>;
     onOpenCase?: (ca: MappedCase) => void;
     // 🔒 FIX (تقرير الموثوقية — نتيجة 1): بتتمرر لـ EditClientModal عشان
     // تقفل زرار "حفظ التعديلات" أثناء عملية الحفظ — نفس الـ state
@@ -52,6 +52,7 @@ function ClientDetailModal({client:c, cases, onClose, onDelete, onEdit, onOpenCa
     // يكون منتهي/رابط عام قديم، فبنولّد رابط موقّع طازة وقت فتح المودال.
     const contactInfo = c.contact_info as ClientContactInfo | null;
     const idImgUrl  = useResolvedStorageUrl('client-docs', contactInfo?.id_url);
+    const idBackImgUrl = useResolvedStorageUrl('client-docs', contactInfo?.id_back_url);
     const poaImgUrl = useResolvedStorageUrl('client-docs', contactInfo?.poa_url);
     // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
     // المُطبَّق في NewCaseModal.tsx. عارض الصورة (imgViewer) بيفضل ملء الشاشة
@@ -110,8 +111,8 @@ function ClientDetailModal({client:c, cases, onClose, onDelete, onEdit, onOpenCa
                 // من غير ما ينتظر نتيجة onEdit (تكرار الرقم القومي مثلاً بيرفض
                 // التحديث ويعرض توست خطأ، بس المودال كان يقفل برضو). دلوقتي
                 // بننتظر النتيجة ونقفل بس لو نجح فعلاً.
-                onSave: async (form: ClientFormData, idFile?: File | null, poaFile?: File | null) => {
-                    const result = await onEdit?.(c.id, form, idFile, poaFile);
+                onSave: async (form: ClientFormData, idFile?: File | null, poaFile?: File | null, idBackFile?: File | null) => {
+                    const result = await onEdit?.(c.id, form, idFile, poaFile, idBackFile);
                     if (result !== false) closeEditClient();
                     // 🔒 FIX (قرارات مفتوحة — خطة حفظ المسودات، 3 أغسطس 2026):
                     // بنرجّع النتيجة لـ EditClientModal.tsx عشان يمسح المسودة
@@ -177,17 +178,28 @@ function ClientDetailModal({client:c, cases, onClose, onDelete, onEdit, onOpenCa
                 ),
 
                 // صور المستندات
-                contactInfo&&(contactInfo.id_url||contactInfo.poa_url)&&React.createElement('div',{className:"space-y-2"},
+                contactInfo&&(contactInfo.id_url||contactInfo.id_back_url||contactInfo.poa_url)&&React.createElement('div',{className:"space-y-2"},
                     React.createElement('p',{className:"text-[10px] font-black text-slate-500"},"— صور المستندات —"),
                     React.createElement('div',{className:"grid grid-cols-2 gap-3"},
                         contactInfo?.id_url&&React.createElement('div',{className:"space-y-1"},
-                            React.createElement('p',{className:"text-[9px] text-slate-500 text-center"},"البطاقة الشخصية"),
+                            React.createElement('p',{className:"text-[9px] text-slate-500 text-center"},"البطاقة - وش"),
                             idImgUrl
                                 ? React.createElement('img',{
                                     src:idImgUrl,
                                     onClick:()=>setImgViewer(idImgUrl),
                                     className:"w-full h-28 object-cover rounded-xl border border-white/10 cursor-pointer hover:border-emerald-500/50 transition-colors",
-                                    alt:"البطاقة"
+                                    alt:"البطاقة - وش"
+                                })
+                                : React.createElement('div',{className:"w-full h-28 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center text-[9px] text-slate-500"},"جاري التحميل...")
+                        ),
+                        contactInfo?.id_back_url&&React.createElement('div',{className:"space-y-1"},
+                            React.createElement('p',{className:"text-[9px] text-slate-500 text-center"},"البطاقة - ضهر"),
+                            idBackImgUrl
+                                ? React.createElement('img',{
+                                    src:idBackImgUrl,
+                                    onClick:()=>setImgViewer(idBackImgUrl),
+                                    className:"w-full h-28 object-cover rounded-xl border border-white/10 cursor-pointer hover:border-emerald-500/50 transition-colors",
+                                    alt:"البطاقة - ضهر"
                                 })
                                 : React.createElement('div',{className:"w-full h-28 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center text-[9px] text-slate-500"},"جاري التحميل...")
                         ),
