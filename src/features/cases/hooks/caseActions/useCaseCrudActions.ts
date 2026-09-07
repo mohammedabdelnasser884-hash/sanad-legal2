@@ -17,7 +17,7 @@ import { withFkOfflineSentinel } from '../../../calendar/hooks/caseSessionLinkin
 import { validateParties } from '../../../../shared/lib/casePartiesValidation';
 import { checkPermission } from '../../../../shared/lib/permissions';
 import type { MappedCase } from '../../../../hooks/useAppData';
-import type { CaseActionsParams } from './types';
+import type { CaseActionsParams, CaseFormSubmitData } from './types';
 import { buildPartiesDiff } from './partiesDiff';
 import type { createGetCaseRecord } from './caseRecordLookup';
 
