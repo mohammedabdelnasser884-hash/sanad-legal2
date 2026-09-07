@@ -114,11 +114,74 @@ export function useCaseDetailActions(
     docs: CaseDocWithUrl[];
     caseParties: CasePartyRow[];
   }
+
+  // ══════════════════════════════════════════════════════════════
+  //  🔴 FIX (تشخيص "بطء بيزيد مع الوقت" — 7 سبتمبر 2026): الكاش فوق كان
+  //  بيتكتب بمفتاح `CASE_DETAIL_CACHE_PREFIX + caseData.id` لكل قضية
+  //  بيتم فتحها — **من غير أي حد أقصى أو مسح للقديم خالص** من يوم ما
+  //  اتضاف (13 أغسطس 2026). يعني كل قضية اتفتحت ولو مرة واحدة من ~1000+
+  //  قضية موجودة، بتفضل عاملة entry دايم في localStorage للأبد. localStorage
+  //  عملياته synchronous وبتبطأ كل ما الحجم الكلي للـorigin يكبر — وده
+  //  بالظبط نمط "بطء موجود من زمان وبيزيد تدريجيًا" (مش بطء ثابت من
+  //  يوم واحد، ولا مرتبط بالشبكة).
+  //
+  //  الحل: فهرس بسيط (CASE_DETAIL_CACHE_INDEX_KEY) بيحتفظ بترتيب آخر
+  //  استخدام لآخر CASE_DETAIL_CACHE_MAX_ENTRIES قضية بس — أي قضية زيادة
+  //  عن السقف بتتمسح فعليًا (removeItem) مش بس تتشال من الفهرس. أول مرة
+  //  الكود ده يشتغل (مفيش فهرس لسه)، بيعمل مسح فوري لأي تراكم قديم من
+  //  قبل الفيكس (pruneCaseDetailCacheIfNeeded) عشان ينضّف الضرر المتراكم
+  //  من شهر، مش بس يوقف الزيادة الجديدة.
+  // ══════════════════════════════════════════════════════════════
+  const CASE_DETAIL_CACHE_INDEX_KEY = 'sanad_cached_case_detail_v1_index';
+  const CASE_DETAIL_CACHE_MAX_ENTRIES = 40;
+
+  const pruneCaseDetailCacheIfNeeded = useCallback(() => {
+    try {
+      if (localStorage.getItem(CASE_DETAIL_CACHE_INDEX_KEY) !== null) return;
+      // مفيش فهرس لسه — يبقى إما أول مرة نهائيًا، أو (الأرجح) فيه تراكم
+      // قديم من قبل ما الفهرس ده يتضاف. بنجمع كل مفاتيح الكاش الموجودة
+      // فعليًا في localStorage، ولو عددهم زاد عن السقف، بنمسح الزيادة
+      // فورًا (ترتيب عشوائي حسب localStorage نفسه — مفيش عندنا بيانات
+      // "آخر استخدام" من قبل الفيكس ده، بس المهم نوقف التراكم فورًا).
+      const allKeys: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(CASE_DETAIL_CACHE_PREFIX)) allKeys.push(k);
+      }
+      if (allKeys.length > CASE_DETAIL_CACHE_MAX_ENTRIES) {
+        const excess = allKeys.length - CASE_DETAIL_CACHE_MAX_ENTRIES;
+        for (let i = 0; i < excess; i++) {
+          try { localStorage.removeItem(allKeys[i]); } catch { /* ignore */ }
+        }
+      }
+      const remainingIds = allKeys
+        .slice(Math.max(0, allKeys.length - CASE_DETAIL_CACHE_MAX_ENTRIES))
+        .map((k) => k.slice(CASE_DETAIL_CACHE_PREFIX.length));
+      localStorage.setItem(CASE_DETAIL_CACHE_INDEX_KEY, JSON.stringify(remainingIds));
+    } catch { /* ignore */ }
+  }, [CASE_DETAIL_CACHE_PREFIX]);
+
+  const touchCaseDetailCacheIndex = useCallback((caseId: string) => {
+    try {
+      pruneCaseDetailCacheIfNeeded();
+      const raw = localStorage.getItem(CASE_DETAIL_CACHE_INDEX_KEY);
+      let ids: string[] = raw ? JSON.parse(raw) : [];
+      ids = ids.filter((id) => id !== caseId);
+      ids.push(caseId);
+      while (ids.length > CASE_DETAIL_CACHE_MAX_ENTRIES) {
+        const evicted = ids.shift();
+        if (evicted) { try { localStorage.removeItem(CASE_DETAIL_CACHE_PREFIX + evicted); } catch { /* ignore */ } }
+      }
+      localStorage.setItem(CASE_DETAIL_CACHE_INDEX_KEY, JSON.stringify(ids));
+    } catch { /* ignore */ }
+  }, [pruneCaseDetailCacheIfNeeded]);
+
   const saveCaseDetailCache = useCallback((data: Omit<CaseDetailCache, 'tenantId'>) => {
     try {
       localStorage.setItem(CASE_DETAIL_CACHE_PREFIX + caseData.id, JSON.stringify({ ...data, tenantId: profile?.tenant_id ?? null }));
+      touchCaseDetailCacheIndex(caseData.id);
     } catch { /* localStorage غير متاح — تجاهل */ }
-  }, [caseData.id, profile?.tenant_id]);
+  }, [caseData.id, profile?.tenant_id, touchCaseDetailCacheIndex]);
   const loadCaseDetailCache = useCallback((): CaseDetailCache | null => {
     try {
       const raw = localStorage.getItem(CASE_DETAIL_CACHE_PREFIX + caseData.id);
