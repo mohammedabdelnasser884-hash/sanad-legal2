@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { I, COUNTRY_CONFIGS, loadOfficeSetting } from './constants';
 import { useNavigation } from './useNavigation';
 import type { TabName } from './useNavigation';
@@ -291,6 +291,23 @@ function App() {
         fetchCases, fetchLawyers, fetchClients, searchCases,
     } = data;
     const { sendTelegram }                                      = useTelegramAlerts(profile);
+
+    // ⚡ FIX (خطة تحسين الأداء — بعد فشل e2e حقيقي، 7 سبتمبر 2026):
+    // بما إن Dashboard/CasesTab/ClientsTab بقوا يفضلوا mounted (مش
+    // unmount/remount) عند التنقل بين التابات، لازم نجيب بيانات جديدة
+    // صراحة كل مرة المستخدم يرجع لتاب القضايا/الموكلين — وإلا أي تغيير
+    // حصل من مكان تاني (زي استرجاع قضية من شاشة الأرشيف، اللي بيعدّل
+    // القاعدة مباشرة من غير ما يحدّث state القضايا على مستوى App.tsx)
+    // مش هيظهر في القائمة لحد ما حاجة تانية تعمل fetch بالصدفة.
+    // `isFirstTabEffect` بيمنع تكرار الجلب الأولي اللي `useInitialDataSync`
+    // أصلاً بيعمله عند تحميل التطبيق لأول مرة.
+    const isFirstTabEffect = useRef(true);
+    useEffect(() => {
+        if (isFirstTabEffect.current) { isFirstTabEffect.current = false; return; }
+        if (tab === 'cases')   fetchCases(casesPage, casesFilter);
+        if (tab === 'clients') fetchClients(clientsPage, clientSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tab]);
 
     // 🔧 FIX (20 أغسطس 2026 — طلب المستخدم "زرار الريفرش شكلي في بعض
     // الأقسام"): زرار الريفرش في الهيدر (AppHeader.tsx/DesktopHeader.tsx)
