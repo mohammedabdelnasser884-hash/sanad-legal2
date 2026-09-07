@@ -69,7 +69,13 @@ const ArchiveTab = React.lazy(() => import('./features/dashboard/ArchiveTab'));
 const LegalDocumentsPage = React.lazy(() => import('./pages/LegalDocumentsPage'));
 
 // ─── Dashboard Components ─────────────────
-import AppHeader from './features/dashboard/AppHeader';
+import AppHeaderRaw from './features/dashboard/AppHeader';
+// ⚡ PERF (خطة تحسين الأداء — مبني على قياس Profiler فعلي، 7 سبتمبر 2026):
+// المرحلة 0 أثبتت إن AppHeader كان بيترندر مع أي تغيير state في App.tsx
+// (حتى لو props بتاعته الفعلية ما اتغيرتش) لأنه كان الوحيد من غير memo
+// بين المكونات الرئيسية. نفس نمط 1.1 المطبّق على DashboardTab/CasesTab/
+// ClientsTab بالظبط.
+const AppHeader = React.memo(AppHeaderRaw);
 // ⚡ DashboardTab فضل static عمدًا (مش React.lazy زي باقي التابات فوق)
 // — هو التاب الافتراضي الوحيد (resolveInitialTab في useNavigation.ts)،
 // فتحويله lazy كان هيضيف لحظة تحميل (Suspense fallback) لأغلبية
@@ -117,6 +123,17 @@ function App() {
     const nav = useNavigation();
     const tab = nav.tab;
     const setTab = useCallback((newTab: TabName) => nav.navigateTo(newTab), [nav]);
+
+    // ⚡ PERF (خطة تحسين الأداء — مبني على قياس Profiler فعلي، 7 سبتمبر
+    // 2026): بيتتبع مين من التلات تابات (dashboard/cases/clients) اتفتح
+    // فعليًا مرة واحدة على الأقل، عشان نخليهم mounted (hidden بـCSS) بعد
+    // كده بدل unmount/remount في كل تنقّل — من غير ما نحمّل bundle
+    // CasesTab/ClientsTab الكسول (React.lazy) من أول تحميل للتطبيق لو
+    // المستخدم لسه ما زارهومش، وده كان هيبطّل جزء من فايدة المرحلة 2.
+    const [mountedTabs, setMountedTabs] = useState<Set<TabName>>(() => new Set([tab]));
+    useEffect(() => {
+        setMountedTabs((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab)));
+    }, [tab]);
 
     const showCaseModal   = nav.isOpen('newCase');
     const showLawyerModal = nav.isOpen('newLawyer');
@@ -770,9 +787,23 @@ function App() {
             // `w-full` عشان الـwrapper ياخد نفس عرض `<main>` تحت 1024px
             // (صفر تأثير على الموبايل).
             React.createElement('div', { className: 'w-full lg:max-w-[1600px] lg:mx-auto' },
-            tab === 'dashboard'  && Dashboard,
-            tab === 'cases'      && CasesTabContent,
-            tab === 'clients'    && ClientsTabContent,
+            // ⚡ PERF (خطة تحسين الأداء — مبني على قياس Profiler فعلي، 7
+            // سبتمبر 2026): المرحلة 0 أثبتت إن `tab === 'x' && Component`
+            // كان بيعمل unmount/remount كامل لـDashboard/CasesTab/ClientsTab
+            // في كل تنقّل — ده سبب أعلى مدد render اتسجلت في كل القياس
+            // (CasesTab mount: 23.7ms، ClientsTab mount: 17.9ms، أعلى من
+            // أي حرف اتكتب في البحث)، لأن كل رجوع للتاب كان بيعيد fetch
+            // البيانات من الصفر. الحل: التلات تابات دول بس يفضلوا mounted
+            // دايمًا ويتخفوا بـCSS (`display:none`) بدل الشرط. باقي
+            // التابات (calendar/fees/reminders/team/documents/legalDocs/
+            // admin) اتسابوا **زي ما هي** (unmount عادي) عمدًا — التصميم
+            // الأصلي بيعتمد على إنهم مش mounted عشان signals زي
+            // sessionsRefreshSignal/dataRefreshSignal (شوف تعليق
+            // handleGlobalRefresh فوق) متوصلش لهم وهم مش ظاهرين، وده نطاق
+            // خارج الدليل اللي القياس أثبته.
+            React.createElement('div', { style: tab === 'dashboard' ? undefined : { display: 'none' } }, mountedTabs.has('dashboard') && Dashboard),
+            React.createElement('div', { style: tab === 'cases' ? undefined : { display: 'none' } }, mountedTabs.has('cases') && CasesTabContent),
+            React.createElement('div', { style: tab === 'clients' ? undefined : { display: 'none' } }, mountedTabs.has('clients') && ClientsTabContent),
             tab === 'calendar'   && React.createElement('div', { className: 'space-y-4 fade-in' },
                 React.createElement('div', { className: 'flex items-center justify-between' },
                     React.createElement('h3', { className: 'text-xl font-black text-white' }, '📅 الجلسات'),
