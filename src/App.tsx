@@ -111,6 +111,10 @@ import { useInitialDataSync } from './hooks/useInitialDataSync';
 // إجبارية بعد اللوجن مباشرة، قبل أي محتوى تاني في التطبيق.
 import TermsAcceptanceScreen from './features/terms/TermsAcceptanceScreen';
 import { useTermsAcceptance } from './features/terms/useTermsAcceptance';
+// ⚡ NEW (7 سبتمبر 2026 — تشخيص أداء بدون كمبيوتر): أداة PerfHud بتظهر
+// بس لـisAdmin — راجع src/shared/dev/PerfHud.tsx للتفاصيل الكاملة.
+// dev-only بالكامل: مفيش أي تأثير على أي مستخدم تاني غير الأدمن.
+import PerfHud from './shared/dev/PerfHud';
 
 function App() {
     const { profile, setProfile, authUser, setAuthUser, authLoading, loadProfile, isPasswordRecovery } = useAuthProfile();
@@ -1007,7 +1011,11 @@ function App() {
         }),
 
         // ── Exit Confirm ──
-        React.createElement(ExitConfirmModal, { nav })
+        React.createElement(ExitConfirmModal, { nav }),
+
+        // ⚡ NEW (7 سبتمبر 2026): PerfHud — أداة تشخيص أداء على الموبايل
+        // بلا كمبيوتر، ظاهرة بس للأدمن. راجع src/shared/dev/PerfHud.tsx.
+        isAdmin && React.createElement(PerfHud)
     );
 }
 
