@@ -115,6 +115,13 @@ import { useTermsAcceptance } from './features/terms/useTermsAcceptance';
 // بس لـisAdmin — راجع src/shared/dev/PerfHud.tsx للتفاصيل الكاملة.
 // dev-only بالكامل: مفيش أي تأثير على أي مستخدم تاني غير الأدمن.
 import PerfHud from './shared/dev/PerfHud';
+// ⚡ NEW (خطة المرحلة 15 — إعادة ضبط باقات بوابة إدارة المكاتب، E1+E4،
+// 8 سبتمبر 2026): هوك حالة اشتراك المكتب الحالي + بانر التذكير (E1) +
+// شاشة القفل الكاملة (E4). راجع تعليقات الهوك نفسه لتفصيل الحالات
+// الستة (active/trial_viewer/grace/readonly/locked/n_a).
+import { useTenantSubscriptionStatus } from './hooks/useTenantSubscriptionStatus';
+import TenantSubscriptionBanner from './features/subscription/TenantSubscriptionBanner';
+import TenantLockScreen from './features/subscription/TenantLockScreen';
 
 function App() {
     const { profile, setProfile, authUser, setAuthUser, authLoading, loadProfile, isPasswordRecovery } = useAuthProfile();
@@ -122,6 +129,12 @@ function App() {
     // ⚡ NEW (خطة إقرار الشروط والأحكام، Phase 3): لازم يتنادى هنا (unconditionally)
     // مع باقي الـhooks، مش بعد أي return شرطي تحت — قاعدة Rules of Hooks.
     const { needsAcceptance, markAccepted } = useTermsAcceptance(profile);
+
+    // ⚡ NEW (E1+E4 — 8 سبتمبر 2026): نفس مبدأ useTermsAcceptance فوق —
+    // لازم يتنادى unconditionally هنا مع باقي الـhooks، قبل أي return شرطي
+    // (شاشة القفل E4 تحت بتستخدم lockState في return شرطي بعد الـgates
+    // التانية، فالهوك نفسه لازم يتنادى قبلها بغض النظر عن نتيجته).
+    const { tenant: subscriptionTenant, lockState: subscriptionLockState, countdownDays: subscriptionCountdownDays } = useTenantSubscriptionStatus(profile);
 
     // ── Navigation ────────────────────────────────────────────
     const nav = useNavigation();
@@ -622,6 +635,22 @@ function App() {
     // ⚡ NEW: لسه ماوافقش على CURRENT_TERMS_VERSION — يمنع أي وصول لباقي التطبيق
     if (needsAcceptance) return React.createElement(TermsAcceptanceScreen, { profile, onAccepted: markAccepted });
 
+    // ⚡ NEW (E4 — خطة المرحلة 15، 8 سبتمبر 2026): مكتب مقفول تمامًا
+    // (تجربة خلصت 30 يوم / باقة مدفوعة فاتها فترة السماح + الـreadonly
+    // من غير تأكيد دفع). current_tenant_id() بترجع NULL في الحالة دي
+    // (منع فعلي على مستوى RLS لكل حاجة غير profiles/tenants نفسهم —
+    // راجع ميجريشن 15-11)، لكن الـprofile لسه بيتحمّل عادي (شرط
+    // `user_id = auth.uid()` في profiles_select مستقل عن current_tenant_id())،
+    // فمن غير البوابة دي المستخدم كان هيوصل لتطبيق فاضي بلا تفسير بدل
+    // ما يفهم السبب ويلاقي وسيلة تواصل. بعد بوابة الشروط عمدًا (لو
+    // حساب مقفول أصلاً، مفيش داعي يوافق على شروط قبل ما يشوف سبب القفل).
+    if (subscriptionLockState === 'locked') {
+        return React.createElement(TenantLockScreen, {
+            tenantStatus: subscriptionTenant ? subscriptionTenant.status : null,
+            onLogout: handleLogout,
+        });
+    }
+
     // ─────────────────────────────────────────────────────────
     //  Render
     // ─────────────────────────────────────────────────────────
@@ -712,14 +741,26 @@ function App() {
     // بالظبط نفس الـprops اللي بتتبعت لـAppHeader تحت (profile،
     // setShowMenu عبر setShowHeaderMenu، setShowSearch، fetchCases،
     // casesFilter، loadingCases: casesLoading) من غير أي تعديل عليهم.
-    return React.createElement(AppShell, {
-        tab, setTab, isAdmin, canGenerateDocuments, onAIClick: handleAIButtonClick,
-        profile, setShowMenu: (v: boolean) => setShowHeaderMenu(v), setShowSearch,
-        fetchCases: handleGlobalRefresh, casesFilter, loadingCases: casesLoading,
-        // ⚡ NEW (2 سبتمبر 2026 — ملحق PWA): تمرير لـDesktopHeader عبر
-        // AppShell — راجع تعليقات NEW في AppShell.tsx/DesktopHeader.tsx.
-        pwaInstallable, handlePwaInstall,
-    },
+    return React.createElement(React.Fragment, null,
+        // ⚡ NEW (E1 — خطة المرحلة 15، 8 سبتمبر 2026): بانر تذكير الاشتراك،
+        // للأدمن بس (نفس نطاق مسؤولية تجديد/تأكيد الدفع)، وبس في حالات
+        // trial_viewer/grace/readonly — TenantSubscriptionBanner نفسه
+        // بيرجّع null لأي حالة تانية. برّه AppShell عمدًا (fixed
+        // positioning، نفس مبدأ #offline-banner الموجود) عشان يفضل ظاهر
+        // فوق كل التابات بدون ما يتلف بمنطق تخطيط AppShell/main.
+        isAdmin && React.createElement(TenantSubscriptionBanner, {
+            lockState: subscriptionLockState,
+            countdownDays: subscriptionCountdownDays,
+        }),
+
+        React.createElement(AppShell, {
+            tab, setTab, isAdmin, canGenerateDocuments, onAIClick: handleAIButtonClick,
+            profile, setShowMenu: (v: boolean) => setShowHeaderMenu(v), setShowSearch,
+            fetchCases: handleGlobalRefresh, casesFilter, loadingCases: casesLoading,
+            // ⚡ NEW (2 سبتمبر 2026 — ملحق PWA): تمرير لـDesktopHeader عبر
+            // AppShell — راجع تعليقات NEW في AppShell.tsx/DesktopHeader.tsx.
+            pwaInstallable, handlePwaInstall,
+        },
 
         // ⚡ H2 (16 أغسطس 2026): AppHeader القديم بقى `lg:hidden` — كان
         // ظاهر مؤقتًا فوق DesktopHeader (B3) لحد ما تتوفر تغطية اختبار
@@ -1016,6 +1057,9 @@ function App() {
         // ⚡ NEW (7 سبتمبر 2026): PerfHud — أداة تشخيص أداء على الموبايل
         // بلا كمبيوتر، ظاهرة بس للأدمن. راجع src/shared/dev/PerfHud.tsx.
         isAdmin && React.createElement(PerfHud)
+        ) // ⚡ NEW (E1 — 8 سبتمبر 2026): إغلاق React.createElement(AppShell, ...) — الباقة
+          // اللي فوق (TenantSubscriptionBanner) والقوس الأخير تحت بيقفلوا
+          // React.createElement(React.Fragment, ...) اللي بيلف الاتنين.
     );
 }
 
