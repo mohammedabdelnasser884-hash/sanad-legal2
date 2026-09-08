@@ -255,12 +255,7 @@
         </div>
         <div>
           <label class="text-[10px] font-black text-slate-400 block mb-1">الباقة</label>
-          <select id="f-plan" class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold">
-            <option value="free">مجانية ($0)</option>
-            <option value="individual">مستقل ($5/شهر)</option>
-            <option value="small_firm">مكاتب ($10/شهر)</option>
-            <option value="enterprise">مؤسسات ($20/شهر)</option>
-          </select>
+          <select id="f-plan" class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold"></select>
         </div>
         <div>
           <label class="text-[10px] font-black text-slate-400 block mb-1">الحالة</label>
@@ -271,9 +266,10 @@
           </select>
         </div>
         <div class="col-span-2">
-          <label class="text-[10px] font-black text-slate-400 block mb-1">تاريخ انتهاء الفترة التجريبية (اختياري)</label>
+          <label class="text-[10px] font-black text-slate-400 block mb-1">تاريخ انتهاء التجربة/الاشتراك</label>
           <input id="f-expires" type="date"
             class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold"/>
+          <p class="text-[9px] text-slate-500 font-bold mt-1">بيتعبى تلقائيًا بشهر من النهارده لأي مكتب جديد (تجربة مجانية) — تقدر تغيّره.</p>
         </div>
         <div class="col-span-2">
           <label class="text-[10px] font-black text-slate-400 block mb-1">ملاحظات</label>
@@ -410,6 +406,60 @@ const SUPABASE_PROJECT_REF = 'lrdshyohvymbdanoxgyy'; // ← غيّر هنا فق
 const FN_URL = `https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/saas-admin`;
 // ─────────────────────────────────────────────────────────────────────────
 const TABLE       = 'tenants';
+
+// ─── الباقات (مصدر واحد بس) ───────────────────────────
+// ⚠️ ده المصدر الوحيد لأسماء/أسعار/مميزات الباقات في الصفحة كلها —
+// أي تعديل في السعر أو الاسم يتعمل هنا بس، وكل الأماكن التانية
+// (قائمة الاختيار، جدول المكاتب، تاب الباقات) بتتبني منه تلقائيًا.
+// مفيش باقة "مجانية" دايمة — التجربة المجانية شهر واحد بس (status=trial)،
+// وبعدها لازم يختار المكتب واحدة من الباقات التلاتة دي ويدفع.
+const PLANS = [
+  {
+    id: 'lawyer', name: 'باقة المحامي', monthly: 250, color: '#C9A84C',
+    badge: 'الأكثر طلباً',
+    features: [
+      { text: '20 قضية / شهرياً', ok: true },
+      { text: 'مستخدم واحد', ok: true },
+      { text: 'المساعد الذكي — 25 سؤال/شهر', ok: true },
+      { text: 'نسخ احتياطي', ok: true },
+      { text: 'بوابة الموكل', ok: false },
+    ],
+  },
+  {
+    id: 'office', name: 'باقة المكاتب', monthly: 400, color: '#60a5fa',
+    badge: null,
+    features: [
+      { text: '100 قضية / شهرياً', ok: true },
+      { text: '3 مستخدمين بصلاحيات مختلفة', ok: true },
+      { text: 'المساعد الذكي AI — بدون حد', ok: true },
+      { text: 'بوابة الموكل', ok: true },
+      { text: 'تقارير متقدمة', ok: true },
+    ],
+  },
+  {
+    id: 'enterprise', name: 'باقة المؤسسات', monthly: 1000, color: '#a78bfa',
+    badge: 'الأفضل للمؤسسات',
+    features: [
+      { text: 'قضايا غير محدودة', ok: true },
+      { text: 'مستخدمين غير محدودين', ok: true },
+      { text: 'المساعد الذكي AI — بدون حد', ok: true },
+      { text: 'بوابة الموكل', ok: true },
+      { text: 'دعم أولوية 24/7', ok: true },
+    ],
+  },
+];
+const PLAN_LABEL = Object.fromEntries(PLANS.map(p => [p.id, p.name.replace('باقة ', '')]));
+const PLAN_COLOR = Object.fromEntries(PLANS.map(p => [p.id, p.color]));
+const DEFAULT_PLAN_ID = PLANS[0].id; // 'lawyer' — الاختيار الافتراضي وقت إضافة مكتب جديد
+const TRIAL_DAYS = 30; // مدة التجربة المجانية بالأيام (شهر واحد)
+
+// تاريخ اليوم + TRIAL_DAYS بصيغة YYYY-MM-DD، لتعبئة "تاريخ انتهاء التجربة"
+// تلقائيًا وقت إضافة مكتب جديد لو الأدمن مسابهاش فاضية.
+function computeTrialEndDate() {
+  const d = new Date();
+  d.setDate(d.getDate() + TRIAL_DAYS);
+  return d.toISOString().slice(0, 10);
+}
 
 // ─── أمان: تهريب أي نص قبل إدراجه في innerHTML ───────────
 // بيانات المكاتب (الاسم، الملاحظات...) بتيجي من القاعدة وممكن
@@ -687,14 +737,14 @@ function renderStats() {
   const trial     = allTenants.filter(t=>t.status==='trial').length;
   const suspended = allTenants.filter(t=>t.status==='suspended').length;
 
-  const planPrice = { free:0, individual:5, small_firm:10, enterprise:20 };
+  const planPrice = Object.fromEntries(PLANS.map(p => [p.id, p.monthly]));
   const mrr = allTenants.filter(t=>t.status==='active').reduce((s,t)=>s+(planPrice[t.subscription_plan]||0),0);
 
   const stats = [
     { label:'إجمالي المكاتب', value: allTenants.length, icon:'🏢', color:'text-[#C9A84C]', bg:'rgba(200,168,75,0.08)', border:'rgba(200,168,75,0.2)' },
     { label:'نشط',            value: active,             icon:'⚡', color:'text-emerald-400', bg:'rgba(74,222,128,0.06)', border:'rgba(74,222,128,0.2)' },
     { label:'تجريبي',         value: trial,              icon:'🔬', color:'text-blue-400',    bg:'rgba(96,165,250,0.06)', border:'rgba(96,165,250,0.2)' },
-    { label:'MRR (USD)',       value: '$'+mrr,            icon:'💰', color:'text-purple-400',  bg:'rgba(167,139,250,0.06)', border:'rgba(167,139,250,0.2)' },
+    { label:'MRR (ج.م)',       value: mrr.toLocaleString('ar-EG'), icon:'💰', color:'text-purple-400',  bg:'rgba(167,139,250,0.06)', border:'rgba(167,139,250,0.2)' },
   ];
 
   document.getElementById('stats-grid').innerHTML = stats.map(s => `
@@ -735,14 +785,11 @@ function renderTable() {
   if (!filtered.length) { showTableLoading(false, true); return; }
   showTableLoading(false);
 
-  const planLabel = { free:'مجانية', individual:'مستقل', small_firm:'مكاتب', enterprise:'مؤسسات' };
   const statusBadge = {
     active:    `<span class="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[9px] font-black rounded-full flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full ping inline-block"></span>نشط</span>`,
     trial:     `<span class="px-2 py-0.5 bg-blue-500/10 border border-blue-500/25 text-blue-400 text-[9px] font-black rounded-full">تجريبي</span>`,
     suspended: `<span class="px-2 py-0.5 bg-rose-500/10 border border-rose-500/25 text-rose-400 text-[9px] font-black rounded-full">موقوف</span>`,
   };
-  const planColor = { free:'text-slate-400', individual:'text-[#C9A84C]', small_firm:'text-blue-400', enterprise:'text-purple-400' };
-
   document.getElementById('tenants-tbody').innerHTML = filtered.map(t => `
     <tr class="hover:bg-white/[0.015] transition-colors">
       <td class="py-3 px-4">
@@ -781,7 +828,7 @@ function renderTable() {
         </div>
       </td>
       <td class="py-3 px-4">
-        <span class="text-[11px] font-black ${planColor[t.subscription_plan]||'text-slate-400'}">${planLabel[t.subscription_plan]||t.subscription_plan}</span>
+        <span class="text-[11px] font-black" style="color:${PLAN_COLOR[t.subscription_plan]||'#94a3b8'}">${PLAN_LABEL[t.subscription_plan]||t.subscription_plan}</span>
       </td>
       <td class="py-3 px-4 text-center">
         <div class="text-[10px] text-slate-400 font-bold space-y-0.5">
@@ -879,14 +926,25 @@ async function toggleStatus(id, current) {
   } catch(e) { showToast('خطأ: '+e.message, true); }
 }
 
+// ─── تعبئة قائمة الباقات في الفورم من PLANS (مصدر واحد) ──
+function populatePlanSelect(selectedId) {
+  const sel = document.getElementById('f-plan');
+  sel.innerHTML = PLANS.map(p =>
+    `<option value="${p.id}">${p.name} (${p.monthly} ج.م/شهر)</option>`
+  ).join('');
+  sel.value = selectedId;
+}
+
 // ─── Modal Add ─────────────────────────────────────────
 function openAddModal() {
   document.getElementById('modal-title').textContent = 'إضافة مكتب جديد';
   document.getElementById('modal-id').value = '';
   ['name','email','phone','admin-name','notes'].forEach(f => document.getElementById('f-'+f).value = '');
-  document.getElementById('f-plan').value   = 'free';
+  populatePlanSelect(DEFAULT_PLAN_ID);
   document.getElementById('f-status').value = 'trial';
-  document.getElementById('f-expires').value = '';
+  // تعبئة تلقائية بتاريخ انتهاء تجربة شهر من النهارده — التجربة كانت
+  // بتتسيب فاضية غالبًا فتفضل شغالة للأبد من غير قصد، فبقت مطلوبة دايمًا.
+  document.getElementById('f-expires').value = computeTrialEndDate();
   document.getElementById('modal-err').classList.add('hidden');
   document.getElementById('create-only-fields').classList.remove('hidden');
   document.getElementById('office-modal').classList.remove('hidden');
@@ -900,7 +958,7 @@ function openEditModal(id) {
   document.getElementById('modal-id').value    = t.id;
   document.getElementById('f-name').value      = t.name || '';
   document.getElementById('f-phone').value     = t.phone || '';
-  document.getElementById('f-plan').value      = t.subscription_plan || 'free';
+  populatePlanSelect(t.subscription_plan || DEFAULT_PLAN_ID);
   document.getElementById('f-status').value    = t.status || 'active';
   document.getElementById('f-expires').value   = (t.trial_ends_at || '').slice(0,10);
   document.getElementById('f-notes').value     = t.notes || '';
@@ -1025,68 +1083,26 @@ async function confirmDelete() {
 }
 
 // ─── Plans Tab ─────────────────────────────────────────
+// الباقات نفسها مصدرها PLANS فوق — التاب ده بس بيعرضها + عدد المكاتب
+// النشطة على كل باقة. مفيش باقة مجانية دايمة: أي مكتب جديد بيبدأ
+// بتجربة شهر (status=trial) مش باقة، وبعدها لازم يختار من التلاتة دول.
 function renderPlans() {
-  const plans = [
-    {
-      id:'free', name:'الباقة المجانية', monthly:0, yearly:0, color:'#64748b',
-      badge: null,
-      features:[
-        { text:'10 قضايا إجمالي', ok:true },
-        { text:'مستخدم واحد', ok:true },
-        { text:'لوحة تحكم أساسية', ok:true },
-        { text:'بوابة الموكل', ok:false },
-        { text:'المساعد الذكي AI', ok:false },
-      ]
-    },
-    {
-      id:'individual', name:'باقة المحامي المستقل', monthly:5, yearly:50, color:'#C9A84C',
-      badge: 'الأكثر طلباً',
-      features:[
-        { text:'20 قضية / شهرياً', ok:true },
-        { text:'مستخدم واحد', ok:true },
-        { text:'المساعد الذكي — 25 سؤال/شهر', ok:true },
-        { text:'نسخ احتياطي', ok:true },
-        { text:'بوابة الموكل', ok:false },
-      ]
-    },
-    {
-      id:'small_firm', name:'باقة المكاتب', monthly:10, yearly:100, color:'#60a5fa',
-      badge: null,
-      features:[
-        { text:'100 قضية / شهرياً', ok:true },
-        { text:'3 مستخدمين بصلاحيات مختلفة', ok:true },
-        { text:'المساعد الذكي AI — بدون حد', ok:true },
-        { text:'بوابة الموكل', ok:true },
-        { text:'تقارير متقدمة', ok:true },
-      ]
-    },
-    {
-      id:'enterprise', name:'باقة المؤسسات', monthly:20, yearly:200, color:'#a78bfa',
-      badge: 'الأفضل للمؤسسات',
-      features:[
-        { text:'قضايا غير محدودة', ok:true },
-        { text:'مستخدمين غير محدودين', ok:true },
-        { text:'المساعد الذكي AI — بدون حد', ok:true },
-        { text:'بوابة الموكل', ok:true },
-        { text:'دعم أولوية 24/7', ok:true },
-      ]
-    },
-  ];
+  const plans = PLANS;
 
   const counts = {};
   plans.forEach(p => counts[p.id] = allTenants.filter(t=>t.subscription_plan===p.id && t.status==='active').length);
 
   document.getElementById('plans-grid').innerHTML = plans.map(p => `
-    <div style="background:#0c1426;border:1px solid ${p.id==='small_firm'?'rgba(96,165,250,0.25)':'rgba(255,255,255,0.05)'};border-radius:24px;padding:20px;position:relative;display:flex;flex-direction:column;gap:16px">
+    <div style="background:#0c1426;border:1px solid ${p.id==='office'?'rgba(96,165,250,0.25)':'rgba(255,255,255,0.05)'};border-radius:24px;padding:20px;position:relative;display:flex;flex-direction:column;gap:16px">
       <div style="position:absolute;top:0;right:0;left:0;height:2px;background:${p.color};border-radius:24px 24px 0 0;opacity:0.8"></div>
       ${p.badge ? `<div style="position:absolute;top:14px;left:14px;background:${p.color}22;border:1px solid ${p.color}44;color:${p.color};font-size:9px;font-weight:900;padding:2px 8px;border-radius:20px">${p.badge}</div>` : ''}
       <div>
         <p style="font-size:9px;font-weight:900;color:${p.color};letter-spacing:2px;text-transform:uppercase">${p.id}</p>
         <h3 style="font-size:13px;font-weight:900;color:white;margin-top:4px">${p.name}</h3>
         <div style="margin-top:12px">
-          <span style="font-size:28px;font-weight:900;color:white">$${p.monthly}</span>
-          <span style="font-size:11px;color:#64748b;font-weight:700">/شهر</span>
-          ${p.yearly>0 ? `<p style="font-size:10px;color:#64748b;font-weight:700;margin-top:2px">أو $${p.yearly} سنوياً <span style="color:#4ade80;font-weight:900">(وفر شهرين)</span></p>` : '<p style="font-size:10px;color:#64748b;font-weight:700;margin-top:2px">مجاناً للأبد</p>'}
+          <span style="font-size:28px;font-weight:900;color:white">${p.monthly}</span>
+          <span style="font-size:11px;color:#64748b;font-weight:700">ج.م/شهر</span>
+          <p style="font-size:10px;color:#64748b;font-weight:700;margin-top:2px">بعد أول شهر تجربة مجانية</p>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;flex:1">
