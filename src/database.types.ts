@@ -1550,6 +1550,11 @@ export interface Database {
           custom_domain: string | null
           status: string | null
           subscription_plan: string | null
+          // ⚡ NEW (ميجريشن 15-02 — نظام الدفع اليدوي، 8 سبتمبر 2026):
+          // ميعاد التجديد القادم للباقات المدفوعة، منفصل عن trial_ends_at
+          // (منطق القفل مختلف تمامًا بين الاتنين). كان ناقص من هنا لأن
+          // الملف ده ما اتحدّثش وقت إضافة العمود فعليًا على الإنتاج.
+          subscription_due_at: string | null
           billing_interval: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
@@ -1568,6 +1573,7 @@ export interface Database {
           custom_domain?: string | null
           status?: string | null
           subscription_plan?: string | null
+          subscription_due_at?: string | null
           billing_interval?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -1586,6 +1592,7 @@ export interface Database {
           custom_domain?: string | null
           status?: string | null
           subscription_plan?: string | null
+          subscription_due_at?: string | null
           billing_interval?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
