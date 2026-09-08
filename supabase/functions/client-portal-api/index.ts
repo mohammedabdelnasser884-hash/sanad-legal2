@@ -294,7 +294,9 @@ async function actionVerify(body: Record<string, string>, ip: string) {
     await recordAttempt(contact, ip, false);
     return json({ error: 'الخدمة متوقفة مؤقتًا لهذا المكتب، تواصل مع المكتب مباشرة' }, 403);
   }
-  if (tenant.status === 'trial' && tenant.trial_ends_at && new Date(tenant.trial_ends_at) < new Date()) {
+  // ⚠️ FIX (إعادة ضبط الباقات — سبتمبر 2026): نفس إصلاح office-login —
+  // تجربة بتاريخ انتهاء فاضي بقت تتعامل كمنتهية، مش كنشطة للأبد.
+  if (tenant.status === 'trial' && (!tenant.trial_ends_at || new Date(tenant.trial_ends_at) < new Date())) {
     await recordAttempt(contact, ip, false);
     return json({ error: 'الخدمة متوقفة مؤقتًا لهذا المكتب، تواصل مع المكتب مباشرة' }, 403);
   }
