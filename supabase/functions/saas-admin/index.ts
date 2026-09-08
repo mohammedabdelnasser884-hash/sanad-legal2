@@ -71,6 +71,18 @@ if (!JWT_SECRET) {
 // جداول مسموح بيها في الـ query action (whitelist)
 const ALLOWED_TABLES = ['tenants', 'tenant_invoices'];
 
+// ── الباقات المسموح بيها فعليًا (بعد إلغاء الباقة المجانية الدايمة) ──
+// أي مكتب جديد بيبدأ بتجربة شهر (status=trial) — مش باقة "مجانية" منفصلة.
+// الباقة هنا هي الباقة اللي المكتب هيدفعها بعد ما التجربة تخلص.
+const ALLOWED_PLANS = ['lawyer', 'office', 'enterprise'];
+const TRIAL_DAYS = 30; // مدة التجربة المجانية بالأيام (شهر واحد)
+
+function computeTrialEndDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + TRIAL_DAYS);
+  return d.toISOString();
+}
+
 // ── حماية من تجربة كل الباسوردات (brute-force) ─────────
 // نفس نمط client-portal-api: بعد MAX_ATTEMPTS محاولة فاشلة من نفس
 // الـ IP خلال WINDOW_MINUTES دقيقة، يتم رفض أي محاولة تانية مؤقتًا.
@@ -252,6 +264,20 @@ async function actionQuery(body: Record<string, unknown>) {
     return json({ error: 'حذف بدون فلتر ID غير مسموح' }, 403);
   }
 
+  // نفس تحقق الباقات المسموح بيها (ALLOWED_PLANS) — ده بيغطي تعديل مكتب
+  // موجود (مودال "تعديل بيانات المكتب" بيعدّي من هنا، مش createOfficeWithAdmin)
+  if (
+    tableName === 'tenants' &&
+    reqBody &&
+    typeof reqBody === 'object' &&
+    'subscription_plan' in (reqBody as Record<string, unknown>)
+  ) {
+    const plan = String((reqBody as Record<string, unknown>).subscription_plan || '');
+    if (plan && !ALLOWED_PLANS.includes(plan)) {
+      return json({ error: `باقة غير معروفة: "${plan}"` }, 400);
+    }
+  }
+
   const data = await supabaseRest(path, method as string, reqBody ?? null);
   return json(data);
 }
@@ -273,6 +299,24 @@ async function actionCreateOffice(body: Record<string, unknown>) {
   const tenantPayload: Record<string, unknown> = { ...tenant };
   if (!tenantPayload.slug) {
     tenantPayload.slug = await generateUniqueSlug();
+  }
+
+  // ⚠️ إنفاذ سيرفر-سايد لقواعد الباقات/التجربة — الفرونت إند (الفورم) بيبعت
+  // نفس القيم دي افتراضيًا، لكن الاعتماد الحقيقي لازم يكون هنا عشان أي نداء
+  // مباشر لل action ده (مش من الفورم) يفضل ملتزم بنفس القاعدة: مفيش باقة
+  // مجانية دايمة، ومفيش مكتب بيتعمله تجربة من غير تاريخ انتهاء محدد.
+  const requestedPlan = String(tenantPayload.subscription_plan || '').trim();
+  if (requestedPlan && !ALLOWED_PLANS.includes(requestedPlan)) {
+    return json({ error: `باقة غير معروفة: "${requestedPlan}"` }, 400);
+  }
+  if (!requestedPlan) {
+    tenantPayload.subscription_plan = ALLOWED_PLANS[0]; // 'lawyer' — افتراضي
+  }
+  if (!tenantPayload.status) {
+    tenantPayload.status = 'trial';
+  }
+  if (tenantPayload.status === 'trial' && !tenantPayload.trial_ends_at) {
+    tenantPayload.trial_ends_at = computeTrialEndDate();
   }
   const tenantRows = await supabaseRest('tenants', 'POST', tenantPayload);
   const newTenant = Array.isArray(tenantRows) ? tenantRows[0] : tenantRows;
