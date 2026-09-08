@@ -28,6 +28,17 @@
 //     عمود ضيّق بس من profiles (حسابات الأدمن) — مش وصول عام للجدول،
 //     غرضه الوحيد إظهار شارة "مجمّد/مقفول" وزرار الفك في اللوحة.
 //
+//   confirmPayment { token, tenantId, plan, amountEgp, paymentMethod }
+//     → { tenant, payment }  — (D1) تسجيل دفعة يدوية (نقدي/فودافون
+//                 كاش)، يرفض لو العدد الحالي فوق حد الباقة الجديدة،
+//                 وبيحسب subscription_due_at الجديد (تجديد عادي: شهر
+//                 من آخر ميعاد قديم / ترقية أو أول تفعيل: شهر من النهارده).
+//
+//   undoLastPayment { token, tenantId }
+//     → { ok, restoredDueAt }  — (D4) تراجع عن آخر تأكيد دفع، يمسح
+//                 آخر سجل في tenant_subscription_payments ويرجّع
+//                 subscription_due_at للقيمة قبله.
+//
 //  الأمان:
 //   - الباسورد بيتقارن من SAAS_ADMIN_PASSWORD (env secret)
 //   - الـ token: JWT موقّع بـ SAAS_JWT_SECRET، صلاحيته 8 ساعات
@@ -91,6 +102,18 @@ function computeSubscriptionDueDate(): string {
   d.setMonth(d.getMonth() + 1);
   return d.toISOString();
 }
+
+// شهر من تاريخ معيّن (مش النهارده بالضرورة) — مستخدمة في D1 لحساب
+// ميعاد التجديد الجديد وقت "تجديد عادي" (شهر من آخر ميعاد قديم، مش
+// من تاريخ التأكيد نفسه).
+function addOneMonth(iso: string): string {
+  const d = new Date(iso);
+  d.setMonth(d.getMonth() + 1);
+  return d.toISOString();
+}
+
+// وسائل الدفع المقبولة يدويًا (مفيش بوابة دفع إلكتروني)
+const PAYMENT_METHODS = ['cash', 'vodafone_cash'];
 
 // ── حماية من تجربة كل الباسوردات (brute-force) ─────────
 // نفس نمط client-portal-api: بعد MAX_ATTEMPTS محاولة فاشلة من نفس
@@ -425,6 +448,135 @@ async function actionGetOnboardingStatuses() {
   return json(Array.isArray(rows) ? rows : []);
 }
 
+/**
+ * confirmPayment (D1): تسجيل دفعة يدوية (نقدي/فودافون كاش) أكّدها
+ * الأدمن (جيمي) لمكتب معيّن، وحساب subscription_due_at الجديد.
+ *
+ *  - تجديد عادي (نفس الباقة الحالية، ومكتب كان بالفعل مدفوع من قبل
+ *    — يعني عنده subscription_due_at موجود): الميعاد الجديد = شهر من
+ *    آخر ميعاد قديم (مش من تاريخ التأكيد نفسه).
+ *  - ترقية/تنزيل باقة (باقة مختلفة)، أو أول تفعيل من تجربة (مفيش
+ *    subscription_due_at قديم أصلاً): الميعاد الجديد = شهر من النهارده.
+ *  - Downgrade فوق حد الباقة الجديدة: يُرفض تمامًا (لازم تقليل العدد
+ *    الحالي يدويًا الأول) — نفس التحقق مطبّق على أي تغيير باقة (مش
+ *    بس تنزيل) كطبقة حماية موحّدة.
+ */
+async function actionConfirmPayment(body: Record<string, unknown>) {
+  const { tenantId, plan, amountEgp, paymentMethod } = body as {
+    tenantId?: string;
+    plan?: string;
+    amountEgp?: number;
+    paymentMethod?: string;
+  };
+
+  if (!tenantId) return json({ error: 'tenantId مطلوب' }, 400);
+  if (!plan || !ALLOWED_PLANS.includes(plan)) return json({ error: `باقة غير معروفة: "${plan}"` }, 400);
+  const amount = Number(amountEgp);
+  if (!Number.isFinite(amount) || amount <= 0) return json({ error: 'المبلغ المدفوع لازم يكون رقم أكبر من صفر' }, 400);
+  if (!paymentMethod || !PAYMENT_METHODS.includes(paymentMethod)) {
+    return json({ error: 'طريقة الدفع لازم تكون نقدي أو فودافون كاش' }, 400);
+  }
+
+  const tenants = await supabaseRest(`tenants?id=eq.${tenantId}&select=id,subscription_plan,subscription_due_at,status`);
+  const tenant = Array.isArray(tenants) ? tenants[0] : null;
+  if (!tenant) return json({ error: 'المكتب غير موجود' }, 404);
+
+  // ── تحقق حدود الباقة الجديدة قبل أي كتابة (منع الـdowngrade فوق الحد) ──
+  const limitsRows = await supabaseRest(`plan_limits?plan_key=eq.${plan}&select=max_users,max_active_cases,max_client_portal_accounts`);
+  const limits = Array.isArray(limitsRows) ? limitsRows[0] : null;
+  if (!limits) return json({ error: `تعذر إيجاد حدود الباقة "${plan}" في plan_limits` }, 500);
+
+  // client_portal_pins مفيهوش tenant_id مباشر — لازم نمر عن طريق clients الأول
+  const clientRows = await supabaseRest(`clients?tenant_id=eq.${tenantId}&select=id`);
+  const clientIds = Array.isArray(clientRows) ? clientRows.map((c: { id: string }) => c.id) : [];
+
+  const [usersRows, casesRows, portalRows] = await Promise.all([
+    supabaseRest(`profiles?tenant_id=eq.${tenantId}&select=user_id`),
+    supabaseRest(`cases?tenant_id=eq.${tenantId}&deleted_at=is.null&select=id`),
+    clientIds.length
+      ? supabaseRest(`client_portal_pins?is_active=eq.true&client_id=in.(${clientIds.join(',')})&select=id`)
+      : Promise.resolve([]),
+  ]);
+  const usersCount = Array.isArray(usersRows) ? usersRows.length : 0;
+  const casesCount = Array.isArray(casesRows) ? casesRows.length : 0;
+  const portalCount = Array.isArray(portalRows) ? portalRows.length : 0;
+
+  const overLimit: string[] = [];
+  if (limits.max_users != null && usersCount > limits.max_users) {
+    overLimit.push(`عدد الحسابات الحالي (${usersCount}) أكبر من حد باقة "${plan}" (${limits.max_users})`);
+  }
+  if (limits.max_active_cases != null && casesCount > limits.max_active_cases) {
+    overLimit.push(`عدد القضايا النشطة الحالي (${casesCount}) أكبر من حد باقة "${plan}" (${limits.max_active_cases})`);
+  }
+  if (limits.max_client_portal_accounts != null && portalCount > limits.max_client_portal_accounts) {
+    overLimit.push(`عدد حسابات بوابة الموكل الحالي (${portalCount}) أكبر من حد باقة "${plan}" (${limits.max_client_portal_accounts})`);
+  }
+  if (overLimit.length) {
+    return json({ error: `مينفعش تنزّل/تغيّر الباقة دي دلوقتي: ${overLimit.join('؛ ')} — لازم تقلل العدد الأول.` }, 409);
+  }
+
+  // ── نوع العملية: تجديد عادي (نفس الباقة + كان مدفوع قبل كده) ولا ترقية/أول تفعيل ──
+  const wasPaidBefore = tenant.status !== 'trial' && !!tenant.subscription_due_at;
+  const isSamePlan = tenant.subscription_plan === plan;
+  const isNormalRenewal = wasPaidBefore && isSamePlan;
+
+  const previousDueAt: string | null = tenant.subscription_due_at ?? null;
+  const now = new Date().toISOString();
+  // تجديد عادي: شهر من آخر ميعاد قديم. ترقية/تنزيل/أول تفعيل: شهر من النهارده.
+  const newDueAt = isNormalRenewal ? addOneMonth(previousDueAt as string) : addOneMonth(now);
+  const periodStart = isNormalRenewal ? (previousDueAt as string) : now;
+
+  // 1) تحديث المكتب
+  await supabaseRest(`tenants?id=eq.${tenantId}`, 'PATCH', {
+    subscription_plan: plan,
+    status: 'active',
+    subscription_due_at: newDueAt,
+  });
+
+  // 2) تسجيل الدفعة في الأرشيف
+  const paymentRows = await supabaseRest('tenant_subscription_payments', 'POST', {
+    tenant_id: tenantId,
+    plan,
+    amount_egp: amount,
+    payment_method: paymentMethod,
+    period_start: periodStart,
+    period_end: newDueAt,
+    previous_due_at: previousDueAt,
+  });
+  const payment = Array.isArray(paymentRows) ? paymentRows[0] : paymentRows;
+
+  return json({ tenant: { ...tenant, subscription_plan: plan, status: 'active', subscription_due_at: newDueAt }, payment });
+}
+
+/**
+ * undoLastPayment (D4): تراجع عن آخر تأكيد دفع لمكتب معيّن — لتصحيح
+ * غلطة دبل-كليك أو مبلغ/باقة غلط. بيمسح آخر سجل في
+ * tenant_subscription_payments وبيرجّع subscription_due_at للقيمة
+ * قبله (previous_due_at المسجّلة وقت التأكيد ده بالظبط).
+ *
+ * ⚠️ ما بيرجعش subscription_plan/status للقيمة القديمة (الجدول
+ * الحالي مش بيسجّل الباقة/الحالة "قبل" العملية، بس due_at) — الاستخدام
+ * المقصود هو تصحيح آخر عملية دفع لسه طرية (نفس اليوم)، مش رجوع
+ * تاريخي بعيد.
+ */
+async function actionUndoLastPayment(body: Record<string, unknown>) {
+  const { tenantId } = body as { tenantId?: string };
+  if (!tenantId) return json({ error: 'tenantId مطلوب' }, 400);
+
+  const rows = await supabaseRest(
+    `tenant_subscription_payments?tenant_id=eq.${tenantId}&order=created_at.desc&limit=1&select=id,previous_due_at`,
+  );
+  const last = Array.isArray(rows) ? rows[0] : null;
+  if (!last) return json({ error: 'مفيش دفعة مسجّلة لهذا المكتب أصلاً' }, 404);
+
+  await supabaseRest(`tenants?id=eq.${tenantId}`, 'PATCH', {
+    subscription_due_at: last.previous_due_at ?? null,
+  });
+  await supabaseRest(`tenant_subscription_payments?id=eq.${last.id}`, 'DELETE');
+
+  return json({ ok: true, restoredDueAt: last.previous_due_at ?? null });
+}
+
 // ── Main handler ──────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
@@ -451,6 +603,8 @@ Deno.serve(async (req: Request) => {
       case 'createOfficeWithAdmin':  return await actionCreateOffice(rest);
       case 'resetOnboardingLock':    return await actionResetOnboardingLock(rest);
       case 'getOnboardingStatuses':  return await actionGetOnboardingStatuses();
+      case 'confirmPayment':         return await actionConfirmPayment(rest);
+      case 'undoLastPayment':        return await actionUndoLastPayment(rest);
       default:                       return json({ error: `action غير معروف: ${action}` }, 400);
     }
   } catch (e) {
