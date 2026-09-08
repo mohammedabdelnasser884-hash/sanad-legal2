@@ -264,10 +264,13 @@ describe('office-login — actionLogin: حالة اشتراك المكتب (tena
     expect(res.status).toBe(200);
   });
 
-  it('tenant.status === "trial" لكن trial_ends_at فاضي (null) → بيكمل عادي (200، مفيش فحص تاريخ ممكن)', async () => {
+  it('tenant.status === "trial" لكن trial_ends_at فاضي (null) → 403 + إلغاء التوكن (تعامل كمنتهية، مش كنشطة للأبد)', async () => {
     state.tenantRows = [{ id: 'tenant-a', status: 'trial', trial_ends_at: null, subscription_plan: 'trial' }];
     const res = await handler(loginReq({ email: 'lawyer@example.com', password: 'secret123' }));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error).toBe('انتهت الفترة التجريبية للمكتب، تواصل مع فريق سند للاشتراك');
+    expect(state.revokeCalls).toEqual(['access-tok-1']);
   });
 });
 
