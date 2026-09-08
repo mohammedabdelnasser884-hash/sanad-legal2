@@ -2,6 +2,7 @@
 import type { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 import type { Database } from '../../database.types';
 import { toast } from './notifications';
+import { getCurrentTenantId } from '../../constants';
 
 // ══════════════════════════════════════════════════════════════
 //  safeUpdate — Optimistic Locking
@@ -239,15 +240,33 @@ export async function logActivity(
         // لو المستدعي بعت userName جاهز (من profile state) نستخدمه مباشرةً
         // ونوفّر query إضافي على profiles في كل استدعاء
         let userName: string | null = opts?.userName ?? null;
-        let tenantId: string | null = null;
+        // ══════════════════════════════════════════════════════════
+        //  🔴 FIX (تشخيص "بطء بيزيد مع الوقت" — 8 سبتمبر 2026): الكود
+        //  القديم هنا كان بيقول في التعليق فوق "بنوفّر query على profiles"
+        //  بس فعليًا بيعمل نداء SELECT جديد على profiles في كل الحالتين
+        //  (سواء userName اتبعت ولا لأ) عشان بس يجيب tenant_id. logActivity
+        //  بينادى من 74 مكان مختلف في المشروع كله (أي إضافة/تعديل/حذف —
+        //  قضية، جلسة، عميل، أتعاب، مستند...) — يعني كل عملية كتابة في
+        //  التطبيق كانت بتدفع تكلفة query إضافي كامل على profiles، حتى لو
+        //  الـtenant_id بتاع المستخدم الحالي متغيّرش من ساعة ما سجّل دخوله.
+        //  القيمة دي أصلًا محفوظة جاهزة في الذاكرة (getCurrentTenantId من
+        //  constants.ts، بتتحدّث مرة واحدة بس في useAuthProfile.ts لما
+        //  البروفايل يتحمّل) — فبنستخدمها مباشرة، ومنرجعش نسأل قاعدة
+        //  البيانات إلا لو (حالة نادرة جدًا) الكاش لسه فاضي.
+        // ══════════════════════════════════════════════════════════
+        let tenantId: string | null = getCurrentTenantId();
         if (!userName) {
-            // fallback: نجيب الاسم والـ tenant_id من DB
+            // fallback: نجيب الاسم من DB (لسه محتاجينه، مفيش كاش له في
+            // الذاكرة زي tenant_id) — ولو tenant_id مش متكشوف من الكاش
+            // لأي سبب، نجيبه كمان من نفس النداء ده بدل نداء منفصل.
             userName = user.email || null;
             const { data: prof } = await db.from('profiles').select('full_name,tenant_id').eq('user_id', user.id).maybeSingle();
             if (prof?.full_name) userName = prof.full_name;
-            if (prof?.tenant_id) tenantId = prof.tenant_id;
-        } else {
-            // لو عندنا userName جاهز، نجيب tenant_id بس
+            if (!tenantId && prof?.tenant_id) tenantId = prof.tenant_id;
+        } else if (!tenantId) {
+            // حالة نادرة: عندنا userName بس الكاش فاضي (مثلاً logActivity
+            // اتنادى قبل ما useAuthProfile يخلّص أول تحميل) — fallback
+            // لنداء DB زي الكود القديم بالظبط، بس مرة واحدة بس مش دايمًا.
             const { data: prof } = await db.from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle();
             if (prof?.tenant_id) tenantId = prof.tenant_id;
         }
