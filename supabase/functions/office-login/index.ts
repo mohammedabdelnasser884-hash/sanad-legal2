@@ -181,7 +181,12 @@ async function actionLogin(email: string, password: string, ip: string) {
     return json({ error: 'تم إيقاف اشتراك المكتب مؤقتًا، تواصل مع الدعم الفني' }, 403);
   }
 
-  if (tenant.status === 'trial' && tenant.trial_ends_at && new Date(tenant.trial_ends_at) < new Date()) {
+  // ⚠️ FIX (إعادة ضبط الباقات — سبتمبر 2026): كان الشرط بيطلب
+  // tenant.trial_ends_at موجود قبل ما يتحقق من الانتهاء — يعني مكتب
+  // تجريبي بتاريخ انتهاء فاضي (لو حصل بأي شكل) كان بيدخل من غير أي قفل،
+  // وكانت التجربة عمليًا بلا نهاية. دلوقتي تجربة من غير تاريخ = منتهية
+  // (نفس منطق current_tenant_id() على مستوى الـRLS بعد ميجريشن 14-01).
+  if (tenant.status === 'trial' && (!tenant.trial_ends_at || new Date(tenant.trial_ends_at) < new Date())) {
     await revokeToken(authData.access_token);
     await recordAttempt(email, ip, false);
     return json({ error: 'انتهت الفترة التجريبية للمكتب، تواصل مع فريق سند للاشتراك' }, 403);
