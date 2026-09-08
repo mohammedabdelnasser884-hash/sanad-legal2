@@ -41,6 +41,32 @@ describe('showErrorToast', () => {
     showErrorToast('k2', { code: 'PGRST100' }, 'رسالة 2');
     expect(recordErrorSpy).toHaveBeenLastCalledWith('k2', '[object Object]', { label: undefined, message: 'رسالة 2' });
   });
+
+  // 🆕 E2 + E3 (المرحلة 15 — قفل الاشتراك/حدود الباقات)
+  it('E3: كود P0001 (RAISE EXCEPTION من trigger حد الباقة) → بتعرض رسالة الخطأ نفسها بدل الرسالة العامة', () => {
+    const limitErr = { code: 'P0001', message: 'وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة لإضافة قضايا جديدة.' };
+    showErrorToast('k3', limitErr, 'فشل إضافة القضية', 'إضافة قضية');
+    expect(toastSpy).toHaveBeenCalledWith('❌ وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة لإضافة قضايا جديدة.', true);
+    expect(recordErrorSpy).toHaveBeenCalledWith('k3', limitErr.message, {
+      label: 'إضافة قضية',
+      message: limitErr.message,
+    });
+  });
+
+  it('E2: كود 42501 من tenant_write_allowed_* → رسالة "وضع مشاهدة فقط" الثابتة بدل الرسالة التقنية الخام', () => {
+    const lockErr = { code: '42501', message: 'new row violates row-level security policy "tenant_write_allowed_cases_update" for table "cases"' };
+    showErrorToast('k4', lockErr, 'فشل تعديل القضية', 'تعديل قضية');
+    expect(toastSpy).toHaveBeenCalledWith(
+      '❌ الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.',
+      true,
+    );
+  });
+
+  it('42501 من غير اسم tenant_write_allowed (RLS تانية غير مرتبطة بالاشتراك) → الرسالة العامة زي ما هي', () => {
+    const otherRlsErr = { code: '42501', message: 'new row violates row-level security policy for table "cases"' };
+    showErrorToast('k5', otherRlsErr, 'فشل تعديل القضية', 'تعديل قضية');
+    expect(toastSpy).toHaveBeenCalledWith('❌ فشل تعديل القضية', true);
+  });
 });
 
 describe('reportOperationResult (Operation Lifecycle)', () => {
