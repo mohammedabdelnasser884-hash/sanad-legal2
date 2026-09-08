@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { I } from '../../constants';
 import type { TenantSubscriptionRow } from '../../hooks/useTenantSubscriptionStatus';
+import ContactChooserModal from './ContactChooserModal';
 
 // ══════════════════════════════════════════════════════════════════
 //  TenantLockScreen (E4 — خطة المرحلة 15، 8 سبتمبر 2026)
@@ -11,11 +12,10 @@ import type { TenantSubscriptionRow } from '../../hooks/useTenantSubscriptionSta
 //  بيانات تتعرض أصلاً — الشاشة دي بس بتفسّر السبب وتدّي وسيلة تواصل،
 //  بدل ما المستخدم يشوف تطبيق فاضي بلا تفسير.
 //
-//  رابط "تواصل معانا": صفحة التواصل في الموقع الرسمي لسند (قرار
-//  المستخدم، 8 سبتمبر 2026) — مفيش رقم واتساب/تليفون مباشر دلوقتي.
+//  زرار "تواصل معانا": بيفتح ContactChooserModal، والمستخدم يختار بنفسه
+//  هو عايز يتواصل ازاي (واتساب/فيسبوك/الموقع الرسمي) — قرار المستخدم،
+//  8 سبتمبر 2026.
 // ══════════════════════════════════════════════════════════════════
-
-const CONTACT_URL = 'https://sanad-landing-orcin.vercel.app/#contact';
 
 interface TenantLockScreenProps {
     /** status الخام من صف tenants — بيحدد نص السبب بس (trial vs باقة مدفوعة متأخرة). */
@@ -25,6 +25,7 @@ interface TenantLockScreenProps {
 
 function TenantLockScreen({ tenantStatus, onLogout }: TenantLockScreenProps) {
     const isTrialLock = tenantStatus === 'trial';
+    const [isContactOpen, setIsContactOpen] = useState(false);
 
     const title = isTrialLock ? 'التجربة المجانية انتهت' : 'الاشتراك متوقف';
     const body = isTrialLock
@@ -32,10 +33,11 @@ function TenantLockScreen({ tenantStatus, onLogout }: TenantLockScreenProps) {
         : 'الاشتراك اتأخر عن ميعاد التجديد وفترة السماح خلصت. لازم تأكيد الدفع عشان الحساب يشتغل تاني.';
 
     const handleContact = () => {
-        window.open(CONTACT_URL, '_blank', 'noopener,noreferrer');
+        setIsContactOpen(true);
     };
 
-    return React.createElement('div', {
+    return React.createElement(React.Fragment, null,
+    React.createElement('div', {
         className: 'fixed inset-0 z-50 flex items-center justify-center p-4',
         style: { background: '#0a1626' },
     },
@@ -67,6 +69,11 @@ function TenantLockScreen({ tenantStatus, onLogout }: TenantLockScreenProps) {
                 className: 'w-full py-2.5 rounded-xl text-[11px] font-bold text-slate-400 border border-white/10 active:scale-95 transition-transform',
             }, 'تسجيل خروج')
         )
+    ),
+    React.createElement(ContactChooserModal, {
+        isOpen: isContactOpen,
+        onClose: () => setIsContactOpen(false),
+    })
     );
 }
 
