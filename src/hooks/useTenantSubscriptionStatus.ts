@@ -32,7 +32,10 @@ export type TenantLockState =
     | 'locked'       // مقفول تمامًا (تجربة خلصت 30 يوم / باقة فاتها 67 يوم من غير تأكيد دفع)
     | 'n_a';         // مفيش بيانات كافية (لسه بيحمّل، أو مفيش tenant_id أصلاً)
 
-type TenantSubscriptionRow = Pick<
+// ⚡ NEW (E1+E4 — 8 سبتمبر 2026): export بدل type داخلي بس — TenantLockScreen/
+// TenantSubscriptionBanner محتاجين النوع ده لـprop `tenant`/`tenantStatus` من
+// غير ما يكرروه بأيديهم.
+export type TenantSubscriptionRow = Pick<
     Tables<'tenants'>,
     'id' | 'status' | 'subscription_plan' | 'subscription_due_at' | 'trial_ends_at'
 >;
