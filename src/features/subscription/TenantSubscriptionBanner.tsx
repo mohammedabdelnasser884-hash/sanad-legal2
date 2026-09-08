@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { I } from '../../constants';
 import type { TenantLockState } from '../../hooks/useTenantSubscriptionStatus';
+import ContactChooserModal from './ContactChooserModal';
 
 // ══════════════════════════════════════════════════════════════════
 //  TenantSubscriptionBanner (E1 — خطة المرحلة 15، 8 سبتمبر 2026)
@@ -12,11 +13,10 @@ import type { TenantLockState } from '../../hooks/useTenantSubscriptionStatus';
 //  بانر خالص (active مفيهوش داعي، locked بياخد شاشة كاملة E4 بدل
 //  البانر، n_a يعني لسه بيحمّل أو مفيش tenant_id).
 //
-//  رابط "تواصل معانا"/"رقّي الباقة": صفحة التواصل في الموقع الرسمي
-//  لسند (قرار المستخدم، 8 سبتمبر 2026) — بدون رقم واتساب/تليفون مباشر.
+//  زرار "تواصل معانا"/"رقّي الباقة": بيفتح ContactChooserModal، والمستخدم
+//  يختار بنفسه هو عايز يتواصل ازاي (واتساب/فيسبوك/الموقع الرسمي) — قرار
+//  المستخدم، 8 سبتمبر 2026.
 // ══════════════════════════════════════════════════════════════════
-
-const CONTACT_URL = 'https://sanad-landing-orcin.vercel.app/#contact';
 
 interface TenantSubscriptionBannerProps {
     lockState: TenantLockState;
@@ -28,6 +28,8 @@ interface TenantSubscriptionBannerProps {
 const BANNERLESS_STATES: ReadonlySet<TenantLockState> = new Set(['active', 'locked', 'n_a']);
 
 function TenantSubscriptionBanner({ lockState, countdownDays }: TenantSubscriptionBannerProps) {
+    const [isContactOpen, setIsContactOpen] = useState(false);
+
     if (BANNERLESS_STATES.has(lockState)) return null;
 
     const days = countdownDays !== null ? Math.max(0, countdownDays) : null;
@@ -54,10 +56,11 @@ function TenantSubscriptionBanner({ lockState, countdownDays }: TenantSubscripti
         };
 
     const handleContact = () => {
-        window.open(CONTACT_URL, '_blank', 'noopener,noreferrer');
+        setIsContactOpen(true);
     };
 
-    return React.createElement('div', {
+    return React.createElement(React.Fragment, null,
+    React.createElement('div', {
         className: `fixed top-0 inset-x-0 z-[9999] bg-gradient-to-l ${config.gradient} text-white px-3 py-2 flex items-center justify-center gap-2 flex-wrap text-center shadow-md`,
         'data-testid': 'tenant-subscription-banner',
         'data-lock-state': lockState,
@@ -69,6 +72,11 @@ function TenantSubscriptionBanner({ lockState, countdownDays }: TenantSubscripti
             'data-testid': 'tenant-subscription-banner-cta',
             className: 'text-[11px] font-black underline underline-offset-2 shrink-0 active:opacity-70',
         }, config.cta)
+    ),
+    React.createElement(ContactChooserModal, {
+        isOpen: isContactOpen,
+        onClose: () => setIsContactOpen(false),
+    })
     );
 }
 
