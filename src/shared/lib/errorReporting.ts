@@ -2,6 +2,49 @@ import { recordError, recordSuccess } from '../../systemHealth';
 import { toast } from './notifications';
 import type { ServiceKey } from '../../systemHealth';
 
+// ─────────────────────────────────────────────────────────────────────────
+// 🆕 E2 + E3 (خطة المرحلة 15 — قفل الاشتراك/حدود الباقات، 8 سبتمبر 2026)
+// ─────────────────────────────────────────────────────────────────────────
+// مصدرين مختلفين لرفض عملية كتابة بسبب حالة الاشتراك، ولازم رسالة عربية
+// واضحة للمستخدم في الاتنين بدل الرسالة العامة (opts.errorMessage) اللي
+// كل نقطة نداء بتبعتها حاليًا:
+//
+//  1) E3 — حد الباقة (Triggers B1-B3/B4-B6، 15-04-usage-limit-triggers.sql):
+//     الـtrigger نفسه بيعمل RAISE EXCEPTION برسالة عربية جاهزة ومفهومة
+//     ("وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية...").
+//     الكود PostgREST بيرجعها زي ما هي في error.message، لكن showErrorToast
+//     كانت بتعرض opts.errorMessage الثابت بدل ما تعرضها — يعني الرسالة
+//     الجيدة دي كانت بتتشال وتتستبدل برسالة عامة. الحل: لو error.code
+//     === 'P0001' (كود RAISE EXCEPTION العادي في Postgres) نعرض
+//     error.message نفسها زي ما هي (مفيش تخمين على نصها).
+//
+//  2) E2 — رفض كتابة بسبب القفل (RESTRICTIVE policies من C3،
+//     tenant_write_allowed_*): الرفض ده Postgres RLS violation خام
+//     (كود 42501)، رسالته تقنية مش مفهومة للمستخدم العادي. الحل: لو
+//     الكود 42501 ورسالة الخطأ فيها اسم سياساتنا (بادئة
+//     "tenant_write_allowed") — يعني الرفض ده تحديدًا بسبب حالة
+//     الاشتراك مش أي RLS تانية — نستبدلها برسالة عربية ثابتة.
+//
+// الاتنين اختياريين تمامًا (best-effort): لو الرسالة مش من الحالتين دول،
+// opts.errorMessage الأصلية بتتعرض زي ما كانت بالظبط — صفر تغيير سلوك
+// لأي خطأ تاني غير مرتبط بالاشتراك.
+function getSubscriptionAwareMessage(rawError: unknown): string | null {
+  if (rawError == null || typeof rawError !== 'object') return null;
+  const err = rawError as { message?: unknown; code?: unknown };
+  const message = typeof err.message === 'string' ? err.message : '';
+  const code = typeof err.code === 'string' ? err.code : '';
+
+  // E3 — رسالة حد الباقة من الـtrigger نفسها (جاهزة، مفيش داعي نصيغها تاني)
+  if (code === 'P0001' && message) return message;
+
+  // E2 — رفض كتابة بسبب read-only (فترة سماح/تجربة مشاهدة/60 يوم)
+  if (code === '42501' && message.includes('tenant_write_allowed')) {
+    return 'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.';
+  }
+
+  return null;
+}
+
 /**
  * دالة موحدة لعرض رسالة خطأ للمستخدم وتسجيل التفصيل الخام داخليًا في نفس الوقت.
  * تختصر التكرار اليدوي لنمط: استخراج رسالة الخطأ الخام → recordError → toast،
@@ -10,7 +53,8 @@ import type { ServiceKey } from '../../systemHealth';
  * rawError: أي قيمة استثناء (Error، نص، أو أي شيء تاني) — بيتحول لنص خام
  *           ويتسجل بس عن طريق recordError (console/localStorage)، ومبيتعرضش للمستخدم خالص.
  * message:  الرسالة العربية الجاهزة والآمنة اللي يشوفها المستخدم في التوست
- *           وفي بانر صحة النظام لو رجع نفس الخطأ تاني.
+ *           وفي بانر صحة النظام لو رجع نفس الخطأ تاني — إلا لو rawError طلعت
+ *           من حالة اشتراك معروفة (E2/E3 فوق)، وقتها بتتستبدل تلقائيًا.
  * key:      مفتاح الخدمة (زي 'case_document_upload') يتسجل بيه في نظام صحة الخدمات.
  * label:    اسم الخدمة بالعربي، يظهر في بانر الصحة لو الـ key مش من المفاتيح المعروفة مسبقًا.
  */
@@ -22,15 +66,16 @@ export function showErrorToast(
 ): void {
   // ⚠️ مهم: أخطاء Supabase (PostgrestError، StorageError...) كائنات عادية فيها
   // .message لكنها مش instanceof Error، فمينفعش نعتمد على instanceof بس —
-  // غير كده هيا هترجع "[object Object]" ويضيع النص الخام المهم للتسجيل.
+  // غير كده هيا هترجع \"[object Object]\" ويضيع النص الخام المهم للتسجيل.
   const rawMessage =
     rawError == null ? ''
     : typeof rawError === 'string' ? rawError
     : (typeof rawError === 'object' && 'message' in rawError && typeof (rawError as { message?: unknown }).message === 'string')
       ? (rawError as { message: string }).message
       : String(rawError);
-  recordError(key, rawMessage, { label, message });
-  toast('❌ ' + message, true);
+  const finalMessage = getSubscriptionAwareMessage(rawError) ?? message;
+  recordError(key, rawMessage, { label, message: finalMessage });
+  toast('❌ ' + finalMessage, true);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
