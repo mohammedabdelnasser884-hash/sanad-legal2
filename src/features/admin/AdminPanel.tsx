@@ -173,7 +173,17 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
 
   // ── جلب البيانات عند تغيير القسم ──
   useEffect(() => {
-    fetchPortalAccess();
+    // ══════════════════════════════════════════════════════════
+    //  🔴 FIX (تشخيص PerfHud — ~13 نداء متكرر على client_portal_pins —
+    //  8 سبتمبر 2026): fetchPortalAccess() كانت بتتنادى من غير أي شرط،
+    //  بعكس كل نداء تاني هنا (fetchBackups/fetchOfficeSettings/fetchLaws)
+    //  اللي كل واحد فيهم مربوط بقسمه بس. يعني أي تنقّل بين أي قسمين في
+    //  لوحة الإدارة (حتى لو مالهمش أي علاقة بالبوابة — نسخ احتياطي،
+    //  إعدادات المكتب، المكتبة القانونية...) كان بيعمل query كامل على
+    //  client_portal_pins من غير أي داعي. دلوقتي زي باقيهم بالظبط —
+    //  بيتنادى بس لما تفتح قسم "بوابة الموكلين" فعليًا.
+    // ══════════════════════════════════════════════════════════
+    if (section === 'portal')   fetchPortalAccess();
     // ملاحظة: قسم activity يُعاد جلبه من useEffect منفصل (يراقب الفلاتر والصفحة)
     // عشان نتجنب double-fetch لما المستخدم يفتح القسم لأول مرة
     if (section === 'backup')   fetchBackups();
