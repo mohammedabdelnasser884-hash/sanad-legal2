@@ -83,6 +83,15 @@ function computeTrialEndDate(): string {
   return d.toISOString();
 }
 
+// (A5) ميعاد التجديد الأول لمكتب بيتعمله إنشاء مباشر بباقة مدفوعة —
+// شهر من تاريخ الإنشاء نفسه. نفس منطق A4 (الميجريشن اللي بتعبي
+// subscription_due_at للمكاتب الحالية)، لكن هنا وقت الإنشاء الفعلي.
+function computeSubscriptionDueDate(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  return d.toISOString();
+}
+
 // ── حماية من تجربة كل الباسوردات (brute-force) ─────────
 // نفس نمط client-portal-api: بعد MAX_ATTEMPTS محاولة فاشلة من نفس
 // الـ IP خلال WINDOW_MINUTES دقيقة، يتم رفض أي محاولة تانية مؤقتًا.
@@ -317,6 +326,13 @@ async function actionCreateOffice(body: Record<string, unknown>) {
   }
   if (tenantPayload.status === 'trial' && !tenantPayload.trial_ends_at) {
     tenantPayload.trial_ends_at = computeTrialEndDate();
+  }
+  // (A5) مكتب بيتعمله إنشاء مباشر بباقة مدفوعة (status != trial) —
+  // subscription_due_at لازم يتحسب وقت الإنشاء نفسه (شهر من النهارده)،
+  // نفس منطق A4 بتاعت المكاتب الحالية، عشان مايفضلش NULL لحد أول
+  // تأكيد دفع (D1، لسه لم يبدأ).
+  if (tenantPayload.status !== 'trial' && !tenantPayload.subscription_due_at) {
+    tenantPayload.subscription_due_at = computeSubscriptionDueDate();
   }
   const tenantRows = await supabaseRest('tenants', 'POST', tenantPayload);
   const newTenant = Array.isArray(tenantRows) ? tenantRows[0] : tenantRows;
