@@ -143,7 +143,6 @@ export default function PerfHud() {
 
     useEffect(() => {
         if (open) refreshNetwork();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open]);
 
     const buildReport = (): string => {
