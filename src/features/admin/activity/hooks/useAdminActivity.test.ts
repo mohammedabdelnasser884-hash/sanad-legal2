@@ -6,7 +6,7 @@ import { ilikeOrClause } from '../../../../shared/lib/sanitize';
 // ══════════════════════════════════════════════════════════════════
 // Mock db (supabaseClient) — بيغطي بالظبط سلسلة الاستدعاء الفعلية في
 // useAdminActivity.ts (اتأكدت منها بقراءة الكود، مفيش تخمين):
-//   db.from('activity_log').select('*', { count: 'exact' })
+//   db.from('activity_log').select('*', { count: 'estimated' })
 //     [.or(...)]? [.eq('user_id', v)]? [.ilike('action', v)]?
 //     [.gte('created_at', v)]? [.lt('created_at', v)]?
 //     .order('created_at', { ascending: false }).range(from, to)
@@ -78,14 +78,14 @@ describe('useAdminActivity', () => {
     expect(result.current.activityFilters).toEqual({ search: '', user_id: '', action: '', from: '', to: '' });
   });
 
-  it('fetchActivity من غير فلاتر → select("*",{count:"exact"})، من غير or/eq/ilike/gte/lt، order+range بصفحة 0 (0..29)، البيانات بتتملي، loadingActivity بيرجع false', async () => {
+  it('fetchActivity من غير فلاتر → select("*",{count:"estimated"})، من غير or/eq/ilike/gte/lt، order+range بصفحة 0 (0..29)، البيانات بتتملي، loadingActivity بيرجع false', async () => {
     const rows = [{ id: 'a1' }, { id: 'a2' }];
     mockDb.setResult({ data: rows, count: 2 });
     const { result } = setup();
 
     await act(async () => { await result.current.fetchActivity(); });
 
-    expect(mockDb.selectSpy).toHaveBeenCalledWith('activity_log', '*', { count: 'exact' });
+    expect(mockDb.selectSpy).toHaveBeenCalledWith('activity_log', '*', { count: 'estimated' });
     expect(mockDb.orSpy).not.toHaveBeenCalled();
     expect(mockDb.eqSpy).not.toHaveBeenCalled();
     expect(mockDb.ilikeSpy).not.toHaveBeenCalled();
