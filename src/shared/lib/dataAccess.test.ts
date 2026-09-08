@@ -8,6 +8,16 @@ import type { Database } from '../../database.types';
 // وميحتاجش بيئة jsdom كاملة عشان يشتغل.
 vi.mock('./notifications', () => ({ toast: vi.fn() }));
 
+// 🔴 FIX (فيكس N+1 على profiles جوه logActivity — 8 سبتمبر 2026): logActivity
+// بقى بيستورد getCurrentTenantId من '../../constants'، وconstants.ts بيستورد
+// db من '../supabaseClient' في أول تحميل للملف (createClient() بينفّذ فورًا،
+// مش lazy) — فمجرد استيراد dataAccess.ts هنا بقى بيجرّب يبني عميل Supabase
+// حقيقي ويفشل (supabaseUrl is required) لأن env vars الحقيقية مش متاحة في
+// بيئة الاختبار. نفس النمط المتّبع فعلاً فى useAuthProfile.test.ts/
+// useAutoLogout.test.ts/offlineQueue.*.test.ts — mock بسيط لـsupabaseClient
+// قبل ما أي حاجة تستورد dataAccess.ts.
+vi.mock('../../supabaseClient', () => ({ db: {} }));
+
 // ── Mock بسيط لسلسلة استدعاءات Supabase المستخدمة فعليًا جوه safeUpdate:
 //    db.from(table).select('updated_at').eq('id', id).single()
 //    db.from(table).update(data).eq('id', id)
