@@ -14,8 +14,16 @@ import ContactChooserModal from './ContactChooserModal';
 //  البانر، n_a يعني لسه بيحمّل أو مفيش tenant_id).
 //
 //  زرار "تواصل معانا"/"رقّي الباقة": بيفتح ContactChooserModal، والمستخدم
-//  يختار بنفسه هو عايز يتواصل ازاي (واتساب/فيسبوك/الموقع الرسمي) — قرار
+//  يختار بنفسه هو عايز يتواصل ازاي (واتساب/فيسبوك/إيميل) — قرار
 //  المستخدم، 8 سبتمبر 2026.
+//
+//  🔄 قابلية الطي (9 سبتمبر 2026، اختبار 4): البانر بقى قابل للطي —
+//  زرار سهم صغير جنب زرار التواصل. الافتراضي مفتوح دايمًا كل ما
+//  الكومبوننت يتركّب من جديد (refresh/دخول صفحة تانية) — الحالة local
+//  state مش متخزّنة (مفيش persistence)، يعني القرار بالطي أو الفتح
+//  بيرجع "مفتوح" تلقائيًا في أي تحميل جديد، والمستخدم هو اللي يطويه
+//  بنفسه لو عايز. لما يتطوى، بيفضل شريط رفيع بنفس لون الحالة قابل
+//  للضغط عشان يرجّع يفتحه تاني.
 // ══════════════════════════════════════════════════════════════════
 
 interface TenantSubscriptionBannerProps {
@@ -29,6 +37,10 @@ const BANNERLESS_STATES: ReadonlySet<TenantLockState> = new Set(['active', 'lock
 
 function TenantSubscriptionBanner({ lockState, countdownDays }: TenantSubscriptionBannerProps) {
     const [isContactOpen, setIsContactOpen] = useState(false);
+    // ⚡ الافتراضي دايمًا false (= مفتوح) — مقصود عدم القراءة من أي مكان
+    // متخزّن (localStorage إلخ)، عشان كل تحميل جديد للصفحة يرجّع البانر
+    // يظهر تاني من غير ما "يفتكر" إنه كان متطوي قبل كده.
+    const [isCollapsed, setIsCollapsed] = useState(false);
 
     if (BANNERLESS_STATES.has(lockState)) return null;
 
@@ -59,6 +71,24 @@ function TenantSubscriptionBanner({ lockState, countdownDays }: TenantSubscripti
         setIsContactOpen(true);
     };
 
+    // شريط رفيع بديل بيظهر بدل البانر الكامل لما المستخدم يطويه — نفس
+    // لون التدرّج (السياق البصري للحالة فاضل واضح)، بس بارتفاع أصغر
+    // بكتير وبدون النص/الزرار، وقابل للضغط في أي حتة فيه عشان يرجع يفتح.
+    if (isCollapsed) {
+        return React.createElement('button', {
+            onClick: () => setIsCollapsed(false),
+            className: `sticky top-0 z-[9999] w-full bg-gradient-to-l ${config.gradient} text-white px-3 py-1 flex items-center justify-center gap-1.5 shadow-md active:opacity-80`,
+            'data-testid': 'tenant-subscription-banner-collapsed',
+            'data-lock-state': lockState,
+            'aria-label': 'إظهار تنبيه الاشتراك',
+        },
+            React.createElement(I.Bell, { className: 'w-3 h-3 shrink-0' }),
+            React.createElement('svg', { className: 'w-3 h-3 shrink-0', fill: 'none', viewBox: '0 0 24 24', strokeWidth: '2.5', stroke: 'currentColor' },
+                React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'm19.5 8.25-7.5 7.5-7.5-7.5' })
+            )
+        );
+    }
+
     return React.createElement(React.Fragment, null,
     React.createElement('div', {
         // 🔒 FIX (ملاحظة اختبار يدوي — 9 سبتمبر 2026): كانت `fixed` (برّه
@@ -82,7 +112,18 @@ function TenantSubscriptionBanner({ lockState, countdownDays }: TenantSubscripti
             onClick: handleContact,
             'data-testid': 'tenant-subscription-banner-cta',
             className: 'text-[11px] font-black underline underline-offset-2 shrink-0 active:opacity-70',
-        }, config.cta)
+        }, config.cta),
+        React.createElement('button', {
+            onClick: () => setIsCollapsed(true),
+            'data-testid': 'tenant-subscription-banner-collapse',
+            'aria-label': 'طي التنبيه',
+            className: 'w-5 h-5 rounded-full flex items-center justify-center shrink-0 active:opacity-70',
+            style: { background: 'rgba(255,255,255,0.15)' },
+        },
+            React.createElement('svg', { className: 'w-3 h-3', fill: 'none', viewBox: '0 0 24 24', strokeWidth: '2.5', stroke: 'currentColor' },
+                React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'm4.5 15.75 7.5-7.5 7.5 7.5' })
+            )
+        )
     ),
     React.createElement(ContactChooserModal, {
         isOpen: isContactOpen,
