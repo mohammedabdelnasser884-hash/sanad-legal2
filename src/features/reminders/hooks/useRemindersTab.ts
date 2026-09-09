@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from '../../../shared/lib/notifications';
 import { safeUpdate, logActivity, buildFieldDiff, buildDeleteSnapshot, buildAddSnapshot, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import { recordSuccess, trackQueryOutcome } from '../../../systemHealth';
+import { reportWriteFailure } from '../../../shared/lib/errorReporting';
 import { db } from '../../../supabaseClient';
 import { normalizeArabicDigits } from '../../../shared/lib/sanitize';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
@@ -331,8 +332,7 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل reminder_save
             // (الإضافة) لـtrackQueryOutcome — الكائن الخام من __dbWrite بيتمرر
             // زي ما هو (مش .message مستخرج مسبقًا) عشان classifyError يشتغل صح.
-            await trackQueryOutcome('reminder_save', error, {label:'حفظ التذكيرات', message:'تعذّر حفظ التذكير. تحقق من الاتصال بالإنترنت.'});
-            toast('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
+            reportWriteFailure('reminder_save', error, {label:'حفظ التذكيرات', message:'تعذّر حفظ التذكير. تحقق من الاتصال بالإنترنت.'});
             return;
         }
         recordSuccess('reminder_save');
@@ -373,8 +373,7 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
         }
         if(error){
             // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل reminder_save (تبديل الإنجاز).
-            await trackQueryOutcome('reminder_save', error, {label:'حفظ التذكيرات', message:'تعذّر تحديث التذكير. تحقق من الاتصال بالإنترنت.'});
-            toast('❌ تعذّر تحديث التذكير',true);
+            reportWriteFailure('reminder_save', error, {label:'حفظ التذكيرات', message:'تعذّر تحديث التذكير. تحقق من الاتصال بالإنترنت.'});
             return;
         }
         recordSuccess('reminder_save');
@@ -401,8 +400,7 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
         }
         if(error){
             // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل reminder_save (الحذف).
-            await trackQueryOutcome('reminder_save', error, {label:'حذف التذكيرات', message:'تعذّر حذف التذكير. تحقق من الاتصال بالإنترنت.'});
-            toast('❌ تعذّر حذف التذكير',true);
+            reportWriteFailure('reminder_save', error, {label:'حذف التذكيرات', message:'تعذّر حذف التذكير. تحقق من الاتصال بالإنترنت.'});
             return;
         }
         recordSuccess('reminder_save');
@@ -428,17 +426,12 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             due_date: editForm.due_date,
             notes: editForm.notes||null,
         };
-        const { success, conflict } = await safeUpdate(db, 'reminders', editTarget!.id, editPayload, editTarget!.updated_at || null);
+        const { success, conflict, error } = await safeUpdate(db, 'reminders', editTarget!.id, editPayload, editTarget!.updated_at || null);
         setEditSaving(false);
         // 🔒 FIX (تقرير الموثوقية — القسم 12، Concurrent Editing): توست بدل السكوت التام.
         if(conflict) { toast('⚠️ هذا التذكير عدّله شخص آخر بعد ما فتحته — أعد المحاولة', true); return; }
         if(!success){
-            // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل reminder_save
-            // (التعديل). safeUpdate بترجع {success, conflict} مش {error} — مفيش
-            // كائن خطأ حقيقي هنا (نفس حالة db_case_by_id في useAppData.ts)، فبنبني
-            // واحد صناعي بسيط عشان يتصنّف ويتسجل زي ما كان يحصل بالظبط قبل التحويل.
-            await trackQueryOutcome('reminder_save', { message: '' }, {label:'حفظ التذكيرات', message:'تعذّر تعديل المهمة. تحقق من الاتصال بالإنترنت.'});
-            toast('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
+            reportWriteFailure('reminder_save', error, {label:'حفظ التذكيرات', message:'تعذّر تعديل المهمة. تحقق من الاتصال بالإنترنت.'});
             return;
         }
         recordSuccess('reminder_save');
