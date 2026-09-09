@@ -7,6 +7,7 @@ import { db } from '../../../supabaseClient';
 import { formatArNumber, formatArDate } from '../../../shared/ui/arabicLocale';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
 import { runTrackedOperation, trackQueryOutcome, recordWriteFailure, recordSuccess } from '../../../systemHealth';
+import { showErrorToast } from '../../../shared/lib/errorReporting';
 import { computeFeeStatus } from '../feeStatus';
 import { formatPartySideLine } from '../../../shared/parties/partyDisplay';
 import type { PartyDisplayRow } from '../../../shared/parties/partiesDisplay';
@@ -668,9 +669,11 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
                     // 🆕 (٣-هـ): نفس منطق handleAddPayment — الرد ضايع مش يعني فشل قطعي.
                     ambiguousMessage: 'تعذّر تأكيد نتيجة حفظ الأتعاب الجديدة — قد تكون حُفظت فعلاً. أعد المحاولة، المفتاح المرفق يمنع أي تكرار.',
                 });
-                toast(ambiguous
-                    ? '⚠️ تعذّر تأكيد نتيجة الحفظ — قد يكون تم فعلاً. أعد المحاولة (لن تتكرر).'
-                    : '❌ فشل حفظ الأتعاب الجديدة — تحقق من الاتصال وأعد المحاولة', true);
+                if (ambiguous) {
+                    toast('⚠️ تعذّر تأكيد نتيجة الحفظ — قد يكون تم فعلاً. أعد المحاولة (لن تتكرر).', true);
+                } else {
+                    showErrorToast('fee_create', effectiveError, 'فشل حفظ الأتعاب الجديدة — تحقق من الاتصال وأعد المحاولة', 'إضافة أتعاب جديدة');
+                }
                 setSaving(false);
                 return;
             }
@@ -788,9 +791,11 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
                 // إن الدفعة ممكن تكون سُجّلت فعلاً بدل "فشل" قطعية.
                 ambiguousMessage: 'تعذّر تأكيد نتيجة تسجيل الدفعة — قد تكون سُجّلت فعلاً. أعد المحاولة، المفتاح المرفق يمنع أي تكرار.',
             });
-            toast(ambiguous
-                ? '⚠️ تعذّر تأكيد نتيجة تسجيل الدفعة — قد تكون سُجّلت فعلاً. أعد المحاولة (لن تتكرر).'
-                : '❌ فشل تسجيل الدفعة، يرجى المحاولة مرة أخرى', true);
+            if (ambiguous) {
+                toast('⚠️ تعذّر تأكيد نتيجة تسجيل الدفعة — قد تكون سُجّلت فعلاً. أعد المحاولة (لن تتكرر).', true);
+            } else {
+                showErrorToast('fee_payment', effectiveError, 'فشل تسجيل الدفعة، يرجى المحاولة مرة أخرى', 'تسجيل دفعة');
+            }
             setPayingFeeId(null);
             return;
         }
@@ -841,7 +846,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         // وتاريخ الدفعة قبل حذفها فعليًا من الداتابيز.
         const deletedPayment = (payments[fee.id] || []).find((p) => p.id === payId);
         const { error: deleteError } = await window.__dbWrite({ type: 'DELETE', table: 'fee_payments', id: payId });
-        if(deleteError){ toast('❌ فشل حذف الدفعة، يرجى المحاولة مرة أخرى', true); return; }
+        if(deleteError){ showErrorToast('fee_payment_delete', deleteError, 'فشل حذف الدفعة، يرجى المحاولة مرة أخرى', 'حذف دفعة'); return; }
         const {data:allPays} = await db.from('fee_payments').select('amount').eq('fee_id',fee.id);
         const realPaid = (allPays||[]).reduce((s: number, p: { amount: number | null }) => s+(p.amount||0), 0);
         const newStatus = computeFeeStatus(fee.total_fees || 0, realPaid);
@@ -881,7 +886,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
         const targetFee = fees.find((f) => f.id === id);
         const { error, offline, queued } = await window.__dbWrite({ type: 'DELETE', table: 'case_fees', id });
         if (offline && queued) { toast('📥 الحذف محفوظ محلياً — سيُزامن عند عودة الإنترنت'); return; }
-        if (error) { toast('❌ فشل حذف الأتعاب نهائياً — تحقق من الاتصال وأعد المحاولة', true); return; }
+        if (error) { showErrorToast('fee_permanent_delete', error, 'فشل حذف الأتعاب نهائياً — تحقق من الاتصال وأعد المحاولة', 'حذف أتعاب نهائيًا'); return; }
         toast('🗑️ تم حذف الأتعاب نهائياً');
         logActivity(db, 'حذف أتعاب نهائياً', {
             entity_type: 'fee', entity_id: id,
@@ -905,7 +910,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
             type: 'UPDATE', table: 'case_fees', data: { deleted_at: new Date().toISOString() }, id
         });
         if (offline && queued) { toast('📥 الأرشفة محفوظة محلياً — ستُزامن عند عودة الإنترنت'); return; }
-        if(feeError){ toast('❌ فشل أرشفة الأتعاب — تحقق من الاتصال وأعد المحاولة', true); return; }
+        if(feeError){ showErrorToast('fee_archive', feeError, 'فشل أرشفة الأتعاب — تحقق من الاتصال وأعد المحاولة', 'أرشفة أتعاب'); return; }
         toast('📦 تم نقل الأتعاب للأرشيف');
         logActivity(db, 'أرشفة أتعاب', {
             entity_type: 'fee', entity_id: id,
@@ -922,7 +927,7 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
     const handleRestoreFee = async (id: string) => {
         const { error, offline, queued } = await window.__dbWrite({ type: 'UPDATE', table: 'case_fees', data: { deleted_at: null }, id });
         if (offline && queued) { toast('📥 الاسترجاع محفوظ محلياً — سيُزامن عند عودة الإنترنت'); return; }
-        if (error) { toast('❌ فشل استرجاع الأتعاب — تحقق من الاتصال وأعد المحاولة', true); return; }
+        if (error) { showErrorToast('fee_restore', error, 'فشل استرجاع الأتعاب — تحقق من الاتصال وأعد المحاولة', 'استرجاع أتعاب'); return; }
         toast('✅ تم استرجاع الأتعاب');
         logActivity(db, 'استرجاع أتعاب من الأرشيف', { entity_type: 'fee', entity_id: id });
         refetchFees();
