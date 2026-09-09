@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from '../../../../shared/lib/notifications';
+import { showErrorToast } from '../../../../shared/lib/errorReporting';
 import { detectDevice, logActivity } from '../../../../shared/lib/dataAccess';
 import { callAdminAction, db } from '../../../../supabaseClient';
 import type { ProfileRow } from '../../../../types';
@@ -91,7 +92,7 @@ export function useAdminSessions(section: string | null, profile: ProfileRow | n
       logActivity(db, 'إنهاء جلسة مستخدم', { userName: _userName, entity_type: 'user', entity_id: sess.userId, details: sess.name });
       fetchActiveSessions();
     } catch(e) {
-      toast('❌ فشل إنهاء الجلسة', true);
+      showErrorToast('admin_terminate_session', e, 'فشل إنهاء الجلسة', 'إنهاء جلسة مستخدم');
     }
     setTerminatingSession(null);
   };
