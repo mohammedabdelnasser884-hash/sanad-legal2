@@ -46,7 +46,7 @@ function TenantSubscriptionBanner({ lockState, countdownDays }: TenantSubscripti
         : lockState === 'grace'
         ? {
             gradient: 'from-red-400 to-red-300',
-            message: `الاشتراك متأخر عن ميعاد التجديد${daysSuffix}. كلّم الإدارة لتأكيد الدفع قبل ما الحساب يتحول لمشاهدة فقط`,
+            message: `الاشتراك متأخر عن ميعاد التجديد${daysSuffix} وسيتم تعليق حساب المكتب من معظم الخدمات. سارع بتجديد اشتراكك`,
             cta: 'تواصل معانا',
         }
         : { // readonly
@@ -61,7 +61,18 @@ function TenantSubscriptionBanner({ lockState, countdownDays }: TenantSubscripti
 
     return React.createElement(React.Fragment, null,
     React.createElement('div', {
-        className: `fixed top-0 inset-x-0 z-[9999] bg-gradient-to-l ${config.gradient} text-white px-3 py-2 flex items-center justify-center gap-2 flex-wrap text-center shadow-md`,
+        // 🔒 FIX (ملاحظة اختبار يدوي — 9 سبتمبر 2026): كانت `fixed` (برّه
+        // الـlayout flow تمامًا)، فلو النص اتلف لأكتر من سطر (زي رسالة
+        // grace الطويلة) ارتفاع البانر يزيد من غير ما يحجز أي مساحة فعلية
+        // فوق باقي الصفحة — فبيتراكب فوق التابات/الأزرار اللي تحته
+        // (`AppShell` ماعندهوش أي padding-top ديناميكي بيتغيّر مع ارتفاع
+        // البانر). `sticky` بدل `fixed`: البانر برّه AppShell كـsibling
+        // أول عنصر فى الـFragment، يعني هو فعليًا أول شيء فى الـblock flow
+        // — `sticky` بيحجز ارتفاعه الحقيقي (طول كان أو قصير) فى التخطيط
+        // زي عنصر عادي، وبرضو يفضل ملتصق بأعلى الشاشة أثناء الاسكرول
+        // بنفس شكل `fixed` بصريًا. `inset-x-0` مش لازمة (`sticky` مع
+        // `w-full` بيمتد full-width تلقائيًا زي أي block-level div عادي).
+        className: `sticky top-0 z-[9999] w-full bg-gradient-to-l ${config.gradient} text-white px-3 py-2 flex items-center justify-center gap-2 flex-wrap text-center shadow-md`,
         'data-testid': 'tenant-subscription-banner',
         'data-lock-state': lockState,
     },
