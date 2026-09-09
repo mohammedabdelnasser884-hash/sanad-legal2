@@ -358,6 +358,24 @@ describe('useCaseActions', () => {
       // مفيش استدعاء setShowCaseModal(false) في مسار الفشل (فيه return مبكر قبلها)
       expect(params.setShowCaseModal).not.toHaveBeenCalled();
     });
+
+    // 🆕 FIX (بلاغ اختبار حد الباقة — 9 سبتمبر 2026): وصول لحد القضايا
+    // النشاط بيرجع خطأ P0001 من الـtrigger (B1) برسالة عربية جاهزة —
+    // لازم تتعرض زي ما هي، مش الرسالة العامة "تحقق من الاتصال".
+    it('فشل بسبب وصول حد القضايا في الباقة (P0001) → بيعرض رسالة الـtrigger الحقيقية', async () => {
+      dbWriteMock().mockResolvedValue({
+        error: { message: 'وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة لإضافة قضايا جديدة.', code: 'P0001', hint: 'PLAN_LIMIT_CASES' },
+        offline: false, queued: false,
+      });
+      const params = makeParams();
+      const { handleSaveCase } = useCaseActions(params);
+
+      await handleSaveCase({ title: 'قضية فوق الحد' });
+
+      expect(toast).toHaveBeenCalledWith('❌ وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة لإضافة قضايا جديدة.', true);
+      expect(logActivity).not.toHaveBeenCalled();
+      expect(params.fetchCases).not.toHaveBeenCalled();
+    });
   });
 
   describe('handleDeleteCase — يعرض اختيار (بدون mode ثابتة)', () => {
@@ -564,6 +582,22 @@ describe('useCaseActions', () => {
       await handleRestoreCase('case-1');
 
       expect(toast).toHaveBeenCalledWith('❌ فشل استرجاع القضية — تحقق من الاتصال وأعد المحاولة', true);
+      expect(logActivity).not.toHaveBeenCalled();
+      expect(params.fetchCases).not.toHaveBeenCalled();
+    });
+
+    // 🆕 FIX (بلاغ اختبار حد الباقة — 9 سبتمبر 2026): استرجاع قضية
+    // مؤرشفة بيخضع لنفس تريجر حد القضايا (B4) لو المكتب وصل لحد باقته.
+    it('فشل بسبب وصول حد القضايا في الباقة (P0001) → بيعرض رسالة الـtrigger الحقيقية', async () => {
+      mockDb.setResult('cases:update', {
+        error: { message: 'مينفعش تسترجع القضية دي — وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة أو أرشف قضية تانية الأول.', code: 'P0001', hint: 'PLAN_LIMIT_CASES' },
+      });
+      const params = makeParams();
+      const { handleRestoreCase } = useCaseActions(params);
+
+      await handleRestoreCase('case-1');
+
+      expect(toast).toHaveBeenCalledWith('❌ مينفعش تسترجع القضية دي — وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة أو أرشف قضية تانية الأول.', true);
       expect(logActivity).not.toHaveBeenCalled();
       expect(params.fetchCases).not.toHaveBeenCalled();
     });
