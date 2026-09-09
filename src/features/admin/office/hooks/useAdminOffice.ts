@@ -116,7 +116,16 @@ export function useAdminOffice(tenantId: string | null, profile?: ProfileRow | n
           return;
         }
         const ext = logoFile.name.split('.').pop();
-        const path = `office/${tenantId}/logo.${ext}`;
+        // ⚠️ BUG FIX (اكتشاف جانبي من مراجعة G2، 9 سبتمبر 2026): المسار كان
+        // `office/${tenantId}/logo.${ext}` — أول جزء فيه حرفيًا كلمة "office"
+        // مش الـtenant_id، بعكس كل باقي مسارات الملفات في النظام. الـpolicy
+        // الوحيدة اللي بتسمح بالرفع أصلاً (`tenant_scoped_case_client_docs_insert`،
+        // phase2/02) بتشترط إن أول جزء في المسار = tenant المستخدم — فكان الرفع
+        // بيترفض بالكامل لأي أدمن عادي (مش سوبر أدمن)، والرسالة العامة لفشل
+        // الرفع بالصدفة بتتكلم عن حجم الصورة فبتضلل. اتأكد فعليًا على الإنتاج
+        // (9 سبتمبر 2026) ومفيش أي مكتب عنده شعار محفوظ فعلاً، فمفيش داعي لأي
+        // ترحيل بيانات — تغيير المسار هنا كافي.
+        const path = `${tenantId}/office-logo.${ext}`;
         const { error: upErr } = await db.storage.from('client-docs').upload(path, logoFile, { upsert: true });
         // ⚠️ BUG FIX: قبل كده لو الرفع فشل (upErr)، الكود كان يتجاهل الخطأ
         // تمامًا ويكمل الحفظ بقيمة logoUrl القديمة (غالبًا فاضية)، ويظهر
