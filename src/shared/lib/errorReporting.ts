@@ -1,4 +1,4 @@
-import { recordError, recordSuccess } from '../../systemHealth';
+import { recordError, recordSuccess, recordWriteFailure } from '../../systemHealth';
 import { toast } from './notifications';
 import { showSubscriptionLimitModal } from './subscriptionLimitModal';
 import type { ServiceKey } from '../../systemHealth';
@@ -87,6 +87,52 @@ export function showErrorToast(
     return;
   }
   toast('❌ ' + finalMessage, true);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 🆕 reportWriteFailure (٩ سبتمبر ٢٠٢٦ — تحقيق فشل تست timeout فى
+// useAdminPortal.test.ts): showErrorToast لوحدها كانت كافية لـportal_write
+// طول ما الهدف بس اكتشاف رسالة P0001/E2 (فوق)، لكنها بتسجل أي فشل تاني
+// (زي timeout) بـrecordError العادي — يعني lastOutcome='failure' قطعية
+// دايمًا، حتى لو الفشل transient وممكن يكون العملية نجحت فعليًا على
+// السيرفر (نفس المشكلة اللي recordWriteFailure اتعمل أصلاً عشانها فى
+// useFeesActions.ts، خطة "تصنيف الرسائل"، ٥ سبتمبر ٢٠٢٦).
+//
+// الدالة دي مخصصة لعمليات كتابة **idempotent طبيعيًا** (زي set_portal_pin
+// اللي بيعمل ON CONFLICT DO UPDATE بمفتاح client_id) فمفيش داعي لرسالة
+// توست "ambiguous" منفصلة زي مسار الأتعاب (اللي محتاج idempotency key
+// صريح لأنه INSERT عادي مش upsert) — التوست ثابت زي أي فشل عادي، والفرق
+// الوحيد بيبان فى تصنيف systemHealth بس (unknown بدل failure للحالات
+// الـtransient).
+//
+// بتغطي المسارين مع بعض:
+//  1) الرسالة P0001 (حد الباقة) أو E2 (قفل read-only) → مودال مخصص، زي
+//     showErrorToast بالظبط.
+//  2) أي فشل تاني → recordWriteFailure (تصنيف timeout/network كـ'unknown')
+//     + توست ثابت واحد بغض النظر عن التصنيف.
+export function reportWriteFailure(
+  key: ServiceKey,
+  rawError: unknown,
+  opts: { label: string; message: string },
+): void {
+  const rawMessage =
+    rawError == null ? ''
+    : typeof rawError === 'string' ? rawError
+    : (typeof rawError === 'object' && 'message' in rawError && typeof (rawError as { message?: unknown }).message === 'string')
+      ? (rawError as { message: string }).message
+      : String(rawError);
+  const subscriptionMessage = getSubscriptionAwareMessage(rawError);
+  if (subscriptionMessage) {
+    recordError(key, rawMessage, { label: opts.label, message: subscriptionMessage });
+    showSubscriptionLimitModal(subscriptionMessage);
+    return;
+  }
+  recordWriteFailure(key, rawError, {
+    label: opts.label,
+    message: opts.message,
+    ambiguousMessage: opts.message,
+  });
+  toast('❌ ' + opts.message, true);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
