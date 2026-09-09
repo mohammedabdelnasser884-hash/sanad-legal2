@@ -27,9 +27,18 @@ interface FetchState {
   changePasswordPutOk: boolean;
   changePasswordPutError: string;
   patchProfilesCalls: Array<{ userId: string; body: unknown }>;
+  /** 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — B3/B6): للتحكم في فشل PATCH profiles
+   *  (update_profile/toggle_lock) ومحاكاة رسالة الخطأ الراجعة من PostgREST
+   *  (زي رسالة trigger حد الباقة، أو رفض tenant_write_allowed). */
+  patchProfilesOk: boolean;
+  patchProfilesErrorMessage: string;
   createAuthUserOk: boolean;
   createAuthUserBody: unknown;
   createProfilePostOk: boolean;
+  /** 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — B2): رسالة الخطأ الراجعة من PostgREST لما
+   *  createProfilePostOk=false — تسمح بمحاكاة رسالة trigger حقيقية (P0001)
+   *  أو رفض RLS (tenant_write_allowed) بدل رسالة عامة ثابتة دايمًا. */
+  createProfilePostError: string;
   createProfilePostCalls: unknown[];
   /** خريطة profile.id → صف profiles، لحالة delete_user من غير user_id (بروفايل يتيم) */
   profilesByRowId: Record<string, { tenant_id?: string | null }>;
@@ -53,9 +62,12 @@ function freshState(): FetchState {
     changePasswordPutOk: true,
     changePasswordPutError: 'فشل تحديث كلمة المرور',
     patchProfilesCalls: [],
+    patchProfilesOk: true,
+    patchProfilesErrorMessage: 'فشل تعديل profile',
     createAuthUserOk: true,
     createAuthUserBody: { id: 'new-auth-user-1' },
     createProfilePostOk: true,
+    createProfilePostError: 'فشل إنشاء profile',
     createProfilePostCalls: [],
     profilesByRowId: {
       'row-1': { tenant_id: 'tenant-a' },
@@ -93,11 +105,15 @@ function buildFetchMock(state: FetchState) {
         : { status: 401, body: {} }),
     },
     // force_change: PATCH profiles?user_id=eq.X (لازم تتفحص قبل GET العام لأنها كمان profiles)
+    // ⚠️ update_profile/toggle_lock بيستخدموا id=eq. (مش user_id=eq.) في المسار،
+    // فـextractUserId هترجع '' ليهم — العنصر بس بيتسجل، مش بيتفحص هنا.
     {
       match: (url, init) => url.includes('/rest/v1/profiles') && init?.method === 'PATCH',
       respond: (url, init) => {
         state.patchProfilesCalls.push({ userId: extractUserId(url), body: JSON.parse(init!.body as string) });
-        return { status: 204, body: null };
+        return state.patchProfilesOk
+          ? { status: 204, body: null }
+          : { status: 400, body: { message: state.patchProfilesErrorMessage } };
       },
     },
     // create_lawyer: POST profiles (إدخال صف جديد، بدون user_id=eq في المسار)
@@ -114,7 +130,7 @@ function buildFetchMock(state: FetchState) {
         );
         return state.createProfilePostOk
           ? { status: 201, body: [{ user_id: 'new-auth-user-1' }] }
-          : { status: 400, body: { message: 'فشل إنشاء profile' } };
+          : { status: 400, body: { message: state.createProfilePostError } };
       },
     },
     // delete_user (بروفايل يتيم بلا user_id): GET profiles?id=eq.X&select=tenant_id
@@ -430,12 +446,52 @@ describe('admin-actions — action=create_lawyer', () => {
     expect(state.createProfilePostCalls[0]).toMatchObject({ tenant_id: 'tenant-chosen' });
   });
 
-  it('نجاح إنشاء الحساب لكن فشل إدخال صف profiles → 200 + رسالة ثابتة توضح إن الحساب اتعمل فعليًا (من غير تفاصيل الخطأ الخام)', async () => {
+  it('نجاح إنشاء حساب Auth لكن فشل إدخال صف profiles برسالة عامة → بيرجع rollback لحساب الـAuth + رسالة عامة (من غير تفاصيل الخطأ الخام)', async () => {
+    // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦): السلوك اتغيّر — قبل كده كان بيرجع "تم إنشاء
+    // الحساب لكن..." من غير ما يمسحه، فيسيب حساب Auth يتيم شغال بكلمة سر.
+    // دلوقتي الحساب بيتمسح فورًا (rollback)، فالرسالة بقت "تعذّر إنشاء
+    // الحساب" (مش "تم إنشاؤه") لأنه فعليًا اتلغى.
     state.createProfilePostOk = false;
     const res = await createLawyerReq();
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.error).toBe('تم إنشاء الحساب لكن حدثت مشكلة في ضبط الصلاحيات. تواصل مع الدعم لإتمام الإعداد.');
+    expect(data.error).toBe('تعذّر إنشاء الحساب بسبب مشكلة في ضبط الصلاحيات. حاول مرة أخرى، ولو استمرت المشكلة تواصل مع الدعم.');
+    expect(state.deleteAuthUserCalls).toEqual(['new-auth-user-1']);
+  });
+
+  it('فشل إدخال صف profiles برسالة trigger حد الباقة (P0001) → الرسالة الحقيقية بترجع زي ما هي + rollback لحساب الـAuth', async () => {
+    state.createProfilePostOk = false;
+    state.createProfilePostError = 'وصلت للحد الأقصى لعدد المستخدمين (5) في باقتك الحالية — رقّي الباقة لإضافة المزيد';
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe(state.createProfilePostError);
+    expect(state.deleteAuthUserCalls).toEqual(['new-auth-user-1']);
+  });
+
+  it('فشل إدخال صف profiles برسالة tenant_write_allowed (قفل read-only) → بترجع رسالة القفل الموحّدة + rollback', async () => {
+    state.createProfilePostOk = false;
+    state.createProfilePostError = 'new row violates row-level security policy for table "profiles" (tenant_write_allowed_profiles)';
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.deleteAuthUserCalls).toEqual(['new-auth-user-1']);
+  });
+
+  it('فشل إدخال profiles وفشل الـrollback نفسه (حذف حساب الـAuth) → برضه بيرجع رسالة واضحة للمستخدم من غير ما يطيح الفانكشن', async () => {
+    // best-effort: فشل الـrollback بيتسجل في console.error بس، ومايمنعش
+    // رد واضح للمستخدم — أفضل من استثناء غير متوقع يوصّل لـcatch العام (500).
+    state.createProfilePostOk = false;
+    state.deleteAuthUserOk = false;
+    state.deleteAuthUserStatus = 400; // ⚠️ لازم غير 200 عشان r.ok يبقى false فعليًا في الموك
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('تعذّر إنشاء الحساب بسبب مشكلة في ضبط الصلاحيات. حاول مرة أخرى، ولو استمرت المشكلة تواصل مع الدعم.');
+    expect(state.deleteAuthUserCalls).toEqual(['new-auth-user-1']);
   });
 
   it('مسار النجاح الكامل → ok:true + user_id، وصف profiles بالبيانات الصحيحة', async () => {
@@ -657,6 +713,35 @@ describe('admin-actions — action=update_profile (بند 4: نقل تعديل p
     expect(data.error).toBe('لا يوجد تغييرات لحفظها');
     expect(state.patchProfilesCalls).toEqual([]);
   });
+
+  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — B3): قبل كده PATCH فاشل كان دايمًا بيرجع
+  // "تعذّر حفظ التعديلات..." الثابتة، حتى لو الرفض فعليًا حد باقة (مثلاً
+  // تفعيل عضو جديد وصل لحد المستخدمين) أو قفل read-only.
+  it('PATCH فاشل برسالة trigger حد الباقة (P0001) → بترجع زي ما هي، مش الرسالة العامة', async () => {
+    state.patchProfilesOk = false;
+    state.patchProfilesErrorMessage = 'وصلت للحد الأقصى لعدد المستخدمين (5) في باقتك الحالية — رقّي الباقة لإضافة المزيد';
+    const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', is_active: true }));
+    const data = await res.json();
+    expect(data.error).toBe(state.patchProfilesErrorMessage);
+  });
+
+  it('PATCH فاشل برسالة tenant_write_allowed → بترجع رسالة القفل الموحّدة', async () => {
+    state.patchProfilesOk = false;
+    state.patchProfilesErrorMessage = 'new row violates row-level security policy for table "profiles" (tenant_write_allowed_profiles)';
+    const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', full_name: 'اسم جديد' }));
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+  });
+
+  it('PATCH فاشل برسالة عامة مش مرتبطة بالاشتراك → بترجع الرسالة العامة الثابتة زي الأول', async () => {
+    state.patchProfilesOk = false;
+    state.patchProfilesErrorMessage = 'connection timeout';
+    const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', full_name: 'اسم جديد' }));
+    const data = await res.json();
+    expect(data.error).toBe('تعذّر حفظ التعديلات. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.');
+  });
 });
 
 describe('admin-actions — action=toggle_lock (بند 4)', () => {
@@ -680,6 +765,26 @@ describe('admin-actions — action=toggle_lock (بند 4)', () => {
     const data = await res.json();
     expect(data.error).toBe('غير مسموح لك بتنفيذ هذا الإجراء');
     expect(state.patchProfilesCalls).toEqual([]);
+  });
+
+  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — B6): نفس فيكس update_profile — قفل/فتح حساب
+  // ممكن يترفض بسبب read-only على مستوى الاشتراك نفسه (تجربة/تأخير دفع).
+  it('PATCH فاشل برسالة tenant_write_allowed → بترجع رسالة القفل الموحّدة، مش الرسالة العامة', async () => {
+    state.patchProfilesOk = false;
+    state.patchProfilesErrorMessage = 'new row violates row-level security policy for table "profiles" (tenant_write_allowed_profiles)';
+    const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: true }));
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+  });
+
+  it('PATCH فاشل برسالة عامة → بترجع الرسالة العامة الثابتة زي الأول', async () => {
+    state.patchProfilesOk = false;
+    state.patchProfilesErrorMessage = 'connection timeout';
+    const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: true }));
+    const data = await res.json();
+    expect(data.error).toBe('تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.');
   });
 });
 
