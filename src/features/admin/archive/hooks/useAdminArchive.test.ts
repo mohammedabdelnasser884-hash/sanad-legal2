@@ -167,6 +167,15 @@ vi.mock('../../../../supabaseClient', () => ({
 const toast = vi.fn();
 vi.mock('../../../../shared/lib/notifications', () => ({ toast: (...a: unknown[]) => toast(...a) }));
 
+// 🆕 (بلاغ اختبار F1 اليدوي — 9 سبتمبر 2026): نفس mock
+// useCaseActions.test.ts بالحرف — showErrorToast (المضافة دلوقتي فى
+// handleRestoreCase هنا) بتوجّه رسائل P0001/حد الباقة لـ
+// showSubscriptionLimitModal بدل toast() العادي.
+const showSubscriptionLimitModal = vi.fn();
+vi.mock('../../../../shared/lib/subscriptionLimitModal', () => ({
+  showSubscriptionLimitModal: (...a: unknown[]) => showSubscriptionLimitModal(...a),
+}));
+
 const logActivity = vi.fn();
 vi.mock('../../../../shared/lib/dataAccess', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../shared/lib/dataAccess')>();
@@ -177,6 +186,7 @@ beforeEach(() => {
   mockDb = makeMockDb();
   toast.mockClear();
   logActivity.mockClear();
+  showSubscriptionLimitModal.mockClear();
 });
 
 const clients: ClientRow[] = [
@@ -283,6 +293,27 @@ describe('useAdminArchive', () => {
     await act(async () => { await result.current.handleRestoreCase('c1'); });
 
     expect(toast).toHaveBeenCalledWith('❌ فشل استرجاع القضية — تحقق من الاتصال وأعد المحاولة', true);
+    expect(logActivity).not.toHaveBeenCalled();
+    expect(result.current.archivedCases).toHaveLength(1);
+  });
+
+  // 🆕 (بلاغ اختبار F1 اليدوي — 9 سبتمبر 2026): كان الكود القديم بيوقع
+  // أي خطأ غير 23505 (بما فيه P0001/PLAN_LIMIT_CASES من تريجر B4) على
+  // رسالة "تحقق من الاتصال" العامة المُضلِّلة — نفس تست
+  // useCaseActions.test.ts (handleRestoreCase) بالحرف، هنا فى النسخة
+  // المتوصّلة فعليًا بشاشة الأرشيف.
+  it('فشل بسبب وصول حد القضايا في الباقة (P0001) → بيعرض رسالة الـtrigger الحقيقية فى مودال بدل رسالة الاتصال العامة', async () => {
+    mockDb.setSelectResult({ data: [{ id: 'c1', title: 'قضية 1' }], count: 1 });
+    const { result } = setup();
+    await act(async () => { await result.current.fetchArchivedCases(); });
+
+    mockDb.setSimpleResult('cases:update', {
+      error: { message: 'مينفعش تسترجع القضية دي — وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة أو أرشف قضية تانية الأول.', code: 'P0001', hint: 'PLAN_LIMIT_CASES' },
+    });
+    await act(async () => { await result.current.handleRestoreCase('c1'); });
+
+    expect(showSubscriptionLimitModal).toHaveBeenCalledWith('مينفعش تسترجع القضية دي — وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة أو أرشف قضية تانية الأول.');
+    expect(toast).not.toHaveBeenCalled();
     expect(logActivity).not.toHaveBeenCalled();
     expect(result.current.archivedCases).toHaveLength(1);
   });
