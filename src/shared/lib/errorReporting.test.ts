@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const recordErrorSpy = vi.fn();
 const recordSuccessSpy = vi.fn();
 const toastSpy = vi.fn();
+const showSubscriptionLimitModalSpy = vi.fn();
 
 vi.mock('../../systemHealth', () => ({
   recordError: (...a: unknown[]) => recordErrorSpy(...a),
@@ -15,6 +16,9 @@ vi.mock('../../systemHealth', () => ({
 vi.mock('./notifications', () => ({
   toast: (...a: unknown[]) => toastSpy(...a),
 }));
+vi.mock('./subscriptionLimitModal', () => ({
+  showSubscriptionLimitModal: (...a: unknown[]) => showSubscriptionLimitModalSpy(...a),
+}));
 
 import { showErrorToast, reportOperationResult, runTracked } from './errorReporting';
 
@@ -22,6 +26,7 @@ beforeEach(() => {
   recordErrorSpy.mockClear();
   recordSuccessSpy.mockClear();
   toastSpy.mockClear();
+  showSubscriptionLimitModalSpy.mockClear();
 });
 
 describe('showErrorToast', () => {
@@ -43,29 +48,42 @@ describe('showErrorToast', () => {
   });
 
   // 🆕 E2 + E3 (المرحلة 15 — قفل الاشتراك/حدود الباقات)
-  it('E3: كود P0001 (RAISE EXCEPTION من trigger حد الباقة) → بتعرض رسالة الخطأ نفسها بدل الرسالة العامة', () => {
+  // 🆕 (9 سبتمبر 2026): بقت بتفتح مودال مخصص بدل توست عابر — راجع
+  // SubscriptionLimitModal.tsx. الكشف بقى بمحتوى الرسالة بس (مش
+  // error.code)، عشان يشتغل برضه لما الرسالة توصل عن طريق admin-actions
+  // Edge Function (اللي بتفقد .code في الطريق).
+  it('E3: رسالة حد الباقة (RAISE EXCEPTION من trigger) → بتفتح مودال حد الباقة برسالة الخطأ نفسها، مفيش توست', () => {
     const limitErr = { code: 'P0001', message: 'وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة لإضافة قضايا جديدة.' };
     showErrorToast('k3', limitErr, 'فشل إضافة القضية', 'إضافة قضية');
-    expect(toastSpy).toHaveBeenCalledWith('❌ وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة لإضافة قضايا جديدة.', true);
+    expect(showSubscriptionLimitModalSpy).toHaveBeenCalledWith(limitErr.message);
+    expect(toastSpy).not.toHaveBeenCalled();
     expect(recordErrorSpy).toHaveBeenCalledWith('k3', limitErr.message, {
       label: 'إضافة قضية',
       message: limitErr.message,
     });
   });
 
-  it('E2: كود 42501 من tenant_write_allowed_* → رسالة "وضع مشاهدة فقط" الثابتة بدل الرسالة التقنية الخام', () => {
-    const lockErr = { code: '42501', message: 'new row violates row-level security policy "tenant_write_allowed_cases_update" for table "cases"' };
-    showErrorToast('k4', lockErr, 'فشل تعديل القضية', 'تعديل قضية');
-    expect(toastSpy).toHaveBeenCalledWith(
-      '❌ الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.',
-      true,
-    );
+  it('E3 عبر Edge Function (رسالة forwarded بدون .code) → بتتكشف برضه بمحتوى الرسالة وتفتح المودال', () => {
+    const forwardedErr = new Error('وصلت للحد الأقصى لعدد الحسابات (1) في باقتك الحالية. رقّي الباقة لإضافة مستخدمين جدد.');
+    showErrorToast('k3b', forwardedErr, 'تعذّر إنشاء الحساب', 'إنشاء مستخدم');
+    expect(showSubscriptionLimitModalSpy).toHaveBeenCalledWith(forwardedErr.message);
+    expect(toastSpy).not.toHaveBeenCalled();
   });
 
-  it('42501 من غير اسم tenant_write_allowed (RLS تانية غير مرتبطة بالاشتراك) → الرسالة العامة زي ما هي', () => {
+  it('E2: رسالة من tenant_write_allowed_* → مودال برسالة "وضع مشاهدة فقط" الثابتة بدل الرسالة التقنية الخام', () => {
+    const lockErr = { code: '42501', message: 'new row violates row-level security policy "tenant_write_allowed_cases_update" for table "cases"' };
+    showErrorToast('k4', lockErr, 'فشل تعديل القضية', 'تعديل قضية');
+    expect(showSubscriptionLimitModalSpy).toHaveBeenCalledWith(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.',
+    );
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
+  it('42501 من غير اسم tenant_write_allowed (RLS تانية غير مرتبطة بالاشتراك) → الرسالة العامة زي ما هي، توست عادي مفيش مودال', () => {
     const otherRlsErr = { code: '42501', message: 'new row violates row-level security policy for table "cases"' };
     showErrorToast('k5', otherRlsErr, 'فشل تعديل القضية', 'تعديل قضية');
     expect(toastSpy).toHaveBeenCalledWith('❌ فشل تعديل القضية', true);
+    expect(showSubscriptionLimitModalSpy).not.toHaveBeenCalled();
   });
 });
 
