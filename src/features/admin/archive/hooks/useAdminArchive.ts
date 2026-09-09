@@ -3,6 +3,7 @@ import { db } from '../../../../supabaseClient';
 import { toast } from '../../../../shared/lib/notifications';
 import { logActivity, buildDeleteSnapshot } from '../../../../shared/lib/dataAccess';
 import { ilikeOrClause } from '../../../../shared/lib/sanitize';
+import { showErrorToast } from '../../../../shared/lib/errorReporting';
 import type { CaseRow, ClientRow, CaseFeeRow, ProfileRow } from '../../../../types';
 
 // ⚠️ هوك مستقل بذاته (نفس فلسفة useAdminBackup/useAdminActivity) — AdminPanel
@@ -67,10 +68,19 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
             // على غير المؤرشف) لو قضية جديدة اتسجلت بنفس البيانات بعد الأرشفة.
             // بنميّز الرسالة زي نفس نمط useCaseActions.ts بدل رسالة "تحقق من الاتصال"
             // المُضلِّلة اللي بتوجّه المستخدم للاتجاه الغلط.
+            // 🐛 FIX (اختبار F1 اليدوي — 9 سبتمبر 2026): كان أي خطأ تاني غير 23505
+            // (وتحديدًا P0001/PLAN_LIMIT_CASES من تريجر B4 لو المكتب واصل لحد
+            // باقته) بيقع على رسالة "تحقق من الاتصال" العامة نفسها بدل المودال
+            // المخصص (SubscriptionLimitModal) اللي showErrorToast بتفتحه. هوك
+            // useCaseCrudActions.ts (نسخة تانية من نفس المنطق، مش متوصّلة بأي
+            // واجهة فعليًا) كانت اتصلحت بنفس اليوم، والنسخة دي (المتوصّلة فعليًا
+            // بشاشة الأرشيف فى AdminPanel) اتنسيت — نفس فئة الباج اللي
+            // caseSessionLinkingShared.ts اتعمل أصلاً عشان يمنعها (نسخة يدوية
+            // في ملفين، واحدة بس بتتصلح).
             if ((error as { code?: string }).code === '23505') {
                 toast('⚠️ فيه قضية نشطة تانية بنفس رقم القيد — عدّل بياناتها الأول قبل الاسترجاع', true);
             } else {
-                toast('❌ فشل استرجاع القضية — تحقق من الاتصال وأعد المحاولة', true);
+                showErrorToast('case_restore', error, 'فشل استرجاع القضية — تحقق من الاتصال وأعد المحاولة', 'استرجاع قضية');
             }
             return;
         }
