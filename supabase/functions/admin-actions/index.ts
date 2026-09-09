@@ -115,6 +115,45 @@ async function authorizeOnTarget(caller: any, targetUserId: string): Promise<boo
   return !!target && target.tenant_id === caller.tenant_id;
 }
 
+// 🆕 FIX (٩ سبتمبر ٢٠٢٦ — تحقيق B2/B5): نفس منطق getSubscriptionAwareMessage
+// في src/shared/lib/errorReporting.ts بالظبط (لازم يفضلوا متطابقين حرفيًا —
+// أي تعديل هنا من غير ما ينعكس هناك، أو العكس، هيكسر الكشف). قبل الفيكس ده،
+// التلات catch blocks تحت (create_lawyer/update_profile/toggle_lock) كانت
+// بتطبع الرسالة الحقيقية في console.error بس وترجع رسالة عامة ثابتة للعميل
+// — يعني رسالة حد الباقة (P0001) أو رفض القفل (tenant_write_allowed) كانت
+// بتضيع هنا قبل ما توصل أصلاً لـshowErrorToast في الفرونت إند، مهما كان
+// الكشف هناك صح. بنرجّع الرسالة الخام زي ما هي بس لو طابقت واحد من
+// النمطين المعروفين ده (نصوصنا الثابتة إحنا، مش مدخلات مستخدم)، وإلا
+// بنفضل نرجّع fallback عام زي الأول — عشان منسربش أي تفاصيل داخلية تانية.
+function subscriptionAwareMessage(rawMessage: string): string | null {
+  if (!rawMessage) return null;
+  if (rawMessage.includes('وصلت للحد الأقصى')) return rawMessage;
+  if (rawMessage.includes('tenant_write_allowed')) {
+    return 'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.';
+  }
+  return null;
+}
+
+// حذف حساب Auth تم إنشاؤه لتوّه — best-effort، تُستخدم للـrollback لما
+// خطوة تالية (زي insert البروفايل) تفشل بعد ما حساب الدخول اتعمل بالفعل.
+async function rollbackAuthUser(userId: string, context: string): Promise<void> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+      method: 'DELETE',
+      headers: {
+        apikey: SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      },
+    });
+    if (!r.ok && r.status !== 404) {
+      const e = await r.json().catch(() => ({}));
+      console.error(`[admin-actions:${context} rollback failed]`, e.msg || e.message || r.status);
+    }
+  } catch (e) {
+    console.error(`[admin-actions:${context} rollback threw]`, e instanceof Error ? e.message : String(e));
+  }
+}
+
 Deno.serve(async (req: Request) => {
   const cors = handleCors(req);
   if (cors) return cors;
@@ -230,7 +269,18 @@ Deno.serve(async (req: Request) => {
       } catch (e) {
         const rawMessage = e instanceof Error ? e.message : String(e);
         console.error('[admin-actions:create_lawyer profile insert]', rawMessage);
-        return json({ error: 'تم إنشاء الحساب لكن حدثت مشكلة في ضبط الصلاحيات. تواصل مع الدعم لإتمام الإعداد.' });
+        // 🆕 FIX (٩ سبتمبر ٢٠٢٦): حساب auth.users فوق ده اتعمل خلاص وكلمة
+        // سره شغالة — لو سبنا الكود يرجع بس رسالة خطأ من غير ما نمسحه،
+        // بيفضل حساب دخول يتيم شغال 100% مالوش بروفايل ولا مكتب مرتبط
+        // بيه، بالظبط نفس فئة الباگ اللي delete_user فوق مبني عشان يتجنبها
+        // (حذف حساب Auth الأول قبل البروفايل). هنا العكس زمنيًا (الـauth
+        // اتعمل الأول)، فالحل هو rollback فوري بدل الترك.
+        await rollbackAuthUser(authUser.id, 'create_lawyer profile insert');
+        const subscriptionMessage = subscriptionAwareMessage(rawMessage);
+        return json({
+          error: subscriptionMessage
+            ?? 'تعذّر إنشاء الحساب بسبب مشكلة في ضبط الصلاحيات. حاول مرة أخرى، ولو استمرت المشكلة تواصل مع الدعم.',
+        });
       }
 
       return json({ ok: true, user_id: authUser.id });
@@ -357,7 +407,13 @@ Deno.serve(async (req: Request) => {
       } catch (e) {
         const rawMessage = e instanceof Error ? e.message : String(e);
         console.error('[admin-actions:update_profile]', rawMessage);
-        return json({ error: 'تعذّر حفظ التعديلات. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.' });
+        // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — B3): كان بيرجع الرسالة العامة دي دايمًا،
+        // حتى لو الرفض فعليًا حد باقة (مثلاً تفعيل مستخدم جديد وصل لحد
+        // المستخدمين المسموح) أو قفل read-only بسبب حالة الاشتراك.
+        return json({
+          error: subscriptionAwareMessage(rawMessage)
+            ?? 'تعذّر حفظ التعديلات. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.',
+        });
       }
 
       return json({ ok: true });
@@ -389,7 +445,12 @@ Deno.serve(async (req: Request) => {
       } catch (e) {
         const rawMessage = e instanceof Error ? e.message : String(e);
         console.error('[admin-actions:toggle_lock]', rawMessage);
-        return json({ error: 'تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.' });
+        // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — B6): نفس فيكس update_profile فوق — قفل/فتح
+        // حساب ممكن يترفض بسبب read-only على مستوى الاشتراك نفسه.
+        return json({
+          error: subscriptionAwareMessage(rawMessage)
+            ?? 'تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.',
+        });
       }
 
       return json({ ok: true });
