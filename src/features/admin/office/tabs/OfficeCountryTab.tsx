@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { I, COUNTRY_CONFIGS, saveOfficeSetting } from '../../../../constants';
 import type { CountryConfig } from '../../../../constants';
 import { toast } from '../../../../shared/lib/notifications';
+import { showErrorToast } from '../../../../shared/lib/errorReporting';
 
 // ── تاب "الدولة" داخل قسم إعدادات المكتب ──
 // منقول من src/pages/Settings/CountrySettings.tsx (المرحلة 2 من خطة نقل
@@ -35,7 +36,7 @@ function OfficeCountryTab({ currentCountry, onCountryChange }: OfficeCountryTabP
       toast(`✅ تم تغيير الدولة إلى ${COUNTRY_CONFIGS[selected].name}`);
     } catch (err) {
       console.error('OfficeCountryTab save failed:', err);
-      toast('❌ فشل حفظ الدولة، حاول مرة أخرى');
+      showErrorToast('office_country_save', err, 'فشل حفظ الدولة، حاول مرة أخرى', 'حفظ الدولة');
     } finally {
       setSaving(false);
     }
