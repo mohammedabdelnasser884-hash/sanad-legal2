@@ -37,6 +37,25 @@
   .no-scroll { overflow: hidden; }
   .slide-enter { animation: fadeIn 0.3s ease-out forwards; }
   select option { background: #0c1426; }
+
+  /* خلفية موحّدة لكل المودالات: تعتيم أقوى + بلور، مع دعم -webkit- للمتصفحات/الـ WebViews القديمة */
+  .modal-backdrop {
+    background: rgba(0,0,0,0.85);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+
+  /* تثبيت الهيدر في طبقة عرض مستقلة (GPU layer) — بيمنع باگ شائع في بعض
+     متصفحات/WebViews الأندرويد بيخلي محتوى السكرول يظهر فوق الـ sticky header
+     أو يتداخل معاه لحظة السكرول. */
+  header {
+    position: -webkit-sticky;
+    position: sticky;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: transform;
+    isolation: isolate;
+  }
 </style>
 </head>
 <body class="min-h-screen">
@@ -230,7 +249,7 @@
 <!-- ══════════════════════════════════════════════════════ -->
 <!--  مودال إضافة / تعديل مكتب                             -->
 <!-- ══════════════════════════════════════════════════════ -->
-<div id="office-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+<div id="office-modal" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
   <div class="bg-premium-card border border-white/10 rounded-3xl w-full max-w-lg overflow-hidden slide-enter">
     <!-- هيدر المودال -->
     <div class="bg-[#070d1a] px-5 py-4 border-b border-white/5 flex items-center justify-between">
@@ -319,7 +338,7 @@
 <!-- ══════════════════════════════════════════════════════ -->
 <!--  مودال تأكيد دفع (D2)                                 -->
 <!-- ══════════════════════════════════════════════════════ -->
-<div id="payment-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+<div id="payment-modal" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
   <div class="bg-premium-card border border-white/10 rounded-3xl w-full max-w-sm overflow-hidden slide-enter">
     <div class="bg-[#070d1a] px-5 py-4 border-b border-white/5 flex items-center justify-between">
       <div>
@@ -367,7 +386,7 @@
 <!-- ══════════════════════════════════════════════════════ -->
 <!--  مودال تأكيد الحذف                                    -->
 <!-- ══════════════════════════════════════════════════════ -->
-<div id="delete-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+<div id="delete-modal" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
   <div class="bg-premium-card border border-rose-500/20 rounded-3xl w-full max-w-sm overflow-hidden slide-enter p-6 text-center space-y-4">
     <div class="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mx-auto">
       <svg class="w-6 h-6 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -394,7 +413,7 @@
 <!-- ══════════════════════════════════════════════════════ -->
 <!--  مودال تسجيل دفعة                                    -->
 <!-- ══════════════════════════════════════════════════════ -->
-<div id="pay-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+<div id="pay-modal" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
   <div class="bg-premium-card border border-white/10 rounded-3xl w-full max-w-md overflow-hidden slide-enter">
     <div class="bg-[#070d1a] px-5 py-4 border-b border-white/5 flex items-center justify-between">
       <div>
@@ -465,7 +484,7 @@
 <!-- ══════════════════════════════════════════════════════ -->
 <!--  مودال تفاصيل المكتب (بيفتح من كارت الموبايل)          -->
 <!-- ══════════════════════════════════════════════════════ -->
-<div id="office-detail-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+<div id="office-detail-modal" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
   <div class="bg-premium-card border border-white/10 rounded-3xl w-full max-w-lg overflow-hidden slide-enter">
     <div class="bg-[#070d1a] px-5 py-4 border-b border-white/5 flex items-center justify-between">
       <h3 id="office-detail-title" class="text-sm font-black text-white"></h3>
@@ -609,6 +628,46 @@ function esc(s) {
 let allTenants    = [];
 let deleteTargetId = null;
 let currentTab    = 'offices';
+
+// ─── قفل سكرول الصفحة الخلفية وقت فتح أي مودال ───────────
+// المشكلة قبل كده: صفحة الخلفية كانت فاضلة قابلة للسكرول وهي المودال
+// فاتح، فبعض متصفحات/WebViews الموبايل كانت بتلخبط رسم عناصر fixed/sticky
+// (المودال نفسه + الهيدر) أثناء السكرول، وده اللي كان بيظهر كتداخل/شفافية
+// غريبة بين محتوى المودال ومحتوى الصفحة اللي تحته. الحل: تثبيت الـ body
+// تمامًا (position:fixed) طول ما فيه مودال مفتوح، ورجّعه لمكانه بالظبط
+// (نفس الـ scroll position) لما يتقفل.
+let _scrollLockY = 0;
+let _scrollLockCount = 0;
+function lockBodyScroll() {
+  if (_scrollLockCount === 0) {
+    _scrollLockY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.position = 'fixed';
+    document.body.style.top    = `-${_scrollLockY}px`;
+    document.body.style.left   = '0';
+    document.body.style.right  = '0';
+    document.body.style.width  = '100%';
+  }
+  _scrollLockCount++;
+}
+function unlockBodyScroll() {
+  _scrollLockCount = Math.max(0, _scrollLockCount - 1);
+  if (_scrollLockCount === 0) {
+    document.body.style.position = '';
+    document.body.style.top    = '';
+    document.body.style.left   = '';
+    document.body.style.right  = '';
+    document.body.style.width  = '';
+    window.scrollTo(0, _scrollLockY);
+  }
+}
+function showModal(id) {
+  document.getElementById(id).classList.remove('hidden');
+  lockBodyScroll();
+}
+function hideModal(id) {
+  document.getElementById(id).classList.add('hidden');
+  unlockBodyScroll();
+}
 
 // ─── الاتصال بالـ Edge Function (بديل sbFetch القديمة) ──
 async function sbFetch(path, method='GET', body=null) {
@@ -1152,10 +1211,10 @@ function openOfficeDetailModal(id) {
   if (!t) return;
   document.getElementById('office-detail-title').textContent = t.name;
   document.getElementById('office-detail-body').innerHTML = buildOfficeDetailHTML(t);
-  document.getElementById('office-detail-modal').classList.remove('hidden');
+  showModal('office-detail-modal');
 }
 function closeOfficeDetailModal() {
-  document.getElementById('office-detail-modal').classList.add('hidden');
+  hideModal('office-detail-modal');
 }
 
 // ─── فك قفل/تجميد الـ Onboarding لمكتب ──────────────────
@@ -1189,11 +1248,11 @@ function openConfirmPaymentModal(tenantId) {
   document.getElementById('pay-amount').value = '';
   document.getElementById('pay-method').value = 'cash';
   document.getElementById('payment-modal-err').classList.add('hidden');
-  document.getElementById('payment-modal').classList.remove('hidden');
+  showModal('payment-modal');
 }
 
 function closeConfirmPaymentModal() {
-  document.getElementById('payment-modal').classList.add('hidden');
+  hideModal('payment-modal');
 }
 
 async function submitConfirmPayment() {
@@ -1276,7 +1335,7 @@ function openAddModal() {
   document.getElementById('f-expires').value = computeTrialEndDate();
   document.getElementById('modal-err').classList.add('hidden');
   document.getElementById('create-only-fields').classList.remove('hidden');
-  document.getElementById('office-modal').classList.remove('hidden');
+  showModal('office-modal');
 }
 
 // ─── Modal Edit ────────────────────────────────────────
@@ -1299,11 +1358,11 @@ function openEditModal(id) {
   document.getElementById('f-notes').value     = t.notes || '';
   document.getElementById('modal-err').classList.add('hidden');
   document.getElementById('create-only-fields').classList.add('hidden');
-  document.getElementById('office-modal').classList.remove('hidden');
+  showModal('office-modal');
 }
 
 function closeModal() {
-  document.getElementById('office-modal').classList.add('hidden');
+  hideModal('office-modal');
 }
 
 // ─── Save Tenant ───────────────────────────────────────
@@ -1399,11 +1458,11 @@ function openDeleteModal(id) {
   const tenant = allTenants.find(t => t.id === id);
   // textContent بيتعامل مع النص كنص خام دايمًا (مش HTML)، فمفيش حاجة للـ escaping هنا
   document.getElementById('delete-msg').textContent = 'هل أنت متأكد من حذف "' + (tenant?.name || '') + '"؟ لا يمكن التراجع.';
-  document.getElementById('delete-modal').classList.remove('hidden');
+  showModal('delete-modal');
 }
 function closeDeleteModal() {
   deleteTargetId = null;
-  document.getElementById('delete-modal').classList.add('hidden');
+  hideModal('delete-modal');
 }
 async function confirmDelete() {
   if (!deleteTargetId) return;
@@ -1681,11 +1740,11 @@ function openPayModal() {
   document.getElementById('pf-method').value = 'cash';
   document.getElementById('pf-notes').value  = '';
   document.getElementById('pay-modal-err').classList.add('hidden');
-  document.getElementById('pay-modal').classList.remove('hidden');
+  showModal('pay-modal');
 }
 
 function closePayModal() {
-  document.getElementById('pay-modal').classList.add('hidden');
+  hideModal('pay-modal');
 }
 
 async function savePayment() {
