@@ -93,40 +93,41 @@
 <!-- ══════════════════════════════════════════════════════ -->
 <div id="app" class="hidden min-h-screen flex flex-col">
 
-  <!-- هيدر -->
-  <header id="app-header" style="background-color:#0c1426" class="shrink-0 bg-premium-card border-b border-white/5 px-4 py-3 flex flex-wrap items-center justify-between gap-y-2 z-40">
-    <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#8B6914] to-[#C9A84C] flex items-center justify-center shadow-md shrink-0">
-        <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+  <!-- هيدر (مضغوط فى صف واحد — 9 سبتمبر 2026: كان بياخد 3-4 سطور
+       (اسم البوابة، تحته "سند"، تحتهم صف التابات لوحده وممكن يتقسم
+       لسطرين تانيين لو التابات ملهمش مساحة). دلوقتي: اسم البوابة و
+       "سند" فى سطر واحد، والتابات فى نفس صف الهيدر بحجم أصغر، عشان
+       يفضل للهيدر كله سطر أو سطرين بحد أقصى ويتوفر مساحة أكبر للبيانات. -->
+  <header id="app-header" style="background-color:#0c1426" class="shrink-0 bg-premium-card border-b border-white/5 px-3 py-2 flex items-center justify-between gap-2 z-40">
+    <div class="flex items-center gap-2 min-w-0">
+      <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#8B6914] to-[#C9A84C] flex items-center justify-center shadow-md shrink-0">
+        <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"/>
         </svg>
       </div>
-      <div>
-        <h1 class="text-sm font-black text-white">بوابة إدارة المكاتب</h1>
-        <p class="text-[10px] text-[#C9A84C] font-bold">سَنَد</p>
-      </div>
+      <h1 class="text-[11px] font-black text-white truncate">بوابة إدارة المكاتب <span class="text-[#C9A84C]">· سَنَد</span></h1>
     </div>
-    <!-- تابات + خروج: صف كامل مستقل تحت اللوجو على الموبايل، بجانبه على الشاشات الأكبر -->
-    <div class="flex items-center gap-2 w-full sm:w-auto order-3 sm:order-none">
+    <!-- تابات + خروج: نفس صف الهيدر دايمًا، بحجم مصغّر يكفي أي عرض شاشة موبايل -->
+    <div class="flex items-center gap-1 shrink-0">
       <!-- تاب المكاتب -->
       <button onclick="switchTab('offices')" id="tab-offices"
-        class="flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent">
+        class="text-center px-2 py-1 rounded-lg text-[9px] font-black transition-all border border-transparent">
         🏢 المكاتب
       </button>
       <!-- تاب الباقات -->
       <button onclick="switchTab('plans')" id="tab-plans"
-        class="flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent">
+        class="text-center px-2 py-1 rounded-lg text-[9px] font-black transition-all border border-transparent">
         💳 الباقات
       </button>
       <!-- تاب المدفوعات -->
       <button onclick="switchTab('payments')" id="tab-payments"
-        class="flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent">
+        class="text-center px-2 py-1 rounded-lg text-[9px] font-black transition-all border border-transparent">
         💰 المدفوعات
       </button>
       <!-- خروج -->
       <button onclick="doLogout()"
-        class="shrink-0 w-8 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center text-slate-400 active:scale-95 transition-transform">
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        class="shrink-0 w-7 h-7 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center text-slate-400 active:scale-95 transition-transform">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75"/>
         </svg>
       </button>
@@ -139,9 +140,14 @@
   <!-- ════ تاب المكاتب ════ -->
   <div id="page-offices" class="flex-1 p-4 space-y-4 fade-in">
 
-    <!-- إحصائيات سريعة -->
-    <div id="stats-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <!-- تتعبى ديناميكياً -->
+    <!-- إحصائيات سريعة — قسم مستقل بذاته (9 سبتمبر 2026: كانت الأربع
+         مربعات عايمة فى الصفحة بلا أي تجميع بصري، دلوقتي جوه كارت
+         خاص بيهم منفصل عن باقي المحتوى) -->
+    <div class="bg-premium-card border border-white/5 rounded-2xl p-3">
+      <p class="text-[10px] font-black text-slate-400 mb-2">نظرة عامة</p>
+      <div id="stats-grid" class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <!-- تتعبى ديناميكياً -->
+      </div>
     </div>
 
     <!-- تنبيهات الاشتراك -->
@@ -768,10 +774,10 @@ function switchTab(tab) {
     if (!pg || !btn) return;
     if (t === tab) {
       pg.classList.remove('hidden');
-      btn.className = 'flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border bg-[#C9A84C]/15 text-[#C9A84C] border-[#C9A84C]/30';
+      btn.className = 'text-center px-2 py-1 rounded-lg text-[9px] font-black transition-all border bg-[#C9A84C]/15 text-[#C9A84C] border-[#C9A84C]/30';
     } else {
       pg.classList.add('hidden');
-      btn.className = 'flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent text-slate-400';
+      btn.className = 'text-center px-2 py-1 rounded-lg text-[9px] font-black transition-all border border-transparent text-slate-400';
     }
   });
   if (tab === 'plans')    renderPlans();
