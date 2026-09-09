@@ -216,7 +216,7 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
       logActivity(db, 'تغيير كلمة مرور مستخدم', { userName: _userName, entity_type: 'user', entity_id: userId });
       setChangePassUser(null);
     } catch(e) {
-      toast('❌ فشل تحديث كلمة المرور', true);
+      showErrorToast('admin_change_password', e, 'فشل تحديث كلمة المرور', 'تغيير كلمة مرور مستخدم');
     }
     setSaving(false);
   };
@@ -233,7 +233,7 @@ export function useAdminUsers(fetchLawyers: () => void, profile?: ProfileRow | n
       logActivity(db, 'تسجيل خروج قسري', { userName: _userName, entity_type: 'user', entity_id: user.user_id || user.id, details: user.full_name || null });
       setConfirmSignOut(null);
     } catch(e) {
-      toast('❌ فشل تسجيل الخروج', true);
+      showErrorToast('admin_force_signout', e, 'فشل تسجيل الخروج', 'تسجيل خروج قسري');
     }
     setSaving(false);
   };
