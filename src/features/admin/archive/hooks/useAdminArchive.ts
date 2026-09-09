@@ -114,7 +114,7 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
         if (error) {
             setDeletingCase(false);
             setConfirmDeleteCase(null);
-            toast('❌ فشل حذف القضية نهائياً — تحقق من الاتصال وأعد المحاولة', true);
+            showErrorToast('case_archive_permanent_delete', error, 'فشل حذف القضية نهائياً — تحقق من الاتصال وأعد المحاولة', 'حذف قضية نهائيًا (أرشيف)');
             return;
         }
 
@@ -195,7 +195,7 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
             if ((error as { code?: string }).code === '23505') {
                 toast('⚠️ فيه موكل نشط تاني بنفس الاسم أو الرقم القومي — عدّل بياناته الأول قبل الاسترجاع', true);
             } else {
-                toast('❌ فشل استرجاع الموكل — تحقق من الاتصال وأعد المحاولة', true);
+                showErrorToast('client_archive_restore', error, 'فشل استرجاع الموكل — تحقق من الاتصال وأعد المحاولة', 'استرجاع موكل (أرشيف)');
             }
             return;
         }
@@ -213,7 +213,7 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
         const { error } = await db.from('clients').delete().eq('id', clientId);
         setDeletingClient(false);
         setConfirmDeleteClient(null);
-        if (error) { toast('❌ فشل حذف الموكل نهائياً — تحقق من الاتصال وأعد المحاولة', true); return; }
+        if (error) { showErrorToast('client_archive_permanent_delete', error, 'فشل حذف الموكل نهائياً — تحقق من الاتصال وأعد المحاولة', 'حذف موكل نهائيًا (أرشيف)'); return; }
         toast('🗑️ تم حذف الموكل نهائياً');
         logActivity(db, 'حذف موكل نهائياً', {
             userName: _userName,
@@ -274,7 +274,7 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
         setRestoringFeeId(feeId);
         const { error } = await db.from('case_fees').update({ deleted_at: null }).eq('id', feeId);
         setRestoringFeeId(null);
-        if (error) { toast('❌ فشل استرجاع الأتعاب — تحقق من الاتصال وأعد المحاولة', true); return; }
+        if (error) { showErrorToast('fee_archive_restore', error, 'فشل استرجاع الأتعاب — تحقق من الاتصال وأعد المحاولة', 'استرجاع أتعاب (أرشيف)'); return; }
         toast('✅ تم استرجاع الأتعاب — قد تحتاج لتحديث الصفحة لرؤيتها في القوائم الأخرى');
         logActivity(db, 'استرجاع أتعاب من الأرشيف', { userName: _userName, entity_type: 'fee', entity_id: feeId });
         setArchivedFees((prev) => prev.filter((f) => f.id !== feeId));
@@ -289,7 +289,7 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
         const { error } = await db.from('case_fees').delete().eq('id', feeId);
         setDeletingFee(false);
         setConfirmDeleteFee(null);
-        if (error) { toast('❌ فشل حذف الأتعاب نهائياً — تحقق من الاتصال وأعد المحاولة', true); return; }
+        if (error) { showErrorToast('fee_archive_permanent_delete', error, 'فشل حذف الأتعاب نهائياً — تحقق من الاتصال وأعد المحاولة', 'حذف أتعاب نهائيًا (أرشيف)'); return; }
         toast('🗑️ تم حذف الأتعاب نهائياً');
         logActivity(db, 'حذف أتعاب نهائياً', {
             userName: _userName,
