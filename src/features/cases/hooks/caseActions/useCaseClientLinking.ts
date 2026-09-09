@@ -59,7 +59,7 @@ export function createCaseClientLinking(
             return;
         }
         if (error) {
-            toast('❌ فشل ربط القضية بالموكل — تحقق من الاتصال وأعد المحاولة', true);
+            showErrorToast('case_client_link', error, 'فشل ربط القضية بالموكل — تحقق من الاتصال وأعد المحاولة', 'ربط قضية بموكل');
             return;
         }
         const clientName = linkedClient?.full_name || null;
@@ -221,7 +221,7 @@ export function createCaseClientLinking(
             return;
         }
         if (error) {
-            toast('❌ فشل فك ربط القضية عن الموكل — تحقق من الاتصال وأعد المحاولة', true);
+            showErrorToast('case_client_unlink', error, 'فشل فك ربط القضية عن الموكل — تحقق من الاتصال وأعد المحاولة', 'فك ربط قضية عن موكل');
             return;
         }
         toast('✅ تم فك الربط — بيانات الموكل في القضية بقت قابلة للتعديل الحر');
