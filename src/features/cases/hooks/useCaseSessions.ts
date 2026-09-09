@@ -146,7 +146,7 @@ export function useCaseSessions(
       toast('📥 الحذف محفوظ محلياً — سيُزامن عند عودة الإنترنت');
       return;
     }
-    if (error) { toast('❌ فشل حذف الجلسة، حاول مرة أخرى', true); return; }
+    if (error) { showErrorToast('session_delete', error, 'فشل حذف الجلسة، حاول مرة أخرى', 'حذف جلسة قضية'); return; }
     // FIX (2.3): لو الجلسة المحذوفة كانت هي الأقرب، لازم next_hearing يتحدّث
     await recalcNextHearing(caseData.id);
     toast('🗑 تم حذف الجلسة');
@@ -193,7 +193,7 @@ export function useCaseSessions(
       return;
     }
     if (conflict) { toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
-    if (error) { toast('❌ فشل تعديل بيانات الجلسة — تحقق من الاتصال وأعد المحاولة', true); return; }
+    if (error) { showErrorToast('session_update', error, 'فشل تعديل بيانات الجلسة — تحقق من الاتصال وأعد المحاولة', 'تعديل جلسة قضية'); return; }
     // FIX (2.3): تاريخ الجلسة ممكن يكون اتغيّر، فلازم next_hearing يتحدّث معاه
     await recalcNextHearing(caseData.id);
     toast('✅ تم تعديل الجلسة');
