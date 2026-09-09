@@ -302,7 +302,7 @@
           </select>
         </div>
         <div class="col-span-1 sm:col-span-2" id="plan-locked-note" style="display:none">
-          <p class="text-[9px] text-amber-400 font-bold">الباقة/الحالة بقوا بيتغيّروا بس عن طريق "تأكيد دفع" أو الترقية من جدول المكاتب — عشان ميعاد التجديد يفضل متزامن. زرار الإيقاف/التفعيل السريع لسه شغال زي ما هو.</p>
+          <p class="text-[9px] text-amber-400 font-bold">⚠️ تعديل مباشر: الباقة/الحالة هيتغيروا من غير ما ميعاد التجديد (subscription_due_at) يتحدّث تلقائيًا. استخدم "تأكيد دفع" للمكاتب الحقيقية عشان الميعاد يفضل متزامن — الحقول دي مفتوحة هنا للمكاتب التجريبية بتاعتك بس.</p>
         </div>
         <div class="col-span-1 sm:col-span-2">
           <label class="text-[10px] font-black text-slate-400 block mb-1">تاريخ انتهاء التجربة/الاشتراك</label>
@@ -1414,11 +1414,13 @@ function openEditModal(id) {
   document.getElementById('f-phone').value     = t.phone || '';
   populatePlanSelect(t.subscription_plan || DEFAULT_PLAN_ID);
   document.getElementById('f-status').value    = t.status || 'active';
-  // (D5) الباقة/الحالة بقوا للعرض بس في مودال التعديل العادي — التغيير
-  // الفعلي لازم يعدّي عن طريق "تأكيد دفع" (ترقية/تجديد) عشان
-  // subscription_due_at يفضل متزامن دايمًا مع أي تغيير باقة.
-  document.getElementById('f-plan').disabled = true;
-  document.getElementById('f-status').disabled = true;
+  // (D5 معدّل بطلبك 9 سبتمبر 2026) الباقة/الحالة رجعوا قابلين للتعديل
+  // المباشر من مودال التعديل العادي — بقرارك الصريح، لاستخدامك الخاص مع
+  // مكاتب تجريبية بتاعتك بس. ⚠️ التعديل المباشر هنا مش بيحسب/يحدّث
+  // subscription_due_at زي "تأكيد دفع" — لأي مكتب حقيقي استخدم "تأكيد
+  // دفع" علشان ميعاد التجديد يفضل متزامن مع الباقة.
+  document.getElementById('f-plan').disabled = false;
+  document.getElementById('f-status').disabled = false;
   document.getElementById('plan-locked-note').style.display = 'block';
   document.getElementById('f-expires').value   = (t.trial_ends_at || '').slice(0,10);
   document.getElementById('f-notes').value     = t.notes || '';
