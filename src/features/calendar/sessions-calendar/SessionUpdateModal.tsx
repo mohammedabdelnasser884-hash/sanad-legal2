@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from '../../../shared/lib/notifications';
+import { showErrorToast } from '../../../shared/lib/errorReporting';
 import { safeUpdate } from '../../../shared/lib/dataAccess';
 import { copySessionPartiesToNewSession, makeSessionGroupId } from '../hooks/caseSessionLinkingShared';
 import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
@@ -115,7 +116,7 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onNotify, 
 
         setSaving(false);
 
-        if (error) { toast('❌ فشل إنشاء الجلسة الجديدة', true); return; }
+        if (error) { showErrorToast('session_create', error, 'فشل إنشاء الجلسة الجديدة', 'إنشاء جلسة تقويم'); return; }
 
         // 🆕 (خطة "المسمى القانوني" — بند مؤجل ثانٍ، 24 يوليو 2026): نسخ كل
         // صفوف case_parties بتاعة الجلسة الحالية (لو فيها أكتر من شخص تحت
