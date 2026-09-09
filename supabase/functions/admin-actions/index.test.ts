@@ -27,9 +27,11 @@ interface FetchState {
   changePasswordPutOk: boolean;
   changePasswordPutError: string;
   patchProfilesCalls: Array<{ userId: string; body: unknown }>;
-  /** 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — B3/B6): للتحكم في فشل PATCH profiles
-   *  (update_profile/toggle_lock) ومحاكاة رسالة الخطأ الراجعة من PostgREST
-   *  (زي رسالة trigger حد الباقة، أو رفض tenant_write_allowed). */
+  /** 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — دفاع مضاعف، مش B3/B6 زي ما كان مكتوب غلط
+   *  قبل كده): للتحكم في فشل PATCH profiles (update_profile/toggle_lock)
+   *  ومحاكاة رسالة الخطأ الراجعة من PostgREST (زي رسالة trigger حد الباقة
+   *  P0001/B5، أو رفض tenant_write_allowed لو كان فعليًا RLS مطبّق —
+   *  هنا دفاع ثاني، الفحص الأساسي دلوقتي هو tenantWriteAllowedResult تحت). */
   patchProfilesOk: boolean;
   patchProfilesErrorMessage: string;
   createAuthUserOk: boolean;
@@ -47,6 +49,12 @@ interface FetchState {
   deleteAuthUserCalls: string[];
   deleteProfileOk: boolean;
   deleteProfileCalls: string[];
+  /** 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — القفل الحقيقي): نتيجة RPC tenant_write_allowed
+   *  المزيّفة، وتتبع كل نداء ليها (بـtenant_id المبعوت) — تتفحص في
+   *  create_lawyer/update_profile/toggle_lock/delete_user الأربعة. */
+  tenantWriteAllowedResult: boolean;
+  tenantWriteAllowedCalls: string[];
+  tenantWriteAllowedRpcOk: boolean;
 }
 
 function freshState(): FetchState {
@@ -71,12 +79,17 @@ function freshState(): FetchState {
     createProfilePostCalls: [],
     profilesByRowId: {
       'row-1': { tenant_id: 'tenant-a' },
+      'row-target-1': { tenant_id: 'tenant-a' },
+      'row-caller-1': { tenant_id: 'tenant-a' },
     },
     deleteAuthUserOk: true,
     deleteAuthUserStatus: 200,
     deleteAuthUserCalls: [],
     deleteProfileOk: true,
     deleteProfileCalls: [],
+    tenantWriteAllowedResult: true,
+    tenantWriteAllowedCalls: [],
+    tenantWriteAllowedRpcOk: true,
   };
 }
 
@@ -169,6 +182,18 @@ function buildFetchMock(state: FetchState) {
         return state.deleteAuthUserOk
           ? { status: 200, body: {} }
           : { status: state.deleteAuthUserStatus, body: { msg: 'فشل حذف حساب Auth' } };
+      },
+    },
+    // 🆕 rpc: tenant_write_allowed (فحص القفل الحقيقي، بيتنده قبل أي كتابة
+    // حساسة في create_lawyer/update_profile/toggle_lock/delete_user)
+    {
+      match: (url) => url.includes('/rest/v1/rpc/tenant_write_allowed'),
+      respond: (_url, init) => {
+        const args = JSON.parse(init!.body as string);
+        state.tenantWriteAllowedCalls.push(args.p_tenant_id);
+        return state.tenantWriteAllowedRpcOk
+          ? { status: 200, body: state.tenantWriteAllowedResult }
+          : { status: 500, body: { message: 'rpc failed' } };
       },
     },
     // rpc: admin_force_logout
@@ -509,6 +534,42 @@ describe('admin-actions — action=create_lawyer', () => {
       is_active: true,
     });
   });
+
+  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — القفل الحقيقي): قبل الفيكس ده، مكتب في وضع
+  // grace/readonly كان لسه يقدر يضيف محامي جديد بلا أي منع فعلي (القفل
+  // كان شكلي بالنسبة لإدارة المستخدمين). دلوقتي بيتفحص tenant_write_allowed
+  // صراحةً قبل ما نعمل حساب Auth أصلاً.
+  it('مكتب مقفول (tenant_write_allowed=false) → رفض قبل إنشاء أي حساب Auth، من غير أي rollback', async () => {
+    state.tenantWriteAllowedResult = false;
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.createProfilePostCalls).toEqual([]);
+    expect(state.deleteAuthUserCalls).toEqual([]); // مفيش rollback لأن مفيش حساب Auth اتعمل أصلاً
+    expect(state.tenantWriteAllowedCalls).toEqual(['tenant-a']);
+  });
+
+  it('مكتب مفتوح (tenant_write_allowed=true) → الفحص بيتنده بـtenant_id الصحيح ثم يكمل عادي', async () => {
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.tenantWriteAllowedCalls).toEqual(['tenant-a']);
+  });
+
+  it('فحص القفل نفسه فشل (RPC رجّع خطأ) → deny-by-default، رفض العملية بدل ما نفترض إنها مسموحة', async () => {
+    state.tenantWriteAllowedRpcOk = false;
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.createProfilePostCalls).toEqual([]);
+  });
 });
 
 describe('admin-actions — action=delete_user', () => {
@@ -605,6 +666,20 @@ describe('admin-actions — action=delete_user', () => {
     const data = await res.json();
     expect(data.ok).toBe(true);
     expect(state.deleteProfileCalls).toEqual(['row-1']);
+  });
+
+  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — القفل الحقيقي)
+  it('مكتب مقفول (tenant_write_allowed=false) → رفض قبل أي حذف (Auth ولا profile)', async () => {
+    state.tenantWriteAllowedResult = false;
+    const res = await handler(req({ action: 'delete_user', profile_id: 'row-1', user_id: 'target-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.deleteAuthUserCalls).toEqual([]);
+    expect(state.deleteProfileCalls).toEqual([]);
+    expect(state.tenantWriteAllowedCalls).toEqual(['tenant-a']);
   });
 });
 
@@ -714,10 +789,43 @@ describe('admin-actions — action=update_profile (بند 4: نقل تعديل p
     expect(state.patchProfilesCalls).toEqual([]);
   });
 
-  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — B3): قبل كده PATCH فاشل كان دايمًا بيرجع
-  // "تعذّر حفظ التعديلات..." الثابتة، حتى لو الرفض فعليًا حد باقة (مثلاً
-  // تفعيل عضو جديد وصل لحد المستخدمين) أو قفل read-only.
-  it('PATCH فاشل برسالة trigger حد الباقة (P0001) → بترجع زي ما هي، مش الرسالة العامة', async () => {
+  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — القفل الحقيقي): قبل الفيكس ده، مكتب في وضع
+  // grace/readonly كان لسه يقدر يعدّل مستخدمين بلا أي منع فعلي — القفل
+  // كان شكلي. دلوقتي بيتفحص tenant_write_allowed صراحةً قبل أي PATCH.
+  it('مكتب مقفول (tenant_write_allowed=false) → رفض قبل أي PATCH، بتنده tenant_id الصحيح', async () => {
+    state.tenantWriteAllowedResult = false;
+    const res = await handler(req({
+      action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', full_name: 'اسم جديد',
+    }));
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.patchProfilesCalls).toEqual([]);
+    expect(state.tenantWriteAllowedCalls).toEqual(['tenant-a']);
+  });
+
+  // ⚠️ الفحص ده مستقل عن التصعيد/التعطيل الذاتي (فوق) — هنا القفل بيتفحص
+  // حتى لو المستدعي بيعدّل اسمه هو بس (مش عمود حساس)، لأن القفل بتاع
+  // المكتب كله مش بتاع نوع التعديل.
+  it('مكتب مقفول + تعديل اسم المستدعي نفسه (مش عمود حساس) → برضه مرفوض', async () => {
+    state.tenantWriteAllowedResult = false;
+    const res = await handler(req({
+      action: 'update_profile', profile_id: 'row-caller-1', user_id: 'caller-1', full_name: 'اسمي الجديد',
+    }));
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.patchProfilesCalls).toEqual([]);
+  });
+
+  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — دفاع مضاعف، مش B3 زي ما كان مكتوب غلط قبل
+  // كده — B3 الحقيقي خاص ببوابة الموكل. حد المستخدمين الفعلي هو B5):
+  // قبل الفيكس ده PATCH فاشل كان دايمًا بيرجع "تعذّر حفظ التعديلات..."
+  // الثابتة، حتى لو الرفض فعليًا حد باقة (B5 — تفعيل عضو جديد وصل لحد
+  // المستخدمين المسموح).
+  it('PATCH فاشل برسالة trigger حد الباقة (P0001/B5) → بترجع زي ما هي، مش الرسالة العامة', async () => {
     state.patchProfilesOk = false;
     state.patchProfilesErrorMessage = 'وصلت للحد الأقصى لعدد المستخدمين (5) في باقتك الحالية — رقّي الباقة لإضافة المزيد';
     const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', is_active: true }));
@@ -767,9 +875,22 @@ describe('admin-actions — action=toggle_lock (بند 4)', () => {
     expect(state.patchProfilesCalls).toEqual([]);
   });
 
-  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — B6): نفس فيكس update_profile — قفل/فتح حساب
-  // ممكن يترفض بسبب read-only على مستوى الاشتراك نفسه (تجربة/تأخير دفع).
-  it('PATCH فاشل برسالة tenant_write_allowed → بترجع رسالة القفل الموحّدة، مش الرسالة العامة', async () => {
+  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — القفل الحقيقي): مكتب مقفول كان لسه يقدر
+  // يقفل/يفتح حسابات بلا أي منع فعلي. B6 الحقيقي (تفعيل بوابة الموكل)
+  // مالوش علاقة بـtoggle_lock أصلاً (بيلمس is_locked مش is_active) — الفحص
+  // الحقيقي المطبّق دلوقتي هو tenant_write_allowed الصريح تحت.
+  it('مكتب مقفول (tenant_write_allowed=false) → رفض قبل أي PATCH', async () => {
+    state.tenantWriteAllowedResult = false;
+    const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: true }));
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.patchProfilesCalls).toEqual([]);
+    expect(state.tenantWriteAllowedCalls).toEqual(['tenant-a']);
+  });
+
+  it('PATCH فاشل برسالة tenant_write_allowed (دفاع مضاعف لو RLS اتفعّلت فعليًا) → بترجع رسالة القفل الموحّدة، مش الرسالة العامة', async () => {
     state.patchProfilesOk = false;
     state.patchProfilesErrorMessage = 'new row violates row-level security policy for table "profiles" (tenant_write_allowed_profiles)';
     const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: true }));
