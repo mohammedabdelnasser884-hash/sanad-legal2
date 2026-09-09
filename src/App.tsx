@@ -746,9 +746,11 @@ function App() {
         // ⚡ NEW (E1 — خطة المرحلة 15، 8 سبتمبر 2026): بانر تذكير الاشتراك،
         // للأدمن بس (نفس نطاق مسؤولية تجديد/تأكيد الدفع)، وبس في حالات
         // trial_viewer/grace/readonly — TenantSubscriptionBanner نفسه
-        // بيرجّع null لأي حالة تانية. برّه AppShell عمدًا (fixed
-        // positioning، نفس مبدأ #offline-banner الموجود) عشان يفضل ظاهر
-        // فوق كل التابات بدون ما يتلف بمنطق تخطيط AppShell/main.
+        // بيرجّع null لأي حالة تانية. برّه AppShell عمدًا (sticky
+        // positioning — بيحجز مساحته الحقيقية فى التخطيط بدل ما يتراكب
+        // فوق المحتوى، فيكس 9 سبتمبر 2026 بعد ملاحظة إن رسالة grace
+        // الطويلة كانت بتغطي الأزرار تحتها وقت لفّها لأكتر من سطر) عشان
+        // يفضل ظاهر فوق كل التابات بدون ما يتلف بمنطق تخطيط AppShell/main.
         isAdmin && React.createElement(TenantSubscriptionBanner, {
             lockState: subscriptionLockState,
             countdownDays: subscriptionCountdownDays,
