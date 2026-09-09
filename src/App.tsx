@@ -122,6 +122,7 @@ import PerfHud from './shared/dev/PerfHud';
 import { useTenantSubscriptionStatus } from './hooks/useTenantSubscriptionStatus';
 import TenantSubscriptionBanner from './features/subscription/TenantSubscriptionBanner';
 import TenantLockScreen from './features/subscription/TenantLockScreen';
+import SubscriptionLimitModal from './features/subscription/SubscriptionLimitModal';
 
 function App() {
     const { profile, setProfile, authUser, setAuthUser, authLoading, loadProfile, isPasswordRecovery } = useAuthProfile();
@@ -752,6 +753,12 @@ function App() {
             lockState: subscriptionLockState,
             countdownDays: subscriptionCountdownDays,
         }),
+
+        // ⚡ NEW (قرار تصميم UX جديد، 9 سبتمبر 2026): مودال موحّد لرسائل
+        // P0001 (حد الباقة) وE2 (قفل read-only) — بيتفتح من أي هوك عميق
+        // عن طريق showErrorToast (errorReporting.ts)، مُركّب مرة واحدة هنا
+        // بنفس مبدأ TenantLockScreen/TenantSubscriptionBanner.
+        React.createElement(SubscriptionLimitModal),
 
         React.createElement(AppShell, {
             tab, setTab, isAdmin, canGenerateDocuments, onAIClick: handleAIButtonClick,
