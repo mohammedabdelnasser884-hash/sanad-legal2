@@ -275,13 +275,13 @@
     <div class="p-5 space-y-4 overflow-y-auto max-h-[70vh]">
       <input type="hidden" id="modal-id"/>
 
-      <div class="grid grid-cols-2 gap-3">
-        <div class="col-span-2">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="col-span-1 sm:col-span-2">
           <label class="text-[10px] font-black text-slate-400 block mb-1">اسم المكتب *</label>
           <input id="f-name" type="text" placeholder="مثال: مكتب أحمد للمحاماة"
             class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 font-bold"/>
         </div>
-        <div class="col-span-2 grid grid-cols-2 gap-3" id="create-only-fields">
+        <div class="col-span-1 sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3" id="create-only-fields">
           <div>
             <label class="text-[10px] font-black text-slate-400 block mb-1">البريد الإلكتروني *</label>
             <input id="f-email" type="email" placeholder="office@example.com"
@@ -292,7 +292,7 @@
             <input id="f-admin-name" type="text" placeholder="مثال: أحمد محمد"
               class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 font-bold"/>
           </div>
-          <div class="col-span-2" id="tenant-only-note">
+          <div class="col-span-1 sm:col-span-2" id="tenant-only-note">
             <p class="text-[10px] text-slate-500 font-bold">البريد الإلكتروني هيبقى هو إيميل تسجيل الدخول لأول حساب أدمن في المكتب ده.</p>
           </div>
         </div>
@@ -313,16 +313,16 @@
             <option value="suspended">موقوف</option>
           </select>
         </div>
-        <div class="col-span-2" id="plan-locked-note" style="display:none">
+        <div class="col-span-1 sm:col-span-2" id="plan-locked-note" style="display:none">
           <p class="text-[9px] text-amber-400 font-bold">الباقة/الحالة بقوا بيتغيّروا بس عن طريق "تأكيد دفع" أو الترقية من جدول المكاتب — عشان ميعاد التجديد يفضل متزامن. زرار الإيقاف/التفعيل السريع لسه شغال زي ما هو.</p>
         </div>
-        <div class="col-span-2">
+        <div class="col-span-1 sm:col-span-2">
           <label class="text-[10px] font-black text-slate-400 block mb-1">تاريخ انتهاء التجربة/الاشتراك</label>
           <input id="f-expires" type="date"
             class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold"/>
           <p class="text-[9px] text-slate-500 font-bold mt-1">بيتعبى تلقائيًا بشهر من النهارده لأي مكتب جديد (تجربة مجانية) — تقدر تغيّره.</p>
         </div>
-        <div class="col-span-2">
+        <div class="col-span-1 sm:col-span-2">
           <label class="text-[10px] font-black text-slate-400 block mb-1">ملاحظات</label>
           <textarea id="f-notes" rows="2" placeholder="أي ملاحظات إضافية..."
             class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 font-bold resize-none"></textarea>
