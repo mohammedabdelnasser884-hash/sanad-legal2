@@ -3,7 +3,7 @@ import { toast } from '../../../../shared/lib/notifications';
 import { logActivity } from '../../../../shared/lib/dataAccess';
 import { db } from '../../../../supabaseClient';
 import { recordSuccess } from '../../../../systemHealth';
-import { showErrorToast } from '../../../../shared/lib/errorReporting';
+import { reportWriteFailure } from '../../../../shared/lib/errorReporting';
 import type { ProfileRow, ClientRow } from '../../../../types';
 
 // شكل الصف الفعلي اللي بيترجع من select('client_id,is_active,client_name,email')
@@ -60,13 +60,15 @@ export function useAdminPortal(profile?: ProfileRow | null) {
       // تشخيصي يوضح السبب الحقيقي (مثلًا: فشل تحقق الصلاحية جوه الدالة
       // "غير مصرح بتعديل بوابة عميل خارج مكتبك"، أو أي سبب تاني).
       //
-      // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — تحقيق B3/B6 فى تقرير المرحلة 15): نفس
-      // نمط handleSaveCase/handleRestoreCase فى useCaseCrudActions.ts —
-      // استخدام showErrorToast (بدل recordWriteFailure + toast يدوي)
-      // بيخلي حد بوابة الموكل (P0001) وقفل read-only (E2) يظهروا
-      // برسالتهم الحقيقية (مودال مخصص دلوقتي، مش توست عام) بدل
-      // "❌ حدث خطأ" الثابتة اللي كانت بتضيّع الرسالتين دول تمامًا.
-      showErrorToast('portal_write', error, 'حدث خطأ، يرجى المحاولة مرة أخرى', 'حفظ بوابة الموكل');
+      // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — تحقيق B3/B6 فى تقرير المرحلة 15، ثم
+      // مُحدَّثة لـreportWriteFailure بعد بلاغ تست timeout): حد بوابة
+      // الموكل (P0001) وقفل read-only (E2) لسه بيظهروا برسالتهم الحقيقية
+      // فى مودال مخصص (بدل "❌ حدث خطأ" الثابتة). إضافة لكده،
+      // reportWriteFailure بتصنّف أي فشل transient (timeout/network) —
+      // set_portal_pin idempotent طبيعيًا (ON CONFLICT DO UPDATE بمفتاح
+      // client_id) فمفيش داعي لتوست "ambiguous" منفصل، بس systemHealth
+      // بيسجلها lastOutcome:'unknown' بدل 'failure' قطعية.
+      reportWriteFailure('portal_write', error, { label: 'حفظ بوابة الموكل', message: 'حدث خطأ، يرجى المحاولة مرة أخرى' });
       return;
     }
     recordSuccess('portal_write');
