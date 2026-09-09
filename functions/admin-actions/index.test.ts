@@ -1,0 +1,937 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { stubDeno, createRoutedFetch, jsonRequest, type EdgeHandler } from '../_shared/edgeTestUtils';
+
+// ── بيئة ثابتة للتست (قيم وهمية، مش أسرار حقيقية) ──────────────
+const ENV = {
+  SUPABASE_URL: 'https://project.supabase.co',
+  SUPABASE_ANON_KEY: 'anon-key',
+  SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+};
+
+/** شكل صف profiles زي ما بيتقرا فعليًا في الكود (role/tenant_id/is_super_admin/is_active) */
+interface ProfileRow {
+  role?: string;
+  tenant_id?: string | null;
+  is_super_admin?: boolean;
+  is_active?: boolean;
+}
+
+/** حالة قابلة للتعديل من كل تست عشان تتحكم في رد fetch المزيّف */
+interface FetchState {
+  callerAuthOk: boolean;
+  callerAuthBody: { id?: string };
+  /** خريطة user_id → صف profiles، بتغطي الاتنين: الطالب (caller) والمستهدف (target) */
+  profilesById: Record<string, ProfileRow>;
+  rpcForceLogoutOk: boolean;
+  rpcForceLogoutCalls: Array<Record<string, unknown>>;
+  changePasswordPutOk: boolean;
+  changePasswordPutError: string;
+  patchProfilesCalls: Array<{ userId: string; body: unknown }>;
+  /** 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — دفاع مضاعف، مش B3/B6 زي ما كان مكتوب غلط
+   *  قبل كده): للتحكم في فشل PATCH profiles (update_profile/toggle_lock)
+   *  ومحاكاة رسالة الخطأ الراجعة من PostgREST (زي رسالة trigger حد الباقة
+   *  P0001/B5، أو رفض tenant_write_allowed لو كان فعليًا RLS مطبّق —
+   *  هنا دفاع ثاني، الفحص الأساسي دلوقتي هو tenantWriteAllowedResult تحت). */
+  patchProfilesOk: boolean;
+  patchProfilesErrorMessage: string;
+  createAuthUserOk: boolean;
+  createAuthUserBody: unknown;
+  createProfilePostOk: boolean;
+  /** 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — B2): رسالة الخطأ الراجعة من PostgREST لما
+   *  createProfilePostOk=false — تسمح بمحاكاة رسالة trigger حقيقية (P0001)
+   *  أو رفض RLS (tenant_write_allowed) بدل رسالة عامة ثابتة دايمًا. */
+  createProfilePostError: string;
+  createProfilePostCalls: unknown[];
+  /** خريطة profile.id → صف profiles، لحالة delete_user من غير user_id (بروفايل يتيم) */
+  profilesByRowId: Record<string, { tenant_id?: string | null }>;
+  deleteAuthUserOk: boolean;
+  deleteAuthUserStatus: number;
+  deleteAuthUserCalls: string[];
+  deleteProfileOk: boolean;
+  deleteProfileCalls: string[];
+  /** 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — القفل الحقيقي): نتيجة RPC tenant_write_allowed
+   *  المزيّفة، وتتبع كل نداء ليها (بـtenant_id المبعوت) — تتفحص في
+   *  create_lawyer/update_profile/toggle_lock/delete_user الأربعة. */
+  tenantWriteAllowedResult: boolean;
+  tenantWriteAllowedCalls: string[];
+  tenantWriteAllowedRpcOk: boolean;
+}
+
+function freshState(): FetchState {
+  return {
+    callerAuthOk: true,
+    callerAuthBody: { id: 'caller-1' },
+    profilesById: {
+      'caller-1': { role: 'admin', tenant_id: 'tenant-a', is_super_admin: false, is_active: true },
+      'target-1': { role: 'lawyer', tenant_id: 'tenant-a', is_super_admin: false, is_active: true },
+    },
+    rpcForceLogoutOk: true,
+    rpcForceLogoutCalls: [],
+    changePasswordPutOk: true,
+    changePasswordPutError: 'فشل تحديث كلمة المرور',
+    patchProfilesCalls: [],
+    patchProfilesOk: true,
+    patchProfilesErrorMessage: 'فشل تعديل profile',
+    createAuthUserOk: true,
+    createAuthUserBody: { id: 'new-auth-user-1' },
+    createProfilePostOk: true,
+    createProfilePostError: 'فشل إنشاء profile',
+    createProfilePostCalls: [],
+    profilesByRowId: {
+      'row-1': { tenant_id: 'tenant-a' },
+      'row-target-1': { tenant_id: 'tenant-a' },
+      'row-caller-1': { tenant_id: 'tenant-a' },
+    },
+    deleteAuthUserOk: true,
+    deleteAuthUserStatus: 200,
+    deleteAuthUserCalls: [],
+    deleteProfileOk: true,
+    deleteProfileCalls: [],
+    tenantWriteAllowedResult: true,
+    tenantWriteAllowedCalls: [],
+    tenantWriteAllowedRpcOk: true,
+  };
+}
+
+function extractUserId(url: string): string {
+  const m = url.match(/user_id=eq\.([^&]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+function extractRowId(url: string): string {
+  const m = url.match(/[?&]id=eq\.([^&]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+function extractAuthUserIdFromPath(url: string): string {
+  const m = url.match(/\/auth\/v1\/admin\/users\/([^/?]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+function buildFetchMock(state: FetchState) {
+  return createRoutedFetch([
+    // getCaller: GET auth/v1/user
+    {
+      match: (url) => url.includes('/auth/v1/user'),
+      respond: () => (state.callerAuthOk
+        ? { status: 200, body: state.callerAuthBody }
+        : { status: 401, body: {} }),
+    },
+    // force_change: PATCH profiles?user_id=eq.X (لازم تتفحص قبل GET العام لأنها كمان profiles)
+    // ⚠️ update_profile/toggle_lock بيستخدموا id=eq. (مش user_id=eq.) في المسار،
+    // فـextractUserId هترجع '' ليهم — العنصر بس بيتسجل، مش بيتفحص هنا.
+    {
+      match: (url, init) => url.includes('/rest/v1/profiles') && init?.method === 'PATCH',
+      respond: (url, init) => {
+        state.patchProfilesCalls.push({ userId: extractUserId(url), body: JSON.parse(init!.body as string) });
+        return state.patchProfilesOk
+          ? { status: 204, body: null }
+          : { status: 400, body: { message: state.patchProfilesErrorMessage } };
+      },
+    },
+    // create_lawyer: POST profiles (إدخال صف جديد، بدون user_id=eq في المسار)
+    {
+      match: (url, init) => url.includes('/rest/v1/profiles') && init?.method === 'POST',
+      respond: (_url, init) => {
+        // ⚠️ index.ts بيبعت body كـ Array (`[{...}]`, أسلوب PostgREST القياسي
+        // للإدراج) — لازم نفكّه هنا قبل الحفظ، وإلا كل الأسيرشنز اللي بتقارن
+        // createProfilePostCalls[0] بـ toMatchObject({...}) هتفشل بنيويًا
+        // (بتقارن Array بـ Object عادي).
+        const parsedBody = JSON.parse(init!.body as string);
+        state.createProfilePostCalls.push(
+          Array.isArray(parsedBody) ? parsedBody[0] : parsedBody
+        );
+        return state.createProfilePostOk
+          ? { status: 201, body: [{ user_id: 'new-auth-user-1' }] }
+          : { status: 400, body: { message: state.createProfilePostError } };
+      },
+    },
+    // delete_user (بروفايل يتيم بلا user_id): GET profiles?id=eq.X&select=tenant_id
+    {
+      match: (url, init) => url.includes('/rest/v1/profiles') && init?.method === 'GET' && /[?&]id=eq\./.test(url),
+      respond: (url) => {
+        const id = extractRowId(url);
+        const row = state.profilesByRowId[id];
+        return { status: 200, body: row ? [row] : [] };
+      },
+    },
+    // getCallerProfile / authorizeOnTarget: GET profiles?user_id=eq.X&select=...
+    {
+      match: (url, init) => url.includes('/rest/v1/profiles') && init?.method === 'GET',
+      respond: (url) => {
+        const id = extractUserId(url);
+        const row = state.profilesById[id];
+        return { status: 200, body: row ? [row] : [] };
+      },
+    },
+    // delete_user: DELETE profiles?id=eq.X
+    {
+      match: (url, init) => url.includes('/rest/v1/profiles') && init?.method === 'DELETE',
+      respond: (url) => {
+        state.deleteProfileCalls.push(extractRowId(url));
+        return state.deleteProfileOk
+          ? { status: 204, body: null }
+          : { status: 400, body: { message: 'فشل حذف profile' } };
+      },
+    },
+    // delete_user: DELETE auth/v1/admin/users/:id
+    {
+      match: (url, init) => url.includes('/auth/v1/admin/users/') && init?.method === 'DELETE',
+      respond: (url) => {
+        state.deleteAuthUserCalls.push(extractAuthUserIdFromPath(url));
+        return state.deleteAuthUserOk
+          ? { status: 200, body: {} }
+          : { status: state.deleteAuthUserStatus, body: { msg: 'فشل حذف حساب Auth' } };
+      },
+    },
+    // 🆕 rpc: tenant_write_allowed (فحص القفل الحقيقي، بيتنده قبل أي كتابة
+    // حساسة في create_lawyer/update_profile/toggle_lock/delete_user)
+    {
+      match: (url) => url.includes('/rest/v1/rpc/tenant_write_allowed'),
+      respond: (_url, init) => {
+        const args = JSON.parse(init!.body as string);
+        state.tenantWriteAllowedCalls.push(args.p_tenant_id);
+        return state.tenantWriteAllowedRpcOk
+          ? { status: 200, body: state.tenantWriteAllowedResult }
+          : { status: 500, body: { message: 'rpc failed' } };
+      },
+    },
+    // rpc: admin_force_logout
+    {
+      match: (url) => url.includes('/rest/v1/rpc/admin_force_logout'),
+      respond: (_url, init) => {
+        state.rpcForceLogoutCalls.push(JSON.parse(init!.body as string));
+        return state.rpcForceLogoutOk
+          ? { status: 200, body: {} }
+          : { status: 400, body: { message: 'فشل تسجيل الخروج' } };
+      },
+    },
+    // change_password: PUT auth/v1/admin/users/:id
+    {
+      match: (url, init) => url.includes('/auth/v1/admin/users/') && init?.method === 'PUT',
+      respond: () => (state.changePasswordPutOk
+        ? { status: 200, body: {} }
+        : { status: 400, body: { msg: state.changePasswordPutError } }),
+    },
+    // create_lawyer: POST auth/v1/admin/users (إنشاء حساب جديد)
+    {
+      match: (url, init) => url.endsWith('/auth/v1/admin/users') && init?.method === 'POST',
+      respond: () => (state.createAuthUserOk
+        ? { status: 200, body: state.createAuthUserBody }
+        : { status: 400, body: { msg: 'تعذر إنشاء الحساب (البريد مستخدم؟)' } }),
+    },
+  ]);
+}
+
+let handler: EdgeHandler;
+let state: FetchState;
+
+beforeEach(async () => {
+  state = freshState();
+  vi.stubGlobal('fetch', buildFetchMock(state));
+  const box = stubDeno(ENV);
+  vi.resetModules();
+  await import('./index.ts'); // سطر حرفي — لازم يفضل هنا (شوف تعليق stubDeno في edgeTestUtils.ts)
+  if (!box.handler) throw new Error('index.ts ما نداش على Deno.serve وقت الاستيراد');
+  handler = box.handler;
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function req(body: Record<string, unknown>, headers: Record<string, string> = {}) {
+  return jsonRequest(body, headers);
+}
+
+describe('admin-actions — CORS preflight', () => {
+  it('OPTIONS بيرجع رد فاضي بهيدرز CORS من غير ما يدخل منطق الأكشن', async () => {
+    const res = await handler(new Request('https://edge-function.local/', { method: 'OPTIONS' }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+  });
+});
+
+describe('admin-actions — التحقق من هوية الطالب (caller)', () => {
+  it('جلسة غير صالحة (getCaller بيرجع فشل) → 401', async () => {
+    state.callerAuthOk = false;
+    const res = await handler(req({ action: 'force_signout', user_id: 'target-1' }));
+    expect(res.status).toBe(401);
+    const data = await res.json();
+    expect(data.error).toBe('الجلسة منتهية، سجّل الدخول من جديد');
+  });
+
+  it('حساب الطالب مش موجود في profiles → 403', async () => {
+    state.callerAuthBody = { id: 'ghost-user' }; // مفيش صف ليه في profilesById
+    const res = await handler(req({ action: 'force_signout', user_id: 'target-1' }));
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error).toBe('حساب غير معروف');
+  });
+
+  it('حساب الطالب معطّل (is_active=false) → 403، حتى لو كان أدمن', async () => {
+    state.profilesById['caller-1'] = { role: 'admin', tenant_id: 'tenant-a', is_active: false };
+    const res = await handler(req({ action: 'force_signout', user_id: 'target-1' }));
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error).toBe('الحساب معطّل');
+  });
+});
+
+describe('admin-actions — action=force_signout', () => {
+  it('من غير user_id → رد {error} بحالة 200 (تصميم متعمّد، مش خطأ HTTP)', async () => {
+    const res = await handler(req({ action: 'force_signout' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('user_id مطلوب');
+  });
+
+  it('أدمن من تينانت مختلف عن المستهدف → غير مسموح (200 + error)', async () => {
+    state.profilesById['target-1'] = { role: 'lawyer', tenant_id: 'tenant-b', is_active: true };
+    const res = await handler(req({ action: 'force_signout', user_id: 'target-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('غير مسموح لك بتنفيذ هذا الإجراء');
+    expect(state.rpcForceLogoutCalls).toEqual([]);
+  });
+
+  it('طالب مش أدمن (role=lawyer) → غير مسموح حتى لو نفس التينانت', async () => {
+    state.profilesById['caller-1'] = { role: 'lawyer', tenant_id: 'tenant-a', is_active: true };
+    const res = await handler(req({ action: 'force_signout', user_id: 'target-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('غير مسموح لك بتنفيذ هذا الإجراء');
+  });
+
+  it('أدمن على نفس التينانت → مسموح، وبينده rpc بـ target_user_id الصحيح', async () => {
+    const res = await handler(req({ action: 'force_signout', user_id: 'target-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.rpcForceLogoutCalls).toEqual([{ target_user_id: 'target-1' }]);
+  });
+
+  it('سوبر أدمن → مسموح حتى لو تينانت مختلف تمامًا', async () => {
+    state.profilesById['caller-1'] = { is_super_admin: true, is_active: true };
+    state.profilesById['target-1'] = { role: 'lawyer', tenant_id: 'tenant-z', is_active: true };
+    const res = await handler(req({ action: 'force_signout', user_id: 'target-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+  });
+
+  it('فشل استدعاء rpc (admin_force_logout) من غير catch محلي → بيتحول لـ 500 عبر catch العام', async () => {
+    // ⚠️ ملحوظة سلوك: على عكس change_password، استدعاء rpc هنا في
+    // force_signout مش ملفوف بـ .catch محلي في الكود الفعلي — يعني
+    // فشله بيرمي Error يوصل لـ catch العام في نهاية الملف ويرجع 500،
+    // مش رد {error} بحالة 200 زي باقي أخطاء المنطق في الفانكشن دي.
+    state.rpcForceLogoutOk = false;
+    const res = await handler(req({ action: 'force_signout', user_id: 'target-1' }));
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe('تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.');
+  });
+});
+
+describe('admin-actions — action=change_password', () => {
+  it('من غير user_id → 200 + error', async () => {
+    const res = await handler(req({ action: 'change_password', new_password: 'longenough123' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('user_id مطلوب');
+  });
+
+  it('كلمة سر أقصر من 8 أحرف → 200 + error، من غير ما يتفحص الصلاحية أصلًا', async () => {
+    const res = await handler(req({ action: 'change_password', user_id: 'target-1', new_password: '1234567' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('كلمة السر قصيرة جدًا (8 أحرف على الأقل)');
+  });
+
+  it('غير مسموح (تينانت مختلف) → 200 + error، ومفيش تغيير باسورد حصل', async () => {
+    state.profilesById['target-1'] = { role: 'lawyer', tenant_id: 'tenant-b', is_active: true };
+    const res = await handler(req({ action: 'change_password', user_id: 'target-1', new_password: 'longenough123' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('غير مسموح لك بتنفيذ هذا الإجراء');
+  });
+
+  it('فشل تحديث الباسورد في Auth → 200 + رسالة الباك-إند نفسها', async () => {
+    state.changePasswordPutOk = false;
+    state.changePasswordPutError = 'رسالة خطأ من Supabase Auth';
+    const res = await handler(req({ action: 'change_password', user_id: 'target-1', new_password: 'longenough123' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('رسالة خطأ من Supabase Auth');
+  });
+
+  it('نجاح من غير force_change → ok:true، ومفيش PATCH على profiles', async () => {
+    const res = await handler(req({ action: 'change_password', user_id: 'target-1', new_password: 'longenough123' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls).toEqual([]);
+    expect(state.rpcForceLogoutCalls).toEqual([{ target_user_id: 'target-1' }]);
+  });
+
+  it('نجاح مع force_change=true → بيعمل PATCH على profiles بـ must_change_password:true', async () => {
+    const res = await handler(req({
+      action: 'change_password', user_id: 'target-1', new_password: 'longenough123', force_change: true,
+    }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls).toEqual([{ userId: 'target-1', body: { must_change_password: true } }]);
+  });
+
+  it('فشل rpc (admin_force_logout) هنا **متلوّف بـ .catch محلي** → برضو ok:true (مش زي force_signout)', async () => {
+    // ⚠️ فرق سلوك متعمّد موثّق في تعليق الكود الفعلي: هنا الاستدعاء
+    // `.catch(() => {})` فبيبتلع الفشل، عكس force_signout تمامًا.
+    state.rpcForceLogoutOk = false;
+    const res = await handler(req({ action: 'change_password', user_id: 'target-1', new_password: 'longenough123' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+  });
+});
+
+describe('admin-actions — action=create_lawyer', () => {
+  function createLawyerReq(overrides: Record<string, unknown> = {}) {
+    return handler(req({
+      action: 'create_lawyer',
+      email: 'new@office.com',
+      password: 'longenough123',
+      full_name: 'محامي جديد',
+      ...overrides,
+    }));
+  }
+
+  it('طالب مش أدمن ولا سوبر أدمن → 200 + error، من غير أي نداء لإنشاء حساب', async () => {
+    state.profilesById['caller-1'] = { role: 'lawyer', tenant_id: 'tenant-a', is_active: true };
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('غير مسموح لك بإضافة مستخدمين');
+    expect(state.createProfilePostCalls).toEqual([]);
+  });
+
+  it('من غير email أو full_name → 200 + error', async () => {
+    const res = await createLawyerReq({ email: '', full_name: '' });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('البريد الإلكتروني والاسم مطلوبين');
+  });
+
+  it('كلمة سر قصيرة → 200 + error', async () => {
+    const res = await createLawyerReq({ password: '123' });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('كلمة السر قصيرة جدًا (8 أحرف على الأقل)');
+  });
+
+  it('role غير معروف (مش من ضمن admin/lawyer/viewer) → بيتحول تلقائيًا لـ lawyer', async () => {
+    const res = await createLawyerReq({ role: 'super-hacker' });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.createProfilePostCalls[0]).toMatchObject({ role: 'lawyer' });
+  });
+
+  it('فشل إنشاء الحساب في Auth (مثلاً بريد مستخدم) → 200 + رسالة الباك-إند', async () => {
+    state.createAuthUserOk = false;
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('تعذر إنشاء الحساب (البريد مستخدم؟)');
+    expect(state.createProfilePostCalls).toEqual([]);
+  });
+
+  it('أدمن مكتب عادي بيحاول يحقن target_tenant_id في البودي → بيتجاهل، وبيتاخد tenant_id بتاعه هو', async () => {
+    const res = await createLawyerReq({ target_tenant_id: 'tenant-evil' });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.createProfilePostCalls[0]).toMatchObject({ tenant_id: 'tenant-a' });
+  });
+
+  it('سوبر أدمن بلا مكتب ومن غير target_tenant_id → 200 + error، من غير إنشاء أي حساب', async () => {
+    state.profilesById['caller-1'] = { is_super_admin: true, tenant_id: null, is_active: true };
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('لازم تحدد target_tenant_id لأنك سوبر أدمن بلا مكتب مرتبط بحسابك');
+  });
+
+  it('سوبر أدمن بلا مكتب + target_tenant_id محدد → بينشئ الحساب على المكتب المحدد', async () => {
+    state.profilesById['caller-1'] = { is_super_admin: true, tenant_id: null, is_active: true };
+    const res = await createLawyerReq({ target_tenant_id: 'tenant-chosen' });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.createProfilePostCalls[0]).toMatchObject({ tenant_id: 'tenant-chosen' });
+  });
+
+  it('نجاح إنشاء حساب Auth لكن فشل إدخال صف profiles برسالة عامة → بيرجع rollback لحساب الـAuth + رسالة عامة (من غير تفاصيل الخطأ الخام)', async () => {
+    // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦): السلوك اتغيّر — قبل كده كان بيرجع "تم إنشاء
+    // الحساب لكن..." من غير ما يمسحه، فيسيب حساب Auth يتيم شغال بكلمة سر.
+    // دلوقتي الحساب بيتمسح فورًا (rollback)، فالرسالة بقت "تعذّر إنشاء
+    // الحساب" (مش "تم إنشاؤه") لأنه فعليًا اتلغى.
+    state.createProfilePostOk = false;
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('تعذّر إنشاء الحساب بسبب مشكلة في ضبط الصلاحيات. حاول مرة أخرى، ولو استمرت المشكلة تواصل مع الدعم.');
+    expect(state.deleteAuthUserCalls).toEqual(['new-auth-user-1']);
+  });
+
+  it('فشل إدخال صف profiles برسالة trigger حد الباقة (P0001) → الرسالة الحقيقية بترجع زي ما هي + rollback لحساب الـAuth', async () => {
+    state.createProfilePostOk = false;
+    state.createProfilePostError = 'وصلت للحد الأقصى لعدد المستخدمين (5) في باقتك الحالية — رقّي الباقة لإضافة المزيد';
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe(state.createProfilePostError);
+    expect(state.deleteAuthUserCalls).toEqual(['new-auth-user-1']);
+  });
+
+  it('فشل إدخال صف profiles برسالة tenant_write_allowed (قفل read-only) → بترجع رسالة القفل الموحّدة + rollback', async () => {
+    state.createProfilePostOk = false;
+    state.createProfilePostError = 'new row violates row-level security policy for table "profiles" (tenant_write_allowed_profiles)';
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.deleteAuthUserCalls).toEqual(['new-auth-user-1']);
+  });
+
+  it('فشل إدخال profiles وفشل الـrollback نفسه (حذف حساب الـAuth) → برضه بيرجع رسالة واضحة للمستخدم من غير ما يطيح الفانكشن', async () => {
+    // best-effort: فشل الـrollback بيتسجل في console.error بس، ومايمنعش
+    // رد واضح للمستخدم — أفضل من استثناء غير متوقع يوصّل لـcatch العام (500).
+    state.createProfilePostOk = false;
+    state.deleteAuthUserOk = false;
+    state.deleteAuthUserStatus = 400; // ⚠️ لازم غير 200 عشان r.ok يبقى false فعليًا في الموك
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('تعذّر إنشاء الحساب بسبب مشكلة في ضبط الصلاحيات. حاول مرة أخرى، ولو استمرت المشكلة تواصل مع الدعم.');
+    expect(state.deleteAuthUserCalls).toEqual(['new-auth-user-1']);
+  });
+
+  it('مسار النجاح الكامل → ok:true + user_id، وصف profiles بالبيانات الصحيحة', async () => {
+    const res = await createLawyerReq({ role: 'admin' });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.user_id).toBe('new-auth-user-1');
+    expect(state.createProfilePostCalls[0]).toMatchObject({
+      user_id: 'new-auth-user-1',
+      tenant_id: 'tenant-a',
+      full_name: 'محامي جديد',
+      email: 'new@office.com',
+      role: 'admin',
+      is_active: true,
+    });
+  });
+
+  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — القفل الحقيقي): قبل الفيكس ده، مكتب في وضع
+  // grace/readonly كان لسه يقدر يضيف محامي جديد بلا أي منع فعلي (القفل
+  // كان شكلي بالنسبة لإدارة المستخدمين). دلوقتي بيتفحص tenant_write_allowed
+  // صراحةً قبل ما نعمل حساب Auth أصلاً.
+  it('مكتب مقفول (tenant_write_allowed=false) → رفض قبل إنشاء أي حساب Auth، من غير أي rollback', async () => {
+    state.tenantWriteAllowedResult = false;
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.createProfilePostCalls).toEqual([]);
+    expect(state.deleteAuthUserCalls).toEqual([]); // مفيش rollback لأن مفيش حساب Auth اتعمل أصلاً
+    expect(state.tenantWriteAllowedCalls).toEqual(['tenant-a']);
+  });
+
+  it('مكتب مفتوح (tenant_write_allowed=true) → الفحص بيتنده بـtenant_id الصحيح ثم يكمل عادي', async () => {
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.tenantWriteAllowedCalls).toEqual(['tenant-a']);
+  });
+
+  it('فحص القفل نفسه فشل (RPC رجّع خطأ) → deny-by-default، رفض العملية بدل ما نفترض إنها مسموحة', async () => {
+    state.tenantWriteAllowedRpcOk = false;
+    const res = await createLawyerReq();
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.createProfilePostCalls).toEqual([]);
+  });
+});
+
+describe('admin-actions — action=delete_user', () => {
+  it('من غير profile_id → 200 + error، ومفيش أي حذف حصل', async () => {
+    const res = await handler(req({ action: 'delete_user', user_id: 'target-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('profile_id مطلوب');
+    expect(state.deleteAuthUserCalls).toEqual([]);
+    expect(state.deleteProfileCalls).toEqual([]);
+  });
+
+  it('الطالب بيحاول يحذف حسابه هو نفسه (user_id بتاعه) → 200 + error، من غير أي حذف', async () => {
+    const res = await handler(req({ action: 'delete_user', profile_id: 'row-1', user_id: 'caller-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('لا يمكنك حذف حسابك الخاص');
+    expect(state.deleteAuthUserCalls).toEqual([]);
+    expect(state.deleteProfileCalls).toEqual([]);
+  });
+
+  it('غير مسموح (تينانت مختلف) → 200 + error، ومفيش حذف حصل لا لـ Auth ولا profile', async () => {
+    state.profilesById['target-1'] = { role: 'lawyer', tenant_id: 'tenant-b', is_active: true };
+    const res = await handler(req({ action: 'delete_user', profile_id: 'row-1', user_id: 'target-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('غير مسموح لك بتنفيذ هذا الإجراء');
+    expect(state.deleteAuthUserCalls).toEqual([]);
+    expect(state.deleteProfileCalls).toEqual([]);
+  });
+
+  it('فشل حذف حساب Auth → 200 + error، والبروفايل بيفضل موجود (مفيش DELETE عليه)', async () => {
+    state.deleteAuthUserOk = false;
+    state.deleteAuthUserStatus = 400;
+    const res = await handler(req({ action: 'delete_user', profile_id: 'row-1', user_id: 'target-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('تعذر حذف حساب الدخول. لم يتم حذف المستخدم، حاول مرة أخرى.');
+    expect(state.deleteProfileCalls).toEqual([]);
+  });
+
+  it('حساب Auth مش موجود أصلاً (404) → يتعامل معاه كنجاح، وبيكمل يحذف صف profiles', async () => {
+    state.deleteAuthUserOk = false;
+    state.deleteAuthUserStatus = 404;
+    const res = await handler(req({ action: 'delete_user', profile_id: 'row-1', user_id: 'target-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.deleteProfileCalls).toEqual(['row-1']);
+  });
+
+  it('مسار النجاح الكامل → بيحذف حساب Auth الأول وبعدين صف profiles، بنفس الترتيب', async () => {
+    const res = await handler(req({ action: 'delete_user', profile_id: 'row-1', user_id: 'target-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.deleteAuthUserCalls).toEqual(['target-1']);
+    expect(state.deleteProfileCalls).toEqual(['row-1']);
+  });
+
+  it('نجاح حذف Auth لكن فشل حذف صف profiles → ok:true + تحذير واضح بدل ما يختفي الخطأ', async () => {
+    state.deleteProfileOk = false;
+    const res = await handler(req({ action: 'delete_user', profile_id: 'row-1', user_id: 'target-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.warning).toBe('تم حذف حساب الدخول لكن تعذر حذف بيانات البروفايل بالكامل. تواصل مع الدعم.');
+    expect(state.deleteAuthUserCalls).toEqual(['target-1']);
+  });
+
+  it('بروفايل يتيم بلا user_id، أدمن نفس المكتب → بيتسمح، بيحذف صف profiles بس من غير أي نداء لحذف Auth', async () => {
+    const res = await handler(req({ action: 'delete_user', profile_id: 'row-1', user_id: null }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.deleteAuthUserCalls).toEqual([]);
+    expect(state.deleteProfileCalls).toEqual(['row-1']);
+  });
+
+  it('بروفايل يتيم بلا user_id، أدمن مكتب مختلف → 200 + error، من غير أي حذف', async () => {
+    state.profilesByRowId['row-1'] = { tenant_id: 'tenant-b' };
+    const res = await handler(req({ action: 'delete_user', profile_id: 'row-1', user_id: null }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('غير مسموح لك بتنفيذ هذا الإجراء');
+    expect(state.deleteProfileCalls).toEqual([]);
+  });
+
+  it('بروفايل يتيم بلا user_id، سوبر أدمن → مسموح بغض النظر عن التينانت', async () => {
+    state.profilesById['caller-1'] = { is_super_admin: true, tenant_id: null, is_active: true };
+    state.profilesByRowId['row-1'] = { tenant_id: 'tenant-anything' };
+    const res = await handler(req({ action: 'delete_user', profile_id: 'row-1', user_id: null }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.deleteProfileCalls).toEqual(['row-1']);
+  });
+
+  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — القفل الحقيقي)
+  it('مكتب مقفول (tenant_write_allowed=false) → رفض قبل أي حذف (Auth ولا profile)', async () => {
+    state.tenantWriteAllowedResult = false;
+    const res = await handler(req({ action: 'delete_user', profile_id: 'row-1', user_id: 'target-1' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.deleteAuthUserCalls).toEqual([]);
+    expect(state.deleteProfileCalls).toEqual([]);
+    expect(state.tenantWriteAllowedCalls).toEqual(['tenant-a']);
+  });
+});
+
+describe('admin-actions — action=update_profile (بند 4: نقل تعديل profiles من الفرونت إند)', () => {
+  it('من غير profile_id → رد خطأ', async () => {
+    const res = await handler(req({ action: 'update_profile', full_name: 'اسم جديد' }));
+    const data = await res.json();
+    expect(data.error).toBe('profile_id مطلوب');
+  });
+
+  it('أدمن بيعدّل عضو تاني في نفس المكتب (دور + حالة) → ينجح ويبعت PATCH بالأعمدة الصح', async () => {
+    const res = await handler(req({
+      action: 'update_profile',
+      profile_id: 'row-target-1',
+      user_id: 'target-1',
+      full_name: 'محمد الجديد',
+      role: 'viewer',
+      is_active: false,
+      permissions: { can_view_fees: true },
+    }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls).toHaveLength(1);
+    // قرار 2.5: تغيير role بيصفّر permissions تلقائيًا ({}) حتى لو
+    // الطلب نفسه بعت قيمة صريحة (can_view_fees: true) — التصفير بياخد
+    // أولوية عشان استثناء دور قديم ميفضلش شغال بعد تغيير الدور.
+    expect(state.patchProfilesCalls[0].body).toEqual({
+      full_name: 'محمد الجديد',
+      role: 'viewer',
+      is_active: false,
+      permissions: {},
+    });
+  });
+
+  it('أدمن بيغيّر role بس (من غير permissions فى نفس الطلب) → برضه بيتصفّر تلقائيًا', async () => {
+    const res = await handler(req({
+      action: 'update_profile',
+      profile_id: 'row-target-1',
+      user_id: 'target-1',
+      role: 'lawyer',
+    }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls[0].body).toEqual({
+      role: 'lawyer',
+      permissions: {},
+    });
+  });
+
+  it('أدمن بيبعت permissions بس (من غير role) → بتتحفظ زي ما هي من غير تصفير', async () => {
+    const res = await handler(req({
+      action: 'update_profile',
+      profile_id: 'row-target-1',
+      user_id: 'target-1',
+      permissions: { can_export_data: true },
+    }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls[0].body).toEqual({
+      permissions: { can_export_data: true },
+    });
+  });
+
+  it('محاولة تعديل الدور/الحالة/الصلاحيات على حساب المستدعي نفسه → مرفوض حتى لو أدمن', async () => {
+    const res = await handler(req({
+      action: 'update_profile',
+      profile_id: 'row-caller-1',
+      user_id: 'caller-1', // نفس الطالب
+      role: 'lawyer',
+    }));
+    const data = await res.json();
+    expect(data.error).toBe('لا يمكنك تعديل دورك أو حالة حسابك أو صلاحياتك بنفسك — لازم أدمن تاني يعمل ده');
+    expect(state.patchProfilesCalls).toEqual([]);
+  });
+
+  it('تعديل الاسم فقط على حساب المستدعي نفسه → مسموح (مش من الأعمدة الحساسة)', async () => {
+    const res = await handler(req({
+      action: 'update_profile',
+      profile_id: 'row-caller-1',
+      user_id: 'caller-1',
+      full_name: 'اسمي الجديد',
+    }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls[0].body).toEqual({ full_name: 'اسمي الجديد' });
+  });
+
+  it('أدمن من تينانت مختلف عن المستهدف → غير مسموح، من غير PATCH', async () => {
+    state.profilesById['target-1'] = { role: 'lawyer', tenant_id: 'tenant-b', is_active: true };
+    const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', role: 'admin' }));
+    const data = await res.json();
+    expect(data.error).toBe('غير مسموح لك بتنفيذ هذا الإجراء');
+    expect(state.patchProfilesCalls).toEqual([]);
+  });
+
+  it('دور غير صالح → مرفوض من غير PATCH', async () => {
+    const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', role: 'superhero' }));
+    const data = await res.json();
+    expect(data.error).toBe('دور غير صالح');
+    expect(state.patchProfilesCalls).toEqual([]);
+  });
+
+  it('بدون أي حقل للتعديل → رد واضح من غير PATCH', async () => {
+    const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1' }));
+    const data = await res.json();
+    expect(data.error).toBe('لا يوجد تغييرات لحفظها');
+    expect(state.patchProfilesCalls).toEqual([]);
+  });
+
+  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — القفل الحقيقي): قبل الفيكس ده، مكتب في وضع
+  // grace/readonly كان لسه يقدر يعدّل مستخدمين بلا أي منع فعلي — القفل
+  // كان شكلي. دلوقتي بيتفحص tenant_write_allowed صراحةً قبل أي PATCH.
+  it('مكتب مقفول (tenant_write_allowed=false) → رفض قبل أي PATCH، بتنده tenant_id الصحيح', async () => {
+    state.tenantWriteAllowedResult = false;
+    const res = await handler(req({
+      action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', full_name: 'اسم جديد',
+    }));
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.patchProfilesCalls).toEqual([]);
+    expect(state.tenantWriteAllowedCalls).toEqual(['tenant-a']);
+  });
+
+  // ⚠️ الفحص ده مستقل عن التصعيد/التعطيل الذاتي (فوق) — هنا القفل بيتفحص
+  // حتى لو المستدعي بيعدّل اسمه هو بس (مش عمود حساس)، لأن القفل بتاع
+  // المكتب كله مش بتاع نوع التعديل.
+  it('مكتب مقفول + تعديل اسم المستدعي نفسه (مش عمود حساس) → برضه مرفوض', async () => {
+    state.tenantWriteAllowedResult = false;
+    const res = await handler(req({
+      action: 'update_profile', profile_id: 'row-caller-1', user_id: 'caller-1', full_name: 'اسمي الجديد',
+    }));
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.patchProfilesCalls).toEqual([]);
+  });
+
+  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — دفاع مضاعف، مش B3 زي ما كان مكتوب غلط قبل
+  // كده — B3 الحقيقي خاص ببوابة الموكل. حد المستخدمين الفعلي هو B5):
+  // قبل الفيكس ده PATCH فاشل كان دايمًا بيرجع "تعذّر حفظ التعديلات..."
+  // الثابتة، حتى لو الرفض فعليًا حد باقة (B5 — تفعيل عضو جديد وصل لحد
+  // المستخدمين المسموح).
+  it('PATCH فاشل برسالة trigger حد الباقة (P0001/B5) → بترجع زي ما هي، مش الرسالة العامة', async () => {
+    state.patchProfilesOk = false;
+    state.patchProfilesErrorMessage = 'وصلت للحد الأقصى لعدد المستخدمين (5) في باقتك الحالية — رقّي الباقة لإضافة المزيد';
+    const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', is_active: true }));
+    const data = await res.json();
+    expect(data.error).toBe(state.patchProfilesErrorMessage);
+  });
+
+  it('PATCH فاشل برسالة tenant_write_allowed → بترجع رسالة القفل الموحّدة', async () => {
+    state.patchProfilesOk = false;
+    state.patchProfilesErrorMessage = 'new row violates row-level security policy for table "profiles" (tenant_write_allowed_profiles)';
+    const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', full_name: 'اسم جديد' }));
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+  });
+
+  it('PATCH فاشل برسالة عامة مش مرتبطة بالاشتراك → بترجع الرسالة العامة الثابتة زي الأول', async () => {
+    state.patchProfilesOk = false;
+    state.patchProfilesErrorMessage = 'connection timeout';
+    const res = await handler(req({ action: 'update_profile', profile_id: 'row-target-1', user_id: 'target-1', full_name: 'اسم جديد' }));
+    const data = await res.json();
+    expect(data.error).toBe('تعذّر حفظ التعديلات. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.');
+  });
+});
+
+describe('admin-actions — action=toggle_lock (بند 4)', () => {
+  it('أدمن بيقفل حساب عضو في نفس المكتب → PATCH بـ is_locked=true من غير لمس failed_login_attempts', async () => {
+    const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: true }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls[0].body).toEqual({ is_locked: true });
+  });
+
+  it('فتح حساب → PATCH بـ is_locked=false وتصفير failed_login_attempts', async () => {
+    const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: false }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchProfilesCalls[0].body).toEqual({ is_locked: false, failed_login_attempts: 0 });
+  });
+
+  it('طالب مش أدمن → غير مسموح', async () => {
+    state.profilesById['caller-1'] = { role: 'lawyer', tenant_id: 'tenant-a', is_active: true };
+    const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: true }));
+    const data = await res.json();
+    expect(data.error).toBe('غير مسموح لك بتنفيذ هذا الإجراء');
+    expect(state.patchProfilesCalls).toEqual([]);
+  });
+
+  // 🆕 (فيكس ٩ سبتمبر ٢٠٢٦ — القفل الحقيقي): مكتب مقفول كان لسه يقدر
+  // يقفل/يفتح حسابات بلا أي منع فعلي. B6 الحقيقي (تفعيل بوابة الموكل)
+  // مالوش علاقة بـtoggle_lock أصلاً (بيلمس is_locked مش is_active) — الفحص
+  // الحقيقي المطبّق دلوقتي هو tenant_write_allowed الصريح تحت.
+  it('مكتب مقفول (tenant_write_allowed=false) → رفض قبل أي PATCH', async () => {
+    state.tenantWriteAllowedResult = false;
+    const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: true }));
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+    expect(state.patchProfilesCalls).toEqual([]);
+    expect(state.tenantWriteAllowedCalls).toEqual(['tenant-a']);
+  });
+
+  it('PATCH فاشل برسالة tenant_write_allowed (دفاع مضاعف لو RLS اتفعّلت فعليًا) → بترجع رسالة القفل الموحّدة، مش الرسالة العامة', async () => {
+    state.patchProfilesOk = false;
+    state.patchProfilesErrorMessage = 'new row violates row-level security policy for table "profiles" (tenant_write_allowed_profiles)';
+    const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: true }));
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.'
+    );
+  });
+
+  it('PATCH فاشل برسالة عامة → بترجع الرسالة العامة الثابتة زي الأول', async () => {
+    state.patchProfilesOk = false;
+    state.patchProfilesErrorMessage = 'connection timeout';
+    const res = await handler(req({ action: 'toggle_lock', profile_id: 'row-target-1', user_id: 'target-1', is_locked: true }));
+    const data = await res.json();
+    expect(data.error).toBe('تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.');
+  });
+});
+
+describe('admin-actions — action غير معروف وأخطاء عامة', () => {
+  it('action مش من ضمن الأنواع التلاتة → 200 + error، مش 400', async () => {
+    // ⚠️ ملحوظة سلوك: على عكس saas-admin (اللي بيرجع 400 للـ action
+    // غير المعروف)، admin-actions بيرجع 200 دايمًا زي ما موضّح في
+    // تعليق الملف نفسه ("الخرج: دايمًا status 200")
+    const res = await handler(req({ action: 'delete_everything' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.error).toBe('action غير معروف');
+  });
+
+  it('خطأ غير متوقع (فشل getCallerProfile بسبب رد باك-إند غير متوقع) → 500 عبر catch العام', async () => {
+    // بنستبدل fetch بموك بيفشل بس لطلب البروفايل (GET) عشان rest() ترمي
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/auth/v1/user')) {
+        return new Response(JSON.stringify(state.callerAuthBody), { status: 200 });
+      }
+      return new Response(JSON.stringify({ message: 'قاعدة البيانات مش متاحة دلوقتي' }), { status: 500 });
+    }));
+    const res = await handler(req({ action: 'force_signout', user_id: 'target-1' }));
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe('تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.');
+  });
+});
