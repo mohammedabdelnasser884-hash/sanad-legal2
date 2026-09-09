@@ -521,22 +521,23 @@ const PLANS = [
   {
     id: 'lawyer', name: 'باقة المحامي', monthly: 250, color: '#C9A84C',
     badge: 'الأكثر طلباً',
+    // ⚠️ الأرقام دي لازم تفضل مطابقة تمامًا لجدول plan_limits الحقيقي في
+    // قاعدة البيانات (مصدر الإنفاذ الفعلي عبر الـTriggers B1-B6) — مش
+    // نصوص تسويقية حرة. آخر مطابقة: 9 سبتمبر 2026.
     features: [
-      { text: '20 قضية / شهرياً', ok: true },
-      { text: 'مستخدم واحد', ok: true },
-      { text: 'المساعد الذكي — 25 سؤال/شهر', ok: true },
+      { text: '50 قضية نشطة (مش شهريًا — تراكمية طول ما القضية نشطة)', ok: true },
+      { text: 'مستخدم واحد (بأي دور: أدمن/محامي/مشاهد)', ok: true },
+      { text: 'بوابة الموكل — حتى 10 حسابات نشطة', ok: true },
       { text: 'نسخ احتياطي', ok: false },
-      { text: 'بوابة الموكل', ok: false },
     ],
   },
   {
     id: 'office', name: 'باقة المكاتب', monthly: 400, color: '#60a5fa',
     badge: null,
     features: [
-      { text: '100 قضية / شهرياً', ok: true },
-      { text: '3 مستخدمين بصلاحيات مختلفة', ok: true },
-      { text: 'المساعد الذكي AI — بدون حد', ok: true },
-      { text: 'بوابة الموكل', ok: true },
+      { text: 'قضايا نشطة بلا حد', ok: true },
+      { text: 'حتى 5 مستخدمين (بأي دور)', ok: true },
+      { text: 'بوابة الموكل — حتى 50 حساب نشط', ok: true },
       { text: 'نسخ احتياطي', ok: true },
       { text: 'تقارير متقدمة', ok: true },
     ],
@@ -545,10 +546,9 @@ const PLANS = [
     id: 'enterprise', name: 'باقة المؤسسات', monthly: 1000, color: '#a78bfa',
     badge: 'الأفضل للمؤسسات',
     features: [
-      { text: 'قضايا غير محدودة', ok: true },
-      { text: 'مستخدمين غير محدودين', ok: true },
-      { text: 'المساعد الذكي AI — بدون حد', ok: true },
-      { text: 'بوابة الموكل', ok: true },
+      { text: 'قضايا نشطة بلا حد', ok: true },
+      { text: 'حتى 15 مستخدم (بأي دور)', ok: true },
+      { text: 'بوابة الموكل بلا حد', ok: true },
       { text: 'نسخ احتياطي', ok: true },
       { text: 'دعم أولوية 24/7', ok: true },
     ],
