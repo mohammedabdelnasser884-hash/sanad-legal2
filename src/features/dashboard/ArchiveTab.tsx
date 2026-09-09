@@ -271,7 +271,7 @@ function ArchiveTab({cases, clients, nav}: ArchiveTabProps){
         if (storageErr) { setDeletingId(null); toast('❌ فشل حذف الملف من التخزين', true); return; }
         const { error: dbErr } = await db.from('case_documents').delete().eq('id', doc.id);
         setDeletingId(null);
-        if (dbErr) { toast('❌ فشل تحديث قاعدة البيانات', true); return; }
+        if (dbErr) { showErrorToast('document_archive_delete_db', dbErr, 'فشل تحديث قاعدة البيانات', 'حذف مستند (أرشيف)'); return; }
         toast('🗑 تم حذف المستند من الأرشيف');
         logActivity(db, 'حذف مستند (أرشيف)', {
             entity_type: 'document', entity_id: doc.id, details: doc.file_name || null,
