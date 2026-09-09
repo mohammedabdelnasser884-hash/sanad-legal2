@@ -37,37 +37,6 @@
   .no-scroll { overflow: hidden; }
   .slide-enter { animation: fadeIn 0.3s ease-out forwards; }
   select option { background: #0c1426; }
-
-  /* جدول المكاتب → بطاقات مكدّسة على الموبايل (مفيش لمس لمنطق التوليد، تصميم بس) */
-  @media (max-width: 767px) {
-    #table-wrap table, #table-wrap thead, #table-wrap tbody,
-    #table-wrap tr, #table-wrap th, #table-wrap td { display: block; width: 100%; }
-    #table-wrap thead { display: none; }
-    #table-wrap tbody tr {
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 14px;
-      margin: 10px;
-      background: rgba(255,255,255,0.015);
-      overflow: hidden;
-    }
-    #table-wrap tbody td {
-      padding: 10px 14px;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
-    }
-    #table-wrap tbody td:last-child { border-bottom: none; }
-    #table-wrap tbody td[data-label]::before {
-      content: attr(data-label);
-      display: block;
-      font-size: 9px;
-      font-weight: 900;
-      color: #64748b;
-      letter-spacing: 0.02em;
-      margin-bottom: 6px;
-    }
-    #table-wrap tbody td[data-label] > * { justify-content: flex-start !important; text-align: right !important; }
-    #table-wrap tbody td[data-label="إجراءات"] > div,
-    #table-wrap tbody td[data-label="الحالة"] > div:first-child { justify-content: flex-start !important; }
-  }
 </style>
 </head>
 <body class="min-h-screen">
@@ -218,7 +187,7 @@
       </div>
       <div id="table-empty" class="hidden p-8 text-center text-slate-600 text-xs font-bold">لا توجد مكاتب مسجلة</div>
       <div id="table-wrap" class="hidden overflow-x-auto">
-        <table class="w-full text-right text-xs">
+        <table class="hidden md:table w-full text-right text-xs">
           <thead class="bg-[#070d1a]/50 text-slate-500 font-black text-[10px] border-b border-white/5">
             <tr>
               <th class="py-3 px-4">المكتب</th>
@@ -231,6 +200,8 @@
           </thead>
           <tbody id="tenants-tbody" class="divide-y divide-white/5 text-slate-300 font-semibold"></tbody>
         </table>
+        <!-- كروت بسيطة للموبايل: اسم المكتب + الباقة + الحالة، بالضغط بيفتح كل التفاصيل -->
+        <div id="tenants-cards" class="md:hidden divide-y divide-white/5"></div>
       </div>
     </div>
   </div>
@@ -491,6 +462,21 @@
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  مودال تفاصيل المكتب (بيفتح من كارت الموبايل)          -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="office-detail-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="bg-premium-card border border-white/10 rounded-3xl w-full max-w-lg overflow-hidden slide-enter">
+    <div class="bg-[#070d1a] px-5 py-4 border-b border-white/5 flex items-center justify-between">
+      <h3 id="office-detail-title" class="text-sm font-black text-white"></h3>
+      <button onclick="closeOfficeDetailModal()" class="w-8 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center text-slate-400 active:scale-95 transition-transform">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div id="office-detail-body" class="p-5 space-y-4 overflow-y-auto max-h-[75vh]"></div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[99] px-4 py-2.5 rounded-2xl text-xs font-black text-white shadow-xl min-w-[200px] text-center transition-all"></div>
 
@@ -551,6 +537,11 @@ const PLANS = [
 ];
 const PLAN_LABEL = Object.fromEntries(PLANS.map(p => [p.id, p.name.replace('باقة ', '')]));
 const PLAN_COLOR = Object.fromEntries(PLANS.map(p => [p.id, p.color]));
+const STATUS_BADGE = {
+  active:    `<span class="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[9px] font-black rounded-full flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full ping inline-block"></span>نشط</span>`,
+  trial:     `<span class="px-2 py-0.5 bg-blue-500/10 border border-blue-500/25 text-blue-400 text-[9px] font-black rounded-full">تجريبي</span>`,
+  suspended: `<span class="px-2 py-0.5 bg-rose-500/10 border border-rose-500/25 text-rose-400 text-[9px] font-black rounded-full">موقوف</span>`,
+};
 const DEFAULT_PLAN_ID = PLANS[0].id; // 'lawyer' — الاختيار الافتراضي وقت إضافة مكتب جديد
 const TRIAL_DAYS = 30; // مدة التجربة المجانية بالأيام (شهر واحد)
 
@@ -956,14 +947,10 @@ function renderTable() {
   }
   // 'default' = زي ما هي جاية من allTenants (ترتيب التحميل الأصلي من الـAPI)
 
-  const statusBadge = {
-    active:    `<span class="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[9px] font-black rounded-full flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full ping inline-block"></span>نشط</span>`,
-    trial:     `<span class="px-2 py-0.5 bg-blue-500/10 border border-blue-500/25 text-blue-400 text-[9px] font-black rounded-full">تجريبي</span>`,
-    suspended: `<span class="px-2 py-0.5 bg-rose-500/10 border border-rose-500/25 text-rose-400 text-[9px] font-black rounded-full">موقوف</span>`,
-  };
+  const statusBadge = STATUS_BADGE;
   document.getElementById('tenants-tbody').innerHTML = filtered.map(t => `
     <tr class="hover:bg-white/[0.015] transition-colors">
-      <td class="py-3 px-4" data-label="المكتب">
+      <td class="py-3 px-4">
         <p class="text-xs font-black text-white">${esc(t.name)}</p>
         <div id="note-display-${t.id}" onclick="startEditNote('${t.id}')" title="اضغط لتعديل الملاحظة"
           style="margin-top:4px;cursor:pointer;min-height:16px;display:flex;align-items:center;gap:4px;group">
@@ -983,7 +970,7 @@ function renderTable() {
             style="width:100%;background:#070d1a;border:1px solid rgba(200,168,75,0.3);border-radius:8px;padding:3px 8px;font-size:10px;color:white;font-weight:700;font-family:Cairo,sans-serif;outline:none"/>
         </div>
       </td>
-      <td class="py-3 px-4" data-label="التواصل">
+      <td class="py-3 px-4">
         <p class="text-[11px] text-slate-300 font-bold">${t.phone||'—'}</p>
         <div class="flex items-center gap-1.5 mt-1.5">
           ${t.phone ? `
@@ -998,7 +985,7 @@ function renderTable() {
           ` : ''}
         </div>
       </td>
-      <td class="py-3 px-4" data-label="الباقة">
+      <td class="py-3 px-4">
         <span class="text-[11px] font-black" style="color:${PLAN_COLOR[t.subscription_plan]||'#94a3b8'}">${PLAN_LABEL[t.subscription_plan]||t.subscription_plan}</span>
         ${(() => {
           const s = computeSubscriptionStatus(t);
@@ -1006,7 +993,7 @@ function renderTable() {
         })()}
         ${t.subscription_due_at ? `<div class="text-[9px] text-slate-500 font-bold mt-0.5">استحقاق: ${t.subscription_due_at.slice(0,10)}</div>` : ''}
       </td>
-      <td class="py-3 px-4 text-center" data-label="الاشتراك">
+      <td class="py-3 px-4 text-center">
         <div class="text-[10px] text-slate-400 font-bold space-y-0.5">
           <div>${t.created_at ? '▶ '+t.created_at.slice(0,10) : '—'}</div>
           ${(() => {
@@ -1026,7 +1013,7 @@ function renderTable() {
           })()}
         </div>
       </td>
-      <td class="py-3 px-4" data-label="الحالة">
+      <td class="py-3 px-4">
         <div class="flex justify-center">${statusBadge[t.status]||t.status}</div>
         ${(() => {
           const ob = t._onboarding;
@@ -1040,7 +1027,7 @@ function renderTable() {
           return '';
         })()}
       </td>
-      <td class="py-3 px-4" data-label="إجراءات">
+      <td class="py-3 px-4">
         <div class="flex items-center justify-center gap-1.5">
           <button onclick="openEditModal('${t.id}')" title="تعديل"
             class="w-7 h-7 rounded-lg bg-[#C9A84C]/10 border border-[#C9A84C]/20 text-[#C9A84C] flex items-center justify-center active:scale-90 transition-transform">
@@ -1074,6 +1061,101 @@ function renderTable() {
       </td>
     </tr>
   `).join('');
+
+  // كروت بسيطة للموبايل: اسم المكتب + الباقة + الحالة بس — الضغط عليها بيفتح كل التفاصيل
+  document.getElementById('tenants-cards').innerHTML = filtered.map(t => `
+    <div class="p-4 flex items-center justify-between gap-3 active:bg-white/[0.03] transition-colors cursor-pointer" onclick="openOfficeDetailModal('${t.id}')">
+      <div class="min-w-0">
+        <p class="text-xs font-black text-white truncate">${esc(t.name)}</p>
+        <p class="text-[10px] font-bold mt-0.5 truncate" style="color:${PLAN_COLOR[t.subscription_plan]||'#94a3b8'}">${PLAN_LABEL[t.subscription_plan]||t.subscription_plan}</p>
+      </div>
+      <div class="shrink-0 flex items-center gap-2">
+        ${statusBadge[t.status]||t.status}
+        <svg class="w-4 h-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m14.25 4.5-7.5 7.5 7.5 7.5"/></svg>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ─── مودال تفاصيل المكتب (كل البيانات + الإجراءات، بيفتح من كارت الموبايل) ──
+function buildOfficeDetailHTML(t) {
+  const s = computeSubscriptionStatus(t);
+  const subStatusBadge = SUBSCRIPTION_STATUS_BADGE[s] ? `<div class="mt-1">${SUBSCRIPTION_STATUS_BADGE[s]}</div>` : '';
+
+  const trialRow = (() => {
+    if (!t.trial_ends_at) return '—';
+    const exp = new Date(t.trial_ends_at); exp.setHours(0,0,0,0);
+    const now = new Date(); now.setHours(0,0,0,0);
+    const diff = Math.ceil((exp - now) / (1000*60*60*24));
+    const isExpired = exp < now;
+    const isExpiringSoon = !isExpired && diff <= 30 && t.status !== 'suspended';
+    if (isExpired) return `<span class="text-rose-400">⏹ ${t.trial_ends_at}</span>`;
+    if (isExpiringSoon) return `<span class="text-amber-400">⏹ ${t.trial_ends_at} <span class="mr-1 px-1.5 py-0.5 bg-amber-500/15 border border-amber-500/30 text-amber-400 rounded-full text-[9px] font-black">${diff}د</span></span>`;
+    return `<span class="text-slate-400">⏹ ${t.trial_ends_at}</span>`;
+  })();
+
+  const onboardingRow = (() => {
+    const ob = t._onboarding;
+    if (!ob) return '';
+    if (ob.onboarding_frozen) return `<span class="px-2 py-0.5 bg-rose-500/10 border border-rose-500/25 text-rose-400 text-[9px] font-black rounded-full">🔒 Onboarding مجمّد</span>`;
+    if (ob.onboarding_locked_until && new Date(ob.onboarding_locked_until) > new Date()) return `<span class="px-2 py-0.5 bg-amber-500/10 border border-amber-500/25 text-amber-400 text-[9px] font-black rounded-full">⏳ Onboarding مقفول</span>`;
+    return '';
+  })();
+
+  const infoRow = (label, valueHtml) => `
+    <div class="flex items-start justify-between gap-3 py-2.5 border-b border-white/5">
+      <span class="text-[10px] font-black text-slate-500 shrink-0">${label}</span>
+      <span class="text-[11px] font-bold text-slate-200 text-left">${valueHtml}</span>
+    </div>`;
+
+  return `
+    <div class="rounded-2xl border border-white/5 overflow-hidden">
+      ${infoRow('الباقة', `<span style="color:${PLAN_COLOR[t.subscription_plan]||'#94a3b8'}">${PLAN_LABEL[t.subscription_plan]||t.subscription_plan}</span>${subStatusBadge}`)}
+      ${infoRow('الحالة', `${STATUS_BADGE[t.status]||t.status}${onboardingRow ? `<div class="mt-1">${onboardingRow}</div>` : ''}`)}
+      ${infoRow('الهاتف', t.phone ? `${t.phone}${t.phone ? ` &nbsp;<a href="https://wa.me/${t.phone.replace(/[^0-9]/g,'')}" target="_blank" class="text-emerald-400">واتساب ↗</a>` : ''}` : '—')}
+      ${infoRow('تاريخ الإنشاء', t.created_at ? t.created_at.slice(0,10) : '—')}
+      ${infoRow('انتهاء التجربة', trialRow)}
+      ${t.subscription_due_at ? infoRow('استحقاق التجديد', t.subscription_due_at.slice(0,10)) : ''}
+      ${t.notes ? infoRow('ملاحظات', esc(t.notes)) : ''}
+    </div>
+    <div class="grid grid-cols-2 gap-2 pt-1">
+      <button onclick="closeOfficeDetailModal(); openEditModal('${t.id}')"
+        class="py-2.5 rounded-xl bg-[#C9A84C]/10 border border-[#C9A84C]/20 text-[#C9A84C] text-xs font-black active:scale-95 transition-transform">
+        تعديل البيانات
+      </button>
+      <button onclick="closeOfficeDetailModal(); toggleStatus('${t.id}','${t.status}')"
+        class="py-2.5 rounded-xl border text-xs font-black active:scale-95 transition-transform ${t.status==='active'?'bg-rose-500/10 border-rose-500/20 text-rose-400':'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}">
+        ${t.status==='active'?'إيقاف المكتب':'تفعيل المكتب'}
+      </button>
+      ${t.status !== 'trial' ? `
+        <button onclick="closeOfficeDetailModal(); openConfirmPaymentModal('${t.id}')"
+          class="py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-black active:scale-95 transition-transform">
+          تأكيد دفع / تجديد
+        </button>
+      ` : ''}
+      ${isOnboardingLocked(t._onboarding) ? `
+        <button onclick="closeOfficeDetailModal(); unlockOnboarding('${t.id}')"
+          class="py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-black active:scale-95 transition-transform">
+          فك قفل Onboarding
+        </button>
+      ` : ''}
+      <button onclick="closeOfficeDetailModal(); openDeleteModal('${t.id}')"
+        class="py-2.5 rounded-xl bg-white/5 border border-white/5 text-rose-400 text-xs font-black active:scale-95 transition-transform">
+        حذف المكتب
+      </button>
+    </div>
+  `;
+}
+
+function openOfficeDetailModal(id) {
+  const t = allTenants.find(x => x.id === id);
+  if (!t) return;
+  document.getElementById('office-detail-title').textContent = t.name;
+  document.getElementById('office-detail-body').innerHTML = buildOfficeDetailHTML(t);
+  document.getElementById('office-detail-modal').classList.remove('hidden');
+}
+function closeOfficeDetailModal() {
+  document.getElementById('office-detail-modal').classList.add('hidden');
 }
 
 // ─── فك قفل/تجميد الـ Onboarding لمكتب ──────────────────
