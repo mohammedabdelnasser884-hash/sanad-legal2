@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from '../../../../shared/lib/notifications';
+import { showErrorToast } from '../../../../shared/lib/errorReporting';
 import { I, loadOfficeSetting, saveOfficeSetting } from '../../../../constants';
 import { db } from '../../../../supabaseClient';
 import type { ProfileRow } from '../../../../types';
@@ -93,7 +94,7 @@ function OfficeNotificationsTab({ profile }: OfficeNotificationsTabProps) {
       toast('✅ تم حفظ إعدادات التليجرام بأمان على السيرفر');
     } catch (err) {
       console.error('saveTg failed:', err);
-      toast('❌ فشل حفظ إعدادات التليجرام، حاول مرة أخرى');
+      showErrorToast('office_telegram_save', err, 'فشل حفظ إعدادات التليجرام، حاول مرة أخرى', 'حفظ إعدادات التليجرام');
     } finally {
       setTgSaving(false);
     }
