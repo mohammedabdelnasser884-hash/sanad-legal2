@@ -133,7 +133,7 @@ export function useCaseDocuments(
     }
     const { error: dbErr } = await db.from('case_documents').delete().eq('id', doc.id);
     setDeletingDocId(null);
-    if (dbErr) { toast('❌ حُذف الملف لكن فشل تحديث السجل', true); return; }
+    if (dbErr) { showErrorToast('document_delete_db', dbErr, 'حُذف الملف لكن فشل تحديث السجل', 'حذف مستند قضية'); return; }
     toast('🗑 تم حذف المستند');
     // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): كان details بيسجل
     // اسم الملف بس. دلوقتي بنبحث عن الصف الكامل في docs (لو لسه في الـ
