@@ -22,6 +22,11 @@
 //                 عشان الواجهة أصلًا معاها الـtenant بس، وبيدوّر داخليًا
 //                 على الأدمن المرتبط بيه من profiles.
 //
+//   resetAdminPassword    { token, tenantId }
+//     → { newPassword, adminEmail } — يولّد كلمة سر مؤقتة جديدة لحساب
+//                 أدمن المكتب ده ويحدّثها في Supabase Auth، للحالة اللي
+//                 كلمة السر الأصلية ضاعت قبل ما توصل للعميل.
+//
 //   getOnboardingStatuses { token }
 //     → [{ tenant_id, onboarding_status, onboarding_frozen,
 //          onboarding_locked_until, onboarding_lockout_tier }]
@@ -437,6 +442,42 @@ async function actionResetOnboardingLock(body: Record<string, unknown>) {
 }
 
 /**
+ * resetAdminPassword: يولّد كلمة سر مؤقتة جديدة لحساب أدمن المكتب ويحدّثها
+ * في Supabase Auth مباشرة (Admin API) — الحل لو كلمة السر المؤقتة الأصلية
+ * ضاعت (اتقفل المودال قبل ما يتنسخ منه، أو الصفحة اتعمللها ريفريش) قبل ما
+ * توصل للعميل، أو لو حصل أي سبب تاني محتاج فيه ترجع للعميل بباسورد جديد.
+ * مفيهاش أي شرط على onboarding_status، تشتغل في أي وقت.
+ */
+async function actionResetAdminPassword(body: Record<string, unknown>) {
+  const { tenantId } = body as { tenantId?: string };
+  if (!tenantId) return json({ error: 'tenantId مطلوب' }, 400);
+
+  const admins = await supabaseRest(
+    `profiles?tenant_id=eq.${tenantId}&role=eq.admin&select=user_id,email&limit=1`,
+  );
+  const admin = Array.isArray(admins) ? admins[0] : null;
+  if (!admin?.user_id) return json({ error: 'تعذر العثور على حساب أدمن مرتبط بهذا المكتب' }, 404);
+
+  const newPassword = generatePassword(14);
+  const authRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${admin.user_id}`, {
+    method: 'PUT',
+    headers: {
+      apikey: SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ password: newPassword }),
+  });
+
+  if (!authRes.ok) {
+    const authErr = await authRes.json().catch(() => ({}));
+    throw new Error(authErr?.message ?? 'فشل تحديث كلمة السر');
+  }
+
+  return json({ newPassword, adminEmail: admin.email });
+}
+
+/**
  * getOnboardingStatuses: يرجّع حالة الـonboarding (تجميد/قفل مؤقت) لكل
  * حسابات الأدمن — أعمدة ضيّقة ومحددة بس من profiles، مش proxy عام
  * زي actionQuery (عشان كده مش محتاجة إضافة 'profiles' لـALLOWED_TABLES).
@@ -602,6 +643,7 @@ Deno.serve(async (req: Request) => {
       case 'query':                  return await actionQuery(rest);
       case 'createOfficeWithAdmin':  return await actionCreateOffice(rest);
       case 'resetOnboardingLock':    return await actionResetOnboardingLock(rest);
+      case 'resetAdminPassword':     return await actionResetAdminPassword(rest);
       case 'getOnboardingStatuses':  return await actionGetOnboardingStatuses();
       case 'confirmPayment':         return await actionConfirmPayment(rest);
       case 'undoLastPayment':        return await actionUndoLastPayment(rest);
