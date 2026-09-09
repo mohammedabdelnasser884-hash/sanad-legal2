@@ -79,6 +79,13 @@ describe('showErrorToast', () => {
     expect(toastSpy).not.toHaveBeenCalled();
   });
 
+  it('E2 عبر Edge Function (admin-actions بيترجم الرسالة الخام مسبقًا، مفيهاش tenant_write_allowed خالص) → لازم تتكشف برضه من محتوى النص المترجم وتفتح المودال', () => {
+    const forwardedLockErr = new Error('الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.');
+    showErrorToast('k4b', forwardedLockErr, 'تعذّر تنفيذ العملية', 'قفل/فتح حساب');
+    expect(showSubscriptionLimitModalSpy).toHaveBeenCalledWith(forwardedLockErr.message);
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
   it('42501 من غير اسم tenant_write_allowed (RLS تانية غير مرتبطة بالاشتراك) → الرسالة العامة زي ما هي، توست عادي مفيش مودال', () => {
     const otherRlsErr = { code: '42501', message: 'new row violates row-level security policy for table "cases"' };
     showErrorToast('k5', otherRlsErr, 'فشل تعديل القضية', 'تعديل قضية');
