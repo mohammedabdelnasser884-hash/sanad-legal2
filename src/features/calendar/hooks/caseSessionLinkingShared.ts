@@ -21,6 +21,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../../database.types';
+import { getCurrentTenantId } from '../../../constants';
 
 /** معرّف مؤقت client-side لأي سطر بيتبعت للطابور الأوفلاين قبل ما ياخد
  * id حقيقي من القاعدة — نفس الصيغة المستخدمة في كل مكان تاني بالتطبيق
@@ -176,6 +177,21 @@ export function buildCaseInsertData(
     plaintiff_legal_title: fields.plaintiffLegalTitle || null,
     defendant_legal_title: fields.defendantLegalTitle || null,
     status: 'نشطة',
+    // 🐛 FIX (اختبار F1 اليدوي — 9 سبتمبر 2026): تحويل جلسة مستقلة لقضية
+    // (من الفورم لسه ما اتحفظش عبر useClientLinking.ts، أو من جلسة محفوظة
+    // بالفعل عبر StandaloneSessionDetailModal.tsx) كان بيعدّي حد القضايا
+    // (تريجر B1 — enforce_case_limit) بالكامل. السبب: الدالة دي مكانتش
+    // بتبعت tenant_id خالص فى الـINSERT، معتمدة على تريجر تاني
+    // (trg_tenant_id_cases/set_tenant_id_from_profile) يملاه تلقائيًا لو
+    // جاي فاضي. لكن Postgres بينفّذ كل BEFORE INSERT triggers على نفس
+    // الجدول *بترتيب أبجدي باسم التريجر* — و"trg_enforce_case_limit"
+    // أبجديًا قبل "trg_tenant_id_cases"، يعني تريجر الحد بيتنفذ *الأول*
+    // ولسه tenant_id فاضي وقتها، فبيرجع فورًا من غير أي فحص حقيقي
+    // ("IF NEW.tenant_id IS NULL THEN RETURN NEW"). مسار إنشاء القضية
+    // العادي (useCaseCrudActions.ts) ناجي منها بس لأنه بيبعت tenant_id
+    // صراحةً فى الـpayload من الأول (profile?.tenant_id) — نفس النمط ده
+    // دلوقتي هنا كمان، عشان الفحص يشتغل بغض النظر عن ترتيب التريجرز.
+    tenant_id: getCurrentTenantId(),
     ...(existingClientId !== undefined ? { client_id: existingClientId || null } : {}),
     _offlineTempId: offlineTempId,
   };
