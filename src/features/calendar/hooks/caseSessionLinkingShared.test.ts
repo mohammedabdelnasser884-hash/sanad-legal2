@@ -9,6 +9,14 @@ import {
 } from './caseSessionLinkingShared';
 import type { SessionClientParty } from './caseSessionLinkingShared';
 
+// 🆕 (بلاغ اختبار F1 اليدوي — 9 سبتمبر 2026): buildCaseInsertData بقت
+// بتستدعي getCurrentTenantId() (راجع الفيكس فى caseSessionLinkingShared.ts
+// لتفاصيل سبب الباج) — نفس نمط الموك المستخدم فى useClientActions.test.ts
+// لنفس الدالة، عشان القيمة تبقى متحكم فيها ومعزولة عن الموديول الحقيقي
+// (constants.ts بيستورد supabaseClient، غير آمن يتحمّل فعليًا فى التستات).
+let currentTenantId: string | null = 'tenant-1';
+vi.mock('../../../constants', () => ({ getCurrentTenantId: () => currentTenantId }));
+
 // ══════════════════════════════════════════════════════════════════
 // تيست وحدة مباشر للمنطق المشترك بين useClientLinking.ts وuseSessionLinking.ts
 // (خطوة التوحيد بعد مراجعة الكود — راجع تعليق التوثيق أعلى الملف نفسه).
@@ -82,6 +90,8 @@ describe('withFkOfflineSentinel', () => {
 });
 
 describe('buildCaseInsertData', () => {
+  beforeEach(() => { currentTenantId = 'tenant-1'; });
+
   const baseFields = {
     court: 'محكمة الجيزة الابتدائية',
     caseNumber: '123 لسنة 2026',
@@ -177,6 +187,17 @@ describe('buildCaseInsertData', () => {
     const result = buildCaseInsertData(baseFields, 'عنوان القضية', 'tmp-6');
     expect(result).toHaveProperty('plaintiff_legal_title', null);
     expect(result).toHaveProperty('defendant_legal_title', null);
+  });
+
+  // 🆕 (بلاغ اختبار F1 اليدوي — 9 سبتمبر 2026): كان تحويل جلسة مستقلة
+  // لقضية بيعدّي حد القضايا (تريجر B1) خالص لأن الدالة دي مكانتش بتبعت
+  // tenant_id فى الـINSERT — تريجر enforce_case_limit بيتنفذ أبجديًا قبل
+  // تريجر تعبئة tenant_id التلقائي، فيلاقيه فاضي ويرجّع بلا فحص. راجع
+  // تعليق الفيكس فى caseSessionLinkingShared.ts لتفاصيل السبب الكامل.
+  it('tenant_id بيتبعت دايمًا من getCurrentTenantId() — عشان تريجر حد القضايا (B1) يقدر يفحص فعليًا', () => {
+    currentTenantId = 'tenant-42';
+    const result = buildCaseInsertData(baseFields, 'عنوان القضية', 'tmp-7');
+    expect(result).toHaveProperty('tenant_id', 'tenant-42');
   });
 });
 
