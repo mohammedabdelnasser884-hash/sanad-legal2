@@ -5,22 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>بوابة إدارة المكاتب — سَنَد</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"/>
-<script>
-  window.tailwind = window.tailwind || {};
-  tailwind.config = {
-    theme: {
-      extend: {
-        colors: {
-          'premium-bg':   '#070d1a',
-          'premium-card': '#0c1426',
-          'premium-gold': '#c8a84b',
-        },
-        fontFamily: { sans: ['Cairo','sans-serif'] }
-      }
-    }
-  }
-</script>
-<script src="https://cdn.tailwindcss.com"></script>
+<!-- ⚡ FIX (مشكلة شفافية/تعتيم المودالات، 9 سبتمبر 2026): كان هنا سكريبت
+     Tailwind CDN (يحمّل كل كلاسات التنسيق من الإنترنت وقت فتح الصفحة).
+     لو الشبكة/الفايروول حجبت السكريبت أو تأخر تحميله، كل كلاسات
+     Tailwind (الخلفيات/الألوان/المقاسات/حتى كلاس "hidden" اللي بيتحكم
+     فى إظهار المودالات) كانت تفضل بلا تأثير، فيما تعتيم الخلفية
+     (مكتوب CSS عادي تحت) يفضل شغال — فتظهر كل المودالات شفافة
+     ومتداخلة والخط صغير غير مقروء. استبدلناه بملف CSS مبني محليًا
+     (offices-portal.css) بديل تمامًا مالوش أي اعتماد على الإنترنت. -->
+<link rel="stylesheet" href="/offices-portal.css"/>
 <style>
   * { font-family: 'Cairo', sans-serif; }
   body { background: #070d1a; color: #f1f5f9; direction: rtl; text-align: right; }
