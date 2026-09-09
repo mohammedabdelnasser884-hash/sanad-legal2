@@ -420,7 +420,7 @@ export function createCaseCrudActions(
         if (error) {
             nav.closeModal('delete');
             setDeleteConfirm(null);
-            toast('❌ فشل حذف القضية نهائياً — تحقق من الاتصال وأعد المحاولة', true);
+            showErrorToast('case_permanent_delete', error, 'فشل حذف القضية نهائياً — تحقق من الاتصال وأعد المحاولة', 'حذف قضية نهائيًا');
             return;
         }
 
@@ -478,7 +478,7 @@ export function createCaseCrudActions(
                 const { error } = await db.from('cases').update({ deleted_at: new Date().toISOString() }).eq('id', caseId);
                 nav.closeModal('delete');
                 setDeleteConfirm(null);
-                if (error) { toast('❌ فشل أرشفة القضية — تحقق من الاتصال وأعد المحاولة', true); return; }
+                if (error) { showErrorToast('case_archive', error, 'فشل أرشفة القضية — تحقق من الاتصال وأعد المحاولة', 'أرشفة قضية'); return; }
                 toast('📦 تم نقل القضية للأرشيف');
                 // ⚠️ FIX (2 من 14 يوليو 2026 — اكتشاف تاني عن طريق التحقق من الأنواع):
                 // كان الكود بيقرأ c?.case_type. الفيكس السابق (الأقدم) كان افترض إن
@@ -735,7 +735,7 @@ export function createCaseCrudActions(
                 if ((error as { code?: string }).code === '23505') {
                     toast('⚠️ رقم القيد ده مسجل بالفعل لقضية موجودة', true);
                 } else {
-                    toast('❌ فشل تعديل بيانات القضية — تحقق من الاتصال وأعد المحاولة', true);
+                    showErrorToast('case_update', error, 'فشل تعديل بيانات القضية — تحقق من الاتصال وأعد المحاولة', 'تعديل قضية');
                 }
                 updatingCaseGuard = false;
                 setSavingCase(false);
