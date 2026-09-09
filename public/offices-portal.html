@@ -45,16 +45,16 @@
     backdrop-filter: blur(6px);
   }
 
-  /* تثبيت الهيدر في طبقة عرض مستقلة (GPU layer) — بيمنع باگ شائع في بعض
-     متصفحات/WebViews الأندرويد بيخلي محتوى السكرول يظهر فوق الـ sticky header
-     أو يتداخل معاه لحظة السكرول. */
-  header {
-    position: -webkit-sticky;
-    position: sticky;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    will-change: transform;
-    isolation: isolate;
+  /* الهيدر: fixed بدل sticky. الـ transform اللي كانت متحطوطة قبل كده مع
+     sticky هي نفسها سبب مشكلة التداخل — تطبيق transform على نفس العنصر
+     اللي عليه sticky معروف إنه بيكسر حساب موضعه أثناء السكرول في متصفحات/
+     WebViews كتير. fixed مالهاش نفس المشكلة خالص لأنها أصلاً برّه تدفق
+     الصفحة وموضعها تابت بالنسبة للـ viewport مباشرة، من غير أي حساب لحظي
+     مرتبط بالسكرول. #header-spacer تحتها بياخد نفس ارتفاعها (بالجافاسكريبت)
+     عشان محتوى الصفحة ميقفزش تحتها.  */
+  header#app-header {
+    position: fixed;
+    top: 0; right: 0; left: 0;
   }
 </style>
 </head>
@@ -101,7 +101,7 @@
 <div id="app" class="hidden min-h-screen flex flex-col">
 
   <!-- هيدر -->
-  <header class="shrink-0 bg-premium-card border-b border-white/5 px-4 py-3 flex flex-wrap items-center justify-between gap-y-2 sticky top-0 z-40">
+  <header id="app-header" style="background-color:#0c1426" class="shrink-0 bg-premium-card border-b border-white/5 px-4 py-3 flex flex-wrap items-center justify-between gap-y-2 z-40">
     <div class="flex items-center gap-3">
       <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#8B6914] to-[#C9A84C] flex items-center justify-center shadow-md shrink-0">
         <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -139,6 +139,9 @@
       </button>
     </div>
   </header>
+  <!-- عنصر فاضي بارتفاع الهيدر الـfixed بالظبط (بيتظبط بالجافاسكريبت) — بياخد
+       مكانه في تدفق الصفحة عشان أول عنصر تحت الهيدر ميستخبيش وراه. -->
+  <div id="header-spacer" aria-hidden="true"></div>
 
   <!-- ════ تاب المكاتب ════ -->
   <div id="page-offices" class="flex-1 p-4 space-y-4 fade-in">
@@ -660,6 +663,18 @@ function unlockBodyScroll() {
     window.scrollTo(0, _scrollLockY);
   }
 }
+// ─── مزامنة ارتفاع الـspacer تحت الهيدر الـfixed ──────────
+// الهيدر ارتفاعه مش تابت (بيلف التابات لصف تاني على الشاشات الضيقة)، فبنقيس
+// ارتفاعه الفعلي بعد ما يتعرض ونديه لعنصر الـspacer اللي بعده عشان يحجز
+// نفس المساحة في تدفق الصفحة.
+function syncHeaderSpacerHeight() {
+  const header  = document.getElementById('app-header');
+  const spacer  = document.getElementById('header-spacer');
+  if (!header || !spacer) return;
+  spacer.style.height = header.offsetHeight + 'px';
+}
+window.addEventListener('resize', () => requestAnimationFrame(syncHeaderSpacerHeight));
+
 function showModal(id) {
   document.getElementById(id).classList.remove('hidden');
   lockBodyScroll();
@@ -732,6 +747,7 @@ async function doLogin() {
     sessionStorage.setItem('saas_token', data.token);
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
+    requestAnimationFrame(syncHeaderSpacerHeight);
     switchTab('offices');
     loadTenants();
   } catch (e) {
@@ -1805,6 +1821,7 @@ async function deletePayment(id) {
 if (sessionStorage.getItem('saas_auth')==='1' && sessionStorage.getItem('saas_token')) {
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
+  requestAnimationFrame(syncHeaderSpacerHeight);
   switchTab('offices');
   loadTenants();
 }
