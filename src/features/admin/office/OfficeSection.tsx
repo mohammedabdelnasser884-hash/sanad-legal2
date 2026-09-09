@@ -5,6 +5,7 @@ import type { OfficeSettingsForm } from './hooks/useAdminOffice';
 import type { ProfileRow } from '../../../types';
 import OfficeCountryTab from './tabs/OfficeCountryTab';
 import OfficeNotificationsTab from './tabs/OfficeNotificationsTab';
+import { compressImageFile } from '../../../shared/lib/imageCompression';
 
 // ── التابات الفرعية داخل قسم "إعدادات المكتب" ──
 // المرحلة 1: هيكل وتنقل فقط. المحتوى الفعلي لكل تاب بينتقل تباعًا
@@ -118,13 +119,19 @@ function OfficeSection({
                   React.createElement('span',null,"رفع شعار"),
                   React.createElement('input',{
                     type:"file", accept:"image/*", className:"hidden",
-                    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                    onChange: async (e: React.ChangeEvent<HTMLInputElement>) => {
                       const f = e.target.files?.[0];
                       if (!f) return;
-                      setLogoFile(f);
+                      // ضغط الشعار قبل تخزينه في الـstate — نفس مبدأ صور
+                      // البطاقة الشخصية/التوكيل في NewClientModal/EditClientModal
+                      // (imageCompression.ts): تصغير الأبعاد + إعادة ترميز JPEG
+                      // بجودة أقل، صفر تغيير محسوس في تجربة المستخدم. بيرجع
+                      // الملف الأصلي زي ما هو لو الضغط فشل أو مالوش فايدة.
+                      const compressed = await compressImageFile(f);
+                      setLogoFile(compressed);
                       const reader = new FileReader();
                       reader.onload = (ev: ProgressEvent<FileReader>) => setLogoPreview(ev.target?.result as string);
-                      reader.readAsDataURL(f);
+                      reader.readAsDataURL(compressed);
                     }
                   })
                 ),
