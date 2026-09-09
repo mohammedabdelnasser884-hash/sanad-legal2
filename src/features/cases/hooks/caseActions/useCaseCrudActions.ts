@@ -273,7 +273,15 @@ export function createCaseCrudActions(
             if ((error as { code?: string }).code === '23505') {
                 toast('⚠️ رقم القيد ده مسجل بالفعل لقضية موجودة', true);
             } else {
-                toast('❌ فشل تسجيل القضية الجديدة — تحقق من الاتصال وأعد المحاولة', true);
+                // 🐛 FIX (بلاغ اختبار حد الباقة — 9 سبتمبر 2026): كان هنا
+                // toast() ثابت بيتجاهل رسالة الـtrigger الحقيقية (B1،
+                // ERRCODE=P0001/HINT=PLAN_LIMIT_CASES) لما القضايا النشطة
+                // توصل لحد الباقة — المستخدم كان يشوف "تحقق من الاتصال"
+                // رغم إن الاتصال شغال 100% والمشكلة إنه وصل لحد باقته.
+                // showErrorToast (مستخدمة فعلاً فوق لفحص رقم القيد المكرر)
+                // بتكتشف P0001 تلقائيًا وتعرض رسالة الـtrigger العربية
+                // الجاهزة زي ما هي بدل الرسالة العامة.
+                showErrorToast('case_save', error, 'فشل تسجيل القضية الجديدة — تحقق من الاتصال وأعد المحاولة', 'إضافة قضية');
             }
             creatingCaseGuard = false;
             setSavingCase(false);
@@ -503,7 +511,12 @@ export function createCaseCrudActions(
     // ─ استرجاع قضية من الأرشيف ─
     const handleRestoreCase = async (caseId: string) => {
         const { error } = await db.from('cases').update({ deleted_at: null }).eq('id', caseId);
-        if (error) { toast('❌ فشل استرجاع القضية — تحقق من الاتصال وأعد المحاولة', true); return; }
+        // 🐛 FIX (نفس فحص handleSaveCase فوق — 9 سبتمبر 2026): استرجاع
+        // قضية مؤرشفة بيرجّعها "نشطة" فعليًا، فبيخضع لنفس تريجر حد
+        // القضايا (B4، PLAN_LIMIT_CASES) لو المكتب أصلاً على حد باقته —
+        // showErrorToast بتعرض رسالة الـtrigger الحقيقية بدل رسالة
+        // اتصال عامة مضلّلة.
+        if (error) { showErrorToast('case_restore', error, 'فشل استرجاع القضية — تحقق من الاتصال وأعد المحاولة', 'استرجاع قضية'); return; }
         toast('✅ تم استرجاع القضية');
         logActivity(db, 'استرجاع قضية من الأرشيف', { userName: _userName, entity_type: 'case', entity_id: caseId });
         fetchCases(0, casesFilter);
