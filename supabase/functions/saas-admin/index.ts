@@ -38,6 +38,9 @@
 //                 كاش)، يرفض لو العدد الحالي فوق حد الباقة الجديدة،
 //                 وبيحسب subscription_due_at الجديد (تجديد عادي: شهر
 //                 من آخر ميعاد قديم / ترقية أو أول تفعيل: شهر من النهارده).
+//                 بيصفّر trial_ends_at (المكتب بقى مدفوع، مبقاش تجربة)،
+//                 وبيرفض العملية لو فيه دفعة اتسجلت لنفس المكتب من أقل
+//                 من DUPLICATE_PAYMENT_WINDOW_MS (حماية من تأكيد مكرر بغلط).
 //
 //   undoLastPayment { token, tenantId }
 //     → { ok, restoredDueAt }  — (D4) تراجع عن آخر تأكيد دفع، يمسح
@@ -92,6 +95,9 @@ const ALLOWED_TABLES = ['tenants', 'tenant_invoices'];
 // الباقة هنا هي الباقة اللي المكتب هيدفعها بعد ما التجربة تخلص.
 const ALLOWED_PLANS = ['lawyer', 'office', 'enterprise'];
 const TRIAL_DAYS = 30; // مدة التجربة المجانية بالأيام (شهر واحد)
+
+// نافذة زمنية لاعتبار تأكيد دفع جديد "مكرر بغلط" لنفس المكتب (راجع D1)
+const DUPLICATE_PAYMENT_WINDOW_MS = 5 * 60 * 1000; // 5 دقايق
 
 function computeTrialEndDate(): string {
   const d = new Date();
@@ -501,6 +507,13 @@ async function actionGetOnboardingStatuses() {
  *  - Downgrade فوق حد الباقة الجديدة: يُرفض تمامًا (لازم تقليل العدد
  *    الحالي يدويًا الأول) — نفس التحقق مطبّق على أي تغيير باقة (مش
  *    بس تنزيل) كطبقة حماية موحّدة.
+ *  - أي تأكيد دفع بيصفّر trial_ends_at (null) — مبقاش ليها معنى بعد
+ *    التفعيل بالدفع، وسيبها موجودة كانت بتخلي البورتال يفضل يعامل
+ *    مكتب مدفوع فعليًا كإنه "تجربة قربت تخلص" (تنبيهات + تفاصيل غلط).
+ *  - لو فيه دفعة اتسجلت لنفس المكتب من أقل من DUPLICATE_PAYMENT_WINDOW_MS
+ *    (5 دقايق)، العملية بترفض بالكامل — قبل كده كل تأكيد تاني كان
+ *    بيتحسب كـ"تجديد عادي" فوق الميعاد اللي فات، فتأكيد بغلط مرتين
+ *    أو تلاتة كان بيضيف شهر فوق شهر على subscription_due_at.
  */
 async function actionConfirmPayment(body: Record<string, unknown>) {
   const { tenantId, plan, amountEgp, paymentMethod } = body as {
@@ -521,6 +534,23 @@ async function actionConfirmPayment(body: Record<string, unknown>) {
   const tenants = await supabaseRest(`tenants?id=eq.${tenantId}&select=id,subscription_plan,subscription_due_at,status`);
   const tenant = Array.isArray(tenants) ? tenants[0] : null;
   if (!tenant) return json({ error: 'المكتب غير موجود' }, 404);
+
+  // ── حماية من تأكيد الدفع مرتين لغلط (دبل تأكيد بعد شوية مش دبل-كليك
+  // سريع بس) — لو فيه دفعة اتسجلت لنفس المكتب خلال آخر 5 دقايق، ده
+  // على الأغلب نفس العملية بتتأكد تاني بغلط، مش دفعة تانية فعلاً.
+  // بيرفض العملية بدل ما يكرر إضافة شهر فوق شهر على subscription_due_at.
+  const recentPayments = await supabaseRest(
+    `tenant_subscription_payments?tenant_id=eq.${tenantId}&order=created_at.desc&limit=1&select=created_at`,
+  );
+  const lastPayment = Array.isArray(recentPayments) ? recentPayments[0] : null;
+  if (lastPayment?.created_at) {
+    const msSinceLastPayment = Date.now() - new Date(lastPayment.created_at).getTime();
+    if (msSinceLastPayment < DUPLICATE_PAYMENT_WINDOW_MS) {
+      return json({
+        error: 'فيه دفعة اتسجلت لنفس المكتب من أقل من 5 دقايق — لو ده تأكيد تاني بغلط لنفس الدفعة متكملش. لو فعلاً محتاج تسجل دفعة تانية دلوقتي، استنى شوية وحاول تاني.',
+      }, 409);
+    }
+  }
 
   // ── تحقق حدود الباقة الجديدة قبل أي كتابة (منع الـdowngrade فوق الحد) ──
   const limitsRows = await supabaseRest(`plan_limits?plan_key=eq.${plan}&select=max_users,max_active_cases,max_client_portal_accounts`);
@@ -568,10 +598,15 @@ async function actionConfirmPayment(body: Record<string, unknown>) {
   const periodStart = isNormalRenewal ? (previousDueAt as string) : now;
 
   // 1) تحديث المكتب
+  // trial_ends_at بيتصفّر هنا عمدًا: بمجرد ما مكتب يتفعّل بالدفع، تاريخ
+  // التجربة القديم بقى مالوش معنى ولازم يوقف عن الظهور في تنبيهات/تفاصيل
+  // "التجربة هتخلص" — استحقاق التجديد (subscription_due_at) هو المرجع
+  // الوحيد بعد كده.
   await supabaseRest(`tenants?id=eq.${tenantId}`, 'PATCH', {
     subscription_plan: plan,
     status: 'active',
     subscription_due_at: newDueAt,
+    trial_ends_at: null,
   });
 
   // 2) تسجيل الدفعة في الأرشيف
