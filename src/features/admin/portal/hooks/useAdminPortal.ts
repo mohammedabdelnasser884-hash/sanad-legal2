@@ -2,7 +2,8 @@ import React, { useState, useCallback } from 'react';
 import { toast } from '../../../../shared/lib/notifications';
 import { logActivity } from '../../../../shared/lib/dataAccess';
 import { db } from '../../../../supabaseClient';
-import { recordWriteFailure, recordSuccess } from '../../../../systemHealth';
+import { recordSuccess } from '../../../../systemHealth';
+import { showErrorToast } from '../../../../shared/lib/errorReporting';
 import type { ProfileRow, ClientRow } from '../../../../types';
 
 // شكل الصف الفعلي اللي بيترجع من select('client_id,is_active,client_name,email')
@@ -57,16 +58,15 @@ export function useAdminPortal(profile?: ProfileRow | null) {
       // ولا أي تسجيل فى systemHealth — فأي فشل لـset_portal_pin كان بيظهر
       // للمستخدم/فى لوجات الـCI كتوست عام "❌ حدث خطأ" من غير أي أثر
       // تشخيصي يوضح السبب الحقيقي (مثلًا: فشل تحقق الصلاحية جوه الدالة
-      // "غير مصرح بتعديل بوابة عميل خارج مكتبك"، أو أي سبب تاني). استخدام
-      // recordWriteFailure (نفس آلية بند ٣-هـ فى خطة "تصنيف الرسائل ودورة
-      // حياة العمليات") بيحفظ رسالة الخطأ الخام فعليًا فى بانر لوحة الصحة،
-      // فأي فشل تالي (فى CI أو الإنتاج) هيبقى قابل للتشخيص فورًا.
-      recordWriteFailure('portal_write', error, {
-        label: 'حفظ بوابة الموكل',
-        message: '❌ حدث خطأ، يرجى المحاولة مرة أخرى',
-        ambiguousMessage: 'تعذّر تأكيد نتيجة حفظ إعدادات البوابة — قد تكون اتحفظت فعلاً. أعد المحاولة.',
-      });
-      toast('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
+      // "غير مصرح بتعديل بوابة عميل خارج مكتبك"، أو أي سبب تاني).
+      //
+      // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — تحقيق B3/B6 فى تقرير المرحلة 15): نفس
+      // نمط handleSaveCase/handleRestoreCase فى useCaseCrudActions.ts —
+      // استخدام showErrorToast (بدل recordWriteFailure + toast يدوي)
+      // بيخلي حد بوابة الموكل (P0001) وقفل read-only (E2) يظهروا
+      // برسالتهم الحقيقية (مودال مخصص دلوقتي، مش توست عام) بدل
+      // "❌ حدث خطأ" الثابتة اللي كانت بتضيّع الرسالتين دول تمامًا.
+      showErrorToast('portal_write', error, 'حدث خطأ، يرجى المحاولة مرة أخرى', 'حفظ بوابة الموكل');
       return;
     }
     recordSuccess('portal_write');
