@@ -282,7 +282,7 @@ export function useClientActions(params: {
             if ((error as { code?: string }).code === '23505') {
                 toast('⚠️ موكل بنفس الاسم أو الرقم القومي مسجل بالفعل', true);
             } else {
-                toast('❌ فشل حفظ بيانات الموكل — تحقق من الاتصال وأعد المحاولة', true);
+                showErrorToast('client_save', error, 'فشل حفظ بيانات الموكل — تحقق من الاتصال وأعد المحاولة', 'إضافة موكل');
             }
             return false;
         } else {
@@ -430,7 +430,7 @@ export function useClientActions(params: {
         const { error } = await db.from('clients').delete().eq('id', clientId);
         nav.closeModal('delete');
         setDeleteConfirm(null);
-        if (error) { toast('❌ فشل حذف الموكل نهائياً — تحقق من الاتصال وأعد المحاولة', true); return; }
+        if (error) { showErrorToast('client_permanent_delete', error, 'فشل حذف الموكل نهائياً — تحقق من الاتصال وأعد المحاولة', 'حذف موكل نهائيًا'); return; }
         toast('🗑️ تم حذف الموكل نهائياً');
         logActivity(db, 'حذف موكل نهائياً', {
             userName: _userName, entity_type: 'client', entity_id: clientId, details: cl?.full_name || null, client_name: cl?.full_name || null,
@@ -456,7 +456,7 @@ export function useClientActions(params: {
                 const { error } = await db.from('clients').update({ deleted_at: new Date().toISOString() }).eq('id', clientId);
                 nav.closeModal('delete');
                 setDeleteConfirm(null);
-                if (error) { toast('❌ فشل أرشفة الموكل — تحقق من الاتصال وأعد المحاولة', true); return; }
+                if (error) { showErrorToast('client_archive', error, 'فشل أرشفة الموكل — تحقق من الاتصال وأعد المحاولة', 'أرشفة موكل'); return; }
                 toast('📦 تم نقل الموكل للأرشيف');
                 logActivity(db, 'أرشفة موكل', { userName: _userName, entity_type: 'client', entity_id: clientId, details: cl?.full_name || null, client_name: cl?.full_name || null });
                 setSelectedClient(null);
@@ -474,7 +474,7 @@ export function useClientActions(params: {
     // ─ استرجاع موكل من الأرشيف ─
     const handleRestoreClient = async (clientId: string) => {
         const { error } = await db.from('clients').update({ deleted_at: null }).eq('id', clientId);
-        if (error) { toast('❌ فشل استرجاع الموكل — تحقق من الاتصال وأعد المحاولة', true); return; }
+        if (error) { showErrorToast('client_restore', error, 'فشل استرجاع الموكل — تحقق من الاتصال وأعد المحاولة', 'استرجاع موكل'); return; }
         toast('✅ تم استرجاع الموكل');
         logActivity(db, 'استرجاع موكل من الأرشيف', { userName: _userName, entity_type: 'client', entity_id: clientId });
         fetchClients(0, clientSearch);
@@ -579,7 +579,7 @@ export function useClientActions(params: {
             if (error?.code === '23505') {
                 toast('⚠️ موكل بنفس الاسم أو الرقم القومي مسجل بالفعل', true);
             } else {
-                toast('❌ فشل تعديل بيانات الموكل — تحقق من الاتصال وأعد المحاولة', true);
+                showErrorToast('client_update', error, 'فشل تعديل بيانات الموكل — تحقق من الاتصال وأعد المحاولة', 'تعديل موكل');
             }
             return false;
         }
