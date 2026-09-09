@@ -126,6 +126,16 @@ vi.mock('../../../supabaseClient', () => ({
 const toast = vi.fn();
 vi.mock('../../../shared/lib/notifications', () => ({ toast: (...a: unknown[]) => toast(...a) }));
 
+// 🆕 (تحديث ٩ سبتمبر ٢٠٢٦ — بلاغ اختبار حد الباقة): رسائل P0001 (حد
+// الباقة) بقت تتعرض فى مودال مخصص (showSubscriptionLimitModal) بدل
+// toast() عادي — راجع تعليق getSubscriptionAwareMessage فى
+// errorReporting.ts. لازم mock هنا عشان التستات تتحقق من المودال مش
+// من toast لحالة P0001.
+const showSubscriptionLimitModal = vi.fn();
+vi.mock('../../../shared/lib/subscriptionLimitModal', () => ({
+  showSubscriptionLimitModal: (...a: unknown[]) => showSubscriptionLimitModal(...a),
+}));
+
 const logActivity = vi.fn();
 // ⚡ FIX (buildFieldDiff مفقودة من الـmock — 19 أغسطس 2026): handleUpdateCase
 // بقى بينادي buildFieldDiff (سجل النشاط، مرحلة 2) — كانت مفقودة من هنا فكانت
@@ -359,10 +369,13 @@ describe('useCaseActions', () => {
       expect(params.setShowCaseModal).not.toHaveBeenCalled();
     });
 
-    // 🆕 FIX (بلاغ اختبار حد الباقة — 9 سبتمبر 2026): وصول لحد القضايا
-    // النشاط بيرجع خطأ P0001 من الـtrigger (B1) برسالة عربية جاهزة —
-    // لازم تتعرض زي ما هي، مش الرسالة العامة "تحقق من الاتصال".
-    it('فشل بسبب وصول حد القضايا في الباقة (P0001) → بيعرض رسالة الـtrigger الحقيقية', async () => {
+    // 🆕 FIX (بلاغ اختبار حد الباقة — 9 سبتمبر 2026، مُحدَّثة بعد قرار
+    // مودال حد الباقة): وصول لحد القضايا بيرجع خطأ P0001 من الـtrigger
+    // (B1) برسالة عربية جاهزة — لازم تتعرض زي ما هي، مش الرسالة العامة
+    // "تحقق من الاتصال". من 9 سبتمبر 2026 العرض بقى فى مودال مخصص
+    // (showSubscriptionLimitModal) بدل toast عادي — راجع
+    // getSubscriptionAwareMessage فى errorReporting.ts.
+    it('فشل بسبب وصول حد القضايا في الباقة (P0001) → بيعرض رسالة الـtrigger الحقيقية فى مودال', async () => {
       dbWriteMock().mockResolvedValue({
         error: { message: 'وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة لإضافة قضايا جديدة.', code: 'P0001', hint: 'PLAN_LIMIT_CASES' },
         offline: false, queued: false,
@@ -372,7 +385,8 @@ describe('useCaseActions', () => {
 
       await handleSaveCase({ title: 'قضية فوق الحد' });
 
-      expect(toast).toHaveBeenCalledWith('❌ وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة لإضافة قضايا جديدة.', true);
+      expect(showSubscriptionLimitModal).toHaveBeenCalledWith('وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة لإضافة قضايا جديدة.');
+      expect(toast).not.toHaveBeenCalled();
       expect(logActivity).not.toHaveBeenCalled();
       expect(params.fetchCases).not.toHaveBeenCalled();
     });
@@ -586,9 +600,11 @@ describe('useCaseActions', () => {
       expect(params.fetchCases).not.toHaveBeenCalled();
     });
 
-    // 🆕 FIX (بلاغ اختبار حد الباقة — 9 سبتمبر 2026): استرجاع قضية
-    // مؤرشفة بيخضع لنفس تريجر حد القضايا (B4) لو المكتب وصل لحد باقته.
-    it('فشل بسبب وصول حد القضايا في الباقة (P0001) → بيعرض رسالة الـtrigger الحقيقية', async () => {
+    // 🆕 FIX (بلاغ اختبار حد الباقة — 9 سبتمبر 2026، مُحدَّثة بعد قرار
+    // مودال حد الباقة): استرجاع قضية مؤرشفة بيخضع لنفس تريجر حد القضايا
+    // (B4) لو المكتب وصل لحد باقته. من 9 سبتمبر 2026 العرض بقى فى مودال
+    // مخصص بدل toast عادي — نفس سبب تست handleSaveCase فوق.
+    it('فشل بسبب وصول حد القضايا في الباقة (P0001) → بيعرض رسالة الـtrigger الحقيقية فى مودال', async () => {
       mockDb.setResult('cases:update', {
         error: { message: 'مينفعش تسترجع القضية دي — وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة أو أرشف قضية تانية الأول.', code: 'P0001', hint: 'PLAN_LIMIT_CASES' },
       });
@@ -597,7 +613,8 @@ describe('useCaseActions', () => {
 
       await handleRestoreCase('case-1');
 
-      expect(toast).toHaveBeenCalledWith('❌ مينفعش تسترجع القضية دي — وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة أو أرشف قضية تانية الأول.', true);
+      expect(showSubscriptionLimitModal).toHaveBeenCalledWith('مينفعش تسترجع القضية دي — وصلت للحد الأقصى لعدد القضايا النشطة (50) في باقتك الحالية. رقّي الباقة أو أرشف قضية تانية الأول.');
+      expect(toast).not.toHaveBeenCalled();
       expect(logActivity).not.toHaveBeenCalled();
       expect(params.fetchCases).not.toHaveBeenCalled();
     });
