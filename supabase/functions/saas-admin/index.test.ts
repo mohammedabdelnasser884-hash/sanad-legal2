@@ -22,9 +22,12 @@ interface FetchState {
   tenantsDeleteCalls: string[];
   queryTableRows: unknown;
   // ── resetOnboardingLock / getOnboardingStatuses ──
-  tenantAdminLookupRows: Array<{ user_id: string }>;
+  tenantAdminLookupRows: Array<{ user_id: string; email?: string }>;
   onboardingLockPatchCalls: Array<{ url: string; body: Record<string, unknown> }>;
   onboardingStatusRows: unknown;
+  // ── resetAdminPassword ──
+  authUserPasswordPutOk: boolean;
+  authUserPasswordPutCalls: Array<{ url: string; body: Record<string, unknown> }>;
 }
 
 function freshState(): FetchState {
@@ -38,11 +41,13 @@ function freshState(): FetchState {
     officeSettingsPostOk: true,
     tenantsDeleteCalls: [],
     queryTableRows: [{ id: 'tenant-1', name: 'تينانت 1' }],
-    tenantAdminLookupRows: [{ user_id: 'admin-user-1' }],
+    tenantAdminLookupRows: [{ user_id: 'admin-user-1', email: 'admin@example.com' }],
     onboardingLockPatchCalls: [],
     onboardingStatusRows: [
       { tenant_id: 'tenant-1', onboarding_status: 'pending_verification', onboarding_frozen: false, onboarding_locked_until: null, onboarding_lockout_tier: 0 },
     ],
+    authUserPasswordPutOk: true,
+    authUserPasswordPutCalls: [],
   };
 }
 
@@ -121,6 +126,16 @@ function buildFetchMock(state: FetchState) {
       respond: () => (state.officeSettingsPostOk
         ? { status: 201, body: [{ tenant_id: 'tenant-new-1' }] }
         : { status: 400, body: { message: 'فشل إنشاء office_settings' } }),
+    },
+    // actionResetAdminPassword: PUT auth/v1/admin/users/{id}
+    {
+      match: (url, init) => url.includes('/auth/v1/admin/users/') && init?.method === 'PUT',
+      respond: (url, init) => {
+        state.authUserPasswordPutCalls.push({ url, body: JSON.parse(init!.body as string) });
+        return state.authUserPasswordPutOk
+          ? { status: 200, body: { id: 'admin-user-1' } }
+          : { status: 400, body: { message: 'فشل تحديث كلمة السر' } };
+      },
     },
     // actionQuery: أي جدول مسموح به (tenants/tenant_invoices) GET
     {
@@ -382,6 +397,57 @@ describe('saas-admin — action=resetOnboardingLock', () => {
       onboarding_locked_until: null,
       onboarding_frozen: false,
     });
+  });
+});
+
+describe('saas-admin — action=resetAdminPassword', () => {
+  async function resetPasswordWithToken(body: Record<string, unknown>) {
+    const loginRes = await login(ENV.SAAS_ADMIN_PASSWORD);
+    const { token } = await loginRes.json();
+    return handler(jsonRequest({ action: 'resetAdminPassword', token, ...body }));
+  }
+
+  it('من غير token → 401', async () => {
+    const res = await handler(jsonRequest({ action: 'resetAdminPassword', tenantId: 'tenant-1' }));
+    expect(res.status).toBe(401);
+  });
+
+  it('من غير tenantId → 400', async () => {
+    const res = await resetPasswordWithToken({});
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe('tenantId مطلوب');
+  });
+
+  it('مفيش حساب أدمن مرتبط بالـtenant ده → 404، ومفيش أي PUT بيتنفذ', async () => {
+    state.tenantAdminLookupRows = [];
+    const res = await resetPasswordWithToken({ tenantId: 'tenant-ghost' });
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe('تعذر العثور على حساب أدمن مرتبط بهذا المكتب');
+    expect(state.authUserPasswordPutCalls).toEqual([]);
+  });
+
+  it('فشل تحديث الباسورد في Auth → بيرجّع رسالة الخطأ من Auth API', async () => {
+    state.authUserPasswordPutOk = false;
+    const res = await resetPasswordWithToken({ tenantId: 'tenant-9' });
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe('فشل تحديث كلمة السر');
+  });
+
+  it('مسار النجاح → بيدوّر على الأدمن بالـtenantId، يحدّث كلمة السر في Auth، ويرجع { newPassword, adminEmail }', async () => {
+    state.tenantAdminLookupRows = [{ user_id: 'admin-user-9', email: 'owner@example.com' }];
+    const res = await resetPasswordWithToken({ tenantId: 'tenant-9' });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.adminEmail).toBe('owner@example.com');
+    expect(typeof data.newPassword).toBe('string');
+    expect(data.newPassword.length).toBe(14);
+
+    expect(state.authUserPasswordPutCalls).toHaveLength(1);
+    expect(state.authUserPasswordPutCalls[0].url).toContain('/auth/v1/admin/users/admin-user-9');
+    expect(state.authUserPasswordPutCalls[0].body).toEqual({ password: data.newPassword });
   });
 });
 
