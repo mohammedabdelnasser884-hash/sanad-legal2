@@ -8,6 +8,7 @@ import { PDF_FONT_FAMILY, PDF_FONT_LINK } from '../../../shared/lib/pdf';
 import { loadOfficeSetting } from '../../../constants';
 import { createFetchGuard } from '../../../shared/lib/offlineGuard';
 import { recordError, recordSuccess, trackQueryOutcome } from '../../../systemHealth';
+import { showErrorToast } from '../../../shared/lib/errorReporting';
 import { formatArDate } from '../../../shared/ui/arabicLocale';
 import type { ClientRow, ProfileRow, CaseNoteRow, CaseSessionRow } from '../../../types';
 import type { MappedCase } from '../../../hooks/useAppData';
@@ -583,7 +584,7 @@ ${PDF_FONT_LINK}
       setShowAddNote(false);
       return;
     }
-    if (error) { toast('❌ فشل إضافة الملاحظة — تحقق من الاتصال وأعد المحاولة', true); return; }
+    if (error) { showErrorToast('note_add', error, 'فشل إضافة الملاحظة — تحقق من الاتصال وأعد المحاولة', 'إضافة ملاحظة'); return; }
     toast('✅ تمت إضافة الملاحظة');
     logActivity(db, 'إضافة ملاحظة', {
       entity_type: 'note', details: caseData.title || null,
@@ -604,7 +605,7 @@ ${PDF_FONT_LINK}
       toast('📥 الحذف محفوظ محلياً — سيُزامن عند عودة الإنترنت');
       return;
     }
-    if (error) { toast('❌ فشل حذف الملاحظة، حاول مرة أخرى', true); return; }
+    if (error) { showErrorToast('note_delete', error, 'فشل حذف الملاحظة، حاول مرة أخرى', 'حذف ملاحظة'); return; }
     toast('🗑 تم حذف الملاحظة');
     // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): كان بيسجل عنوان
     // القضية بس، ونص الملاحظة اللي اتحذفت كان بيضيع تمامًا. دلوقتي بنحفظ
@@ -636,7 +637,7 @@ ${PDF_FONT_LINK}
       return;
     }
     if (conflict) { toast('⚠️ هذه الملاحظة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
-    if (error) { toast('❌ فشل تعديل الملاحظة — تحقق من الاتصال وأعد المحاولة', true); return; }
+    if (error) { showErrorToast('note_update', error, 'فشل تعديل الملاحظة — تحقق من الاتصال وأعد المحاولة', 'تعديل ملاحظة'); return; }
     toast('✅ تم تعديل الملاحظة');
     // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): بيسجل دلوقتي الفرق
     // الفعلي بين النص القديم والجديد بدل رسالة عامة "تم التعديل".
@@ -657,12 +658,12 @@ ${PDF_FONT_LINK}
   const handleChangeStatus = async (newStatus: string) => {
     setChangingStatus(true);
     setShowStatusPicker?.(false);
-    const { success, conflict } = await safeUpdate(db, 'cases', caseData.id, { status: newStatus }, caseData.updated_at || null);
+    const { success, conflict, error } = await safeUpdate(db, 'cases', caseData.id, { status: newStatus }, caseData.updated_at || null);
     setChangingStatus(false);
     // 🔒 FIX (تقرير الموثوقية — القسم 12، Concurrent Editing): كانت بترجع
     // بصمت تام عند التعارض. نفس نمط الرسالة المستخدم في case_notes/cases.
     if (conflict) { toast('⚠️ هذه القضية عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
-    if (!success) { toast('❌ فشل تغيير الحالة', true); return; }
+    if (!success) { showErrorToast('case_status_change', error, 'فشل تغيير الحالة', 'تغيير حالة قضية'); return; }
     toast('✅ تم تحديث حالة القضية');
     // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): كان details بيسجل
     // الحالة الجديدة بس، دلوقتي بيسجل "من ← إلى" زي باقي التعديلات.
