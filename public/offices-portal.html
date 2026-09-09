@@ -37,6 +37,37 @@
   .no-scroll { overflow: hidden; }
   .slide-enter { animation: fadeIn 0.3s ease-out forwards; }
   select option { background: #0c1426; }
+
+  /* جدول المكاتب → بطاقات مكدّسة على الموبايل (مفيش لمس لمنطق التوليد، تصميم بس) */
+  @media (max-width: 767px) {
+    #table-wrap table, #table-wrap thead, #table-wrap tbody,
+    #table-wrap tr, #table-wrap th, #table-wrap td { display: block; width: 100%; }
+    #table-wrap thead { display: none; }
+    #table-wrap tbody tr {
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 14px;
+      margin: 10px;
+      background: rgba(255,255,255,0.015);
+      overflow: hidden;
+    }
+    #table-wrap tbody td {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    #table-wrap tbody td:last-child { border-bottom: none; }
+    #table-wrap tbody td[data-label]::before {
+      content: attr(data-label);
+      display: block;
+      font-size: 9px;
+      font-weight: 900;
+      color: #64748b;
+      letter-spacing: 0.02em;
+      margin-bottom: 6px;
+    }
+    #table-wrap tbody td[data-label] > * { justify-content: flex-start !important; text-align: right !important; }
+    #table-wrap tbody td[data-label="إجراءات"] > div,
+    #table-wrap tbody td[data-label="الحالة"] > div:first-child { justify-content: flex-start !important; }
+  }
 </style>
 </head>
 <body class="min-h-screen">
@@ -82,9 +113,9 @@
 <div id="app" class="hidden min-h-screen flex flex-col">
 
   <!-- هيدر -->
-  <header class="shrink-0 bg-premium-card border-b border-white/5 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+  <header class="shrink-0 bg-premium-card border-b border-white/5 px-4 py-3 flex flex-wrap items-center justify-between gap-y-2 sticky top-0 z-40">
     <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#8B6914] to-[#C9A84C] flex items-center justify-center shadow-md">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#8B6914] to-[#C9A84C] flex items-center justify-center shadow-md shrink-0">
         <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"/>
         </svg>
@@ -94,25 +125,26 @@
         <p class="text-[10px] text-[#C9A84C] font-bold">سَنَد</p>
       </div>
     </div>
-    <div class="flex items-center gap-2">
+    <!-- تابات + خروج: صف كامل مستقل تحت اللوجو على الموبايل، بجانبه على الشاشات الأكبر -->
+    <div class="flex items-center gap-2 w-full sm:w-auto order-3 sm:order-none">
       <!-- تاب المكاتب -->
       <button onclick="switchTab('offices')" id="tab-offices"
-        class="px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent">
+        class="flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent">
         🏢 المكاتب
       </button>
       <!-- تاب الباقات -->
       <button onclick="switchTab('plans')" id="tab-plans"
-        class="px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent">
+        class="flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent">
         💳 الباقات
       </button>
       <!-- تاب المدفوعات -->
       <button onclick="switchTab('payments')" id="tab-payments"
-        class="px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent">
+        class="flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent">
         💰 المدفوعات
       </button>
       <!-- خروج -->
       <button onclick="doLogout()"
-        class="w-8 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center text-slate-400 active:scale-95 transition-transform">
+        class="shrink-0 w-8 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center text-slate-400 active:scale-95 transition-transform">
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75"/>
         </svg>
@@ -132,38 +164,40 @@
     <div id="alerts-section" class="hidden space-y-2"></div>
 
     <!-- شريط البحث + زرار إضافة -->
-    <div class="flex gap-2 items-center">
-      <div class="relative flex-1">
+    <div class="grid grid-cols-1 sm:flex gap-2 sm:items-center">
+      <div class="relative">
         <svg class="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
         </svg>
         <input id="search-input" type="text" placeholder="بحث باسم المكتب..." oninput="renderTable()"
           class="w-full bg-premium-card border border-white/5 rounded-xl pr-9 pl-3 py-2.5 text-xs text-white placeholder-slate-600 font-bold"/>
       </div>
-      <select id="filter-status" onchange="renderTable()"
-        class="bg-premium-card border border-white/5 rounded-xl px-3 py-2.5 text-xs text-slate-300 font-bold">
-        <option value="all">كل الحالات</option>
-        <option value="active">نشط</option>
-        <option value="suspended">موقوف</option>
-        <option value="trial">تجريبي</option>
-        <option value="expiring_soon">⏳ هينتهي خلال 30 يوم</option>
-        <!-- (D3) فلاتر إضافية بحالة الاشتراك الفعلية (computeSubscriptionStatus)
-             — بتغطي التجربة (مشاهدة فقط) والباقات المدفوعة المتأخرة الثلاث،
-             مش state واحدة زي فلاتر status العادية فوق. -->
-        <option value="trial_viewer">👁 تجربة – مشاهدة فقط (يوم 15-30)</option>
-        <option value="grace">⏳ فترة سماح (باقة مدفوعة)</option>
-        <option value="readonly">👁 مشاهدة فقط (باقة مدفوعة)</option>
-        <option value="locked">🔒 مقفول (باقة مدفوعة)</option>
-      </select>
-      <select id="sort-by" onchange="renderTable()"
-        class="bg-premium-card border border-white/5 rounded-xl px-3 py-2.5 text-xs text-slate-300 font-bold">
-        <option value="default">ترتيب: الأحدث</option>
-        <option value="urgency">ترتيب: الأكثر إلحاحًا أولاً</option>
-        <option value="due_soon">ترتيب: الأقرب استحقاقًا</option>
-        <option value="name">ترتيب: الاسم (أ-ي)</option>
-      </select>
+      <div class="grid grid-cols-2 sm:contents gap-2">
+        <select id="filter-status" onchange="renderTable()"
+          class="w-full sm:w-auto bg-premium-card border border-white/5 rounded-xl px-3 py-2.5 text-xs text-slate-300 font-bold">
+          <option value="all">كل الحالات</option>
+          <option value="active">نشط</option>
+          <option value="suspended">موقوف</option>
+          <option value="trial">تجريبي</option>
+          <option value="expiring_soon">⏳ هينتهي خلال 30 يوم</option>
+          <!-- (D3) فلاتر إضافية بحالة الاشتراك الفعلية (computeSubscriptionStatus)
+               — بتغطي التجربة (مشاهدة فقط) والباقات المدفوعة المتأخرة الثلاث،
+               مش state واحدة زي فلاتر status العادية فوق. -->
+          <option value="trial_viewer">👁 تجربة – مشاهدة فقط (يوم 15-30)</option>
+          <option value="grace">⏳ فترة سماح (باقة مدفوعة)</option>
+          <option value="readonly">👁 مشاهدة فقط (باقة مدفوعة)</option>
+          <option value="locked">🔒 مقفول (باقة مدفوعة)</option>
+        </select>
+        <select id="sort-by" onchange="renderTable()"
+          class="w-full sm:w-auto bg-premium-card border border-white/5 rounded-xl px-3 py-2.5 text-xs text-slate-300 font-bold">
+          <option value="default">ترتيب: الأحدث</option>
+          <option value="urgency">ترتيب: الأكثر إلحاحًا أولاً</option>
+          <option value="due_soon">ترتيب: الأقرب استحقاقًا</option>
+          <option value="name">ترتيب: الاسم (أ-ي)</option>
+        </select>
+      </div>
       <button onclick="openAddModal()"
-        class="flex items-center gap-1.5 bg-gradient-to-tr from-[#8B6914] to-[#C9A84C] text-white px-4 py-2.5 rounded-xl text-xs font-black active:scale-95 transition-transform shadow-md whitespace-nowrap">
+        class="w-full sm:w-auto flex items-center justify-center gap-1.5 bg-gradient-to-tr from-[#8B6914] to-[#C9A84C] text-white px-4 py-2.5 rounded-xl text-xs font-black active:scale-95 transition-transform shadow-md whitespace-nowrap">
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
         مكتب جديد
       </button>
@@ -675,10 +709,10 @@ function switchTab(tab) {
     if (!pg || !btn) return;
     if (t === tab) {
       pg.classList.remove('hidden');
-      btn.className = 'px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border bg-[#C9A84C]/15 text-[#C9A84C] border-[#C9A84C]/30';
+      btn.className = 'flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border bg-[#C9A84C]/15 text-[#C9A84C] border-[#C9A84C]/30';
     } else {
       pg.classList.add('hidden');
-      btn.className = 'px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent text-slate-400';
+      btn.className = 'flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent text-slate-400';
     }
   });
   if (tab === 'plans')    renderPlans();
@@ -929,7 +963,7 @@ function renderTable() {
   };
   document.getElementById('tenants-tbody').innerHTML = filtered.map(t => `
     <tr class="hover:bg-white/[0.015] transition-colors">
-      <td class="py-3 px-4">
+      <td class="py-3 px-4" data-label="المكتب">
         <p class="text-xs font-black text-white">${esc(t.name)}</p>
         <div id="note-display-${t.id}" onclick="startEditNote('${t.id}')" title="اضغط لتعديل الملاحظة"
           style="margin-top:4px;cursor:pointer;min-height:16px;display:flex;align-items:center;gap:4px;group">
@@ -949,7 +983,7 @@ function renderTable() {
             style="width:100%;background:#070d1a;border:1px solid rgba(200,168,75,0.3);border-radius:8px;padding:3px 8px;font-size:10px;color:white;font-weight:700;font-family:Cairo,sans-serif;outline:none"/>
         </div>
       </td>
-      <td class="py-3 px-4">
+      <td class="py-3 px-4" data-label="التواصل">
         <p class="text-[11px] text-slate-300 font-bold">${t.phone||'—'}</p>
         <div class="flex items-center gap-1.5 mt-1.5">
           ${t.phone ? `
@@ -964,7 +998,7 @@ function renderTable() {
           ` : ''}
         </div>
       </td>
-      <td class="py-3 px-4">
+      <td class="py-3 px-4" data-label="الباقة">
         <span class="text-[11px] font-black" style="color:${PLAN_COLOR[t.subscription_plan]||'#94a3b8'}">${PLAN_LABEL[t.subscription_plan]||t.subscription_plan}</span>
         ${(() => {
           const s = computeSubscriptionStatus(t);
@@ -972,7 +1006,7 @@ function renderTable() {
         })()}
         ${t.subscription_due_at ? `<div class="text-[9px] text-slate-500 font-bold mt-0.5">استحقاق: ${t.subscription_due_at.slice(0,10)}</div>` : ''}
       </td>
-      <td class="py-3 px-4 text-center">
+      <td class="py-3 px-4 text-center" data-label="الاشتراك">
         <div class="text-[10px] text-slate-400 font-bold space-y-0.5">
           <div>${t.created_at ? '▶ '+t.created_at.slice(0,10) : '—'}</div>
           ${(() => {
@@ -992,7 +1026,7 @@ function renderTable() {
           })()}
         </div>
       </td>
-      <td class="py-3 px-4">
+      <td class="py-3 px-4" data-label="الحالة">
         <div class="flex justify-center">${statusBadge[t.status]||t.status}</div>
         ${(() => {
           const ob = t._onboarding;
@@ -1006,7 +1040,7 @@ function renderTable() {
           return '';
         })()}
       </td>
-      <td class="py-3 px-4">
+      <td class="py-3 px-4" data-label="إجراءات">
         <div class="flex items-center justify-center gap-1.5">
           <button onclick="openEditModal('${t.id}')" title="تعديل"
             class="w-7 h-7 rounded-lg bg-[#C9A84C]/10 border border-[#C9A84C]/20 text-[#C9A84C] flex items-center justify-center active:scale-90 transition-transform">
