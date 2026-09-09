@@ -125,13 +125,53 @@ async function authorizeOnTarget(caller: any, targetUserId: string): Promise<boo
 // الكشف هناك صح. بنرجّع الرسالة الخام زي ما هي بس لو طابقت واحد من
 // النمطين المعروفين ده (نصوصنا الثابتة إحنا، مش مدخلات مستخدم)، وإلا
 // بنفضل نرجّع fallback عام زي الأول — عشان منسربش أي تفاصيل داخلية تانية.
+const READONLY_LOCK_MESSAGE =
+  'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.';
+
 function subscriptionAwareMessage(rawMessage: string): string | null {
   if (!rawMessage) return null;
   if (rawMessage.includes('وصلت للحد الأقصى')) return rawMessage;
-  if (rawMessage.includes('tenant_write_allowed')) {
-    return 'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.';
-  }
+  if (rawMessage.includes('tenant_write_allowed')) return READONLY_LOCK_MESSAGE;
   return null;
+}
+
+// 🆕 FIX (٩ سبتمبر ٢٠٢٦ — تدقيق أمني، نفس فئة G1 في migration 13):
+// admin-actions بينفذ كل كتاباته عن طريق rest()/rpc() بـSERVICE_ROLE_KEY —
+// وده بيتخطى RLS بالكامل (بما فيها أي RESTRICTIVE policy بـ
+// tenant_write_allowed لو كانت موجودة على profiles، وهي أصلاً مش موجودة
+// حاليًا في أي migration). يعني مكتب في وضع grace/readonly كان لسه يقدر
+// يضيف محامي جديد، يعدّل بيانات مستخدم، يقفل/يفتح حساب — القفل شكلي
+// بالنسبة لإدارة المستخدمين بالكامل. الحل: نفس تحقق tenant_write_allowed()
+// الصريح اللي اتضاف جوه create_fee_with_advance/record_fee_payment/
+// set_portal_pin (migration 13)، هنا كمان قبل أي كتابة حساسة. مفيش أي
+// استثناء لسوبر أدمن هنا (زي G1 بالظبط) — لو محتاج تجاوز فعلي لمكتب مقفول
+// فده عن طريق أدوات إدارة القفل نفسها (resetOnboardingLock) مش من هنا.
+async function tenantWriteAllowed(tenantId: string): Promise<boolean> {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/tenant_write_allowed`, {
+    method: 'POST',
+    headers: {
+      apikey: SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ p_tenant_id: tenantId }),
+  });
+  if (!r.ok) {
+    // deny-by-default: لو فحص القفل نفسه فشل (شبكة/اسم دالة تغيّر...)
+    // بنمنع الكتابة احتياطًا بدل ما نفترض إنها مسموحة — نفس مبدأ
+    // storage_object_write_allowed في migration 13 (G2).
+    console.error('[admin-actions:tenantWriteAllowed] rpc failed', r.status);
+    return false;
+  }
+  return (await r.json()) === true;
+}
+
+// جلب tenant_id بتاع بروفايل مستهدف من الـid بتاعه (dependency مشتركة
+// للفحص فوق في كل العمليات اللي بتستهدف profile_id).
+async function getProfileTenantId(profileId: string): Promise<string | null> {
+  const rows = await rest(`profiles?id=eq.${profileId}&select=tenant_id&limit=1`);
+  const row = Array.isArray(rows) ? rows[0] : null;
+  return row?.tenant_id ?? null;
 }
 
 // حذف حساب Auth تم إنشاؤه لتوّه — best-effort، تُستخدم للـrollback لما
@@ -231,6 +271,25 @@ Deno.serve(async (req: Request) => {
       if (!email || !fullName) return json({ error: 'البريد الإلكتروني والاسم مطلوبين' });
       if (password.length < 8) return json({ error: 'كلمة السر قصيرة جدًا (8 أحرف على الأقل)' });
 
+      // أدمن مكتب عادي: يتحدد tenant_id من حسابه هو نفسه (مش من البودي)
+      // عشان مينفعش يحقن مكتب تاني. سوبر أدمن بلا مكتب (tenant_id=null)
+      // لازم يحدد target_tenant_id صراحةً، وإلا الصف هيتعمل بلا مكتب
+      // ويبقى حساب معطوب مالوش وصول لأي بيانات.
+      const targetTenantId = caller.is_super_admin === true
+        ? (body.target_tenant_id || caller.tenant_id)
+        : caller.tenant_id;
+      if (!targetTenantId) {
+        return json({ error: 'لازم تحدد target_tenant_id لأنك سوبر أدمن بلا مكتب مرتبط بحسابك' });
+      }
+
+      // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — القفل الحقيقي): نتحقق من tenant_write_allowed
+      // قبل ما نعمل حساب Auth أصلاً — عشان منحتاجش rollback لو المكتب مقفول
+      // (بدل ما نكتشف الرفض بعد إنشاء الحساب زي ما كان بيحصل مع رفض insert
+      // البروفايل).
+      if (!(await tenantWriteAllowed(targetTenantId))) {
+        return json({ error: READONLY_LOCK_MESSAGE });
+      }
+
       const authRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
         method: 'POST',
         headers: {
@@ -243,17 +302,6 @@ Deno.serve(async (req: Request) => {
       const authUser = await authRes.json().catch(() => ({}));
       if (!authRes.ok) {
         return json({ error: authUser.msg || authUser.error_description || 'تعذر إنشاء الحساب (البريد مستخدم؟)' });
-      }
-
-      // أدمن مكتب عادي: يتحدد tenant_id من حسابه هو نفسه (مش من البودي)
-      // عشان مينفعش يحقن مكتب تاني. سوبر أدمن بلا مكتب (tenant_id=null)
-      // لازم يحدد target_tenant_id صراحةً، وإلا الصف هيتعمل بلا مكتب
-      // ويبقى حساب معطوب مالوش وصول لأي بيانات.
-      const targetTenantId = caller.is_super_admin === true
-        ? (body.target_tenant_id || caller.tenant_id)
-        : caller.tenant_id;
-      if (!targetTenantId) {
-        return json({ error: 'لازم تحدد target_tenant_id لأنك سوبر أدمن بلا مكتب مرتبط بحسابك' });
       }
 
       try {
@@ -311,6 +359,14 @@ Deno.serve(async (req: Request) => {
         const target = Array.isArray(targetRows) ? targetRows[0] : null;
         if (!target || caller.role !== 'admin' || target.tenant_id !== caller.tenant_id) {
           return json({ error: 'غير مسموح لك بتنفيذ هذا الإجراء' });
+        }
+      }
+
+      // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — القفل الحقيقي): نفس فحص create_lawyer فوق.
+      {
+        const targetTenantId = await getProfileTenantId(profileId);
+        if (targetTenantId && !(await tenantWriteAllowed(targetTenantId))) {
+          return json({ error: READONLY_LOCK_MESSAGE });
         }
       }
 
@@ -381,6 +437,14 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — القفل الحقيقي): نفس فحص create_lawyer فوق.
+      {
+        const targetTenantId = await getProfileTenantId(profileId);
+        if (targetTenantId && !(await tenantWriteAllowed(targetTenantId))) {
+          return json({ error: READONLY_LOCK_MESSAGE });
+        }
+      }
+
       if (hasRole && !['admin', 'lawyer', 'viewer'].includes(String(body.role))) {
         return json({ error: 'دور غير صالح' });
       }
@@ -407,9 +471,13 @@ Deno.serve(async (req: Request) => {
       } catch (e) {
         const rawMessage = e instanceof Error ? e.message : String(e);
         console.error('[admin-actions:update_profile]', rawMessage);
-        // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — B3): كان بيرجع الرسالة العامة دي دايمًا،
-        // حتى لو الرفض فعليًا حد باقة (مثلاً تفعيل مستخدم جديد وصل لحد
-        // المستخدمين المسموح) أو قفل read-only بسبب حالة الاشتراك.
+        // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — تصحيح تسمية: مش B3 كان مكتوب هنا غلط.
+        // B3 الحقيقي خاص بحد بوابة الموكل (client_portal_pins)، مش
+        // المستخدمين. حد المستخدمين الفعلي هنا هو B5
+        // (enforce_profile_limit_on_activate، trigger على profiles.is_active
+        // false→true) — وده لسه ممكن يوصل هنا كـP0001 حتى بعد فحص
+        // tenant_write_allowed الصريح فوق، لأنهم فحصين مستقلين (حد باقة
+        // مختلف عن حالة القفل).
         return json({
           error: subscriptionAwareMessage(rawMessage)
             ?? 'تعذّر حفظ التعديلات. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.',
@@ -437,6 +505,14 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — القفل الحقيقي): نفس فحص create_lawyer فوق.
+      {
+        const targetTenantId = await getProfileTenantId(profileId);
+        if (targetTenantId && !(await tenantWriteAllowed(targetTenantId))) {
+          return json({ error: READONLY_LOCK_MESSAGE });
+        }
+      }
+
       try {
         await rest(`profiles?id=eq.${profileId}`, 'PATCH', {
           is_locked: isLocked,
@@ -445,8 +521,11 @@ Deno.serve(async (req: Request) => {
       } catch (e) {
         const rawMessage = e instanceof Error ? e.message : String(e);
         console.error('[admin-actions:toggle_lock]', rawMessage);
-        // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — B6): نفس فيكس update_profile فوق — قفل/فتح
-        // حساب ممكن يترفض بسبب read-only على مستوى الاشتراك نفسه.
+        // 🆕 FIX (٩ سبتمبر ٢٠٢٦ — تصحيح تسمية: مش B6 كان مكتوب هنا غلط.
+        // B6 الحقيقي خاص بتفعيل بوابة الموكل، ومالوش أي علاقة بـtoggle_lock
+        // (بيعدّل is_locked مش is_active، فمفيش B-trigger بيتطبق عليه أصلاً).
+        // الاحتمال الحقيقي الوحيد للرفض هنا هو فحص tenant_write_allowed
+        // الصريح المضاف فوق (القفل الشامل بسبب حالة الاشتراك).
         return json({
           error: subscriptionAwareMessage(rawMessage)
             ?? 'تعذّر تنفيذ العملية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.',
