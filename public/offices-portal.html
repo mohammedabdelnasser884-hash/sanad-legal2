@@ -289,20 +289,30 @@
           <input id="f-phone" type="text" placeholder="+966..."
             class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 font-bold"/>
         </div>
-        <div>
+        <!-- مودال الإنشاء: قائمة موحدة (تجربة + 3 باقات) بدل حقلي باقة/حالة منفصلين -->
+        <div id="plan-status-create-field" class="col-span-1 sm:col-span-2">
           <label class="text-[10px] font-black text-slate-400 block mb-1">الباقة</label>
-          <select id="f-plan" class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold"></select>
+          <select id="f-plan-status" onchange="syncPlanStatusFromUnified()"
+            class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold"></select>
         </div>
-        <div>
-          <label class="text-[10px] font-black text-slate-400 block mb-1">الحالة</label>
-          <select id="f-status" class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold">
-            <option value="active">نشط</option>
-            <option value="trial">تجريبي</option>
-            <option value="suspended">موقوف</option>
-          </select>
+        <!-- مودال التعديل: نفس الحقلين القدام (f-plan/f-status) فضلوا زي ما هما،
+             مقفولين، عشان منطق القفل الحالي (D5) مايتلمسش -->
+        <div id="plan-status-edit-fields" style="display:contents">
+          <div>
+            <label class="text-[10px] font-black text-slate-400 block mb-1">الباقة</label>
+            <select id="f-plan" class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold"></select>
+          </div>
+          <div>
+            <label class="text-[10px] font-black text-slate-400 block mb-1">الحالة</label>
+            <select id="f-status" class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold">
+              <option value="active">نشط</option>
+              <option value="trial">تجريبي</option>
+              <option value="suspended">موقوف</option>
+            </select>
+          </div>
         </div>
         <div class="col-span-1 sm:col-span-2" id="plan-locked-note" style="display:none">
-          <p class="text-[9px] text-amber-400 font-bold">⚠️ تعديل مباشر: الباقة/الحالة هيتغيروا من غير ما ميعاد التجديد (subscription_due_at) يتحدّث تلقائيًا. استخدم "تأكيد دفع" للمكاتب الحقيقية عشان الميعاد يفضل متزامن — الحقول دي مفتوحة هنا للمكاتب التجريبية بتاعتك بس.</p>
+          <p class="text-[9px] text-amber-400 font-bold">الباقة/الحالة بقوا بيتغيّروا بس عن طريق "تأكيد دفع" أو الترقية من جدول المكاتب — عشان ميعاد التجديد يفضل متزامن. زرار الإيقاف/التفعيل السريع لسه شغال زي ما هو.</p>
         </div>
         <div class="col-span-1 sm:col-span-2">
           <label class="text-[10px] font-black text-slate-400 block mb-1">تاريخ انتهاء التجربة/الاشتراك</label>
@@ -1386,6 +1396,35 @@ function populatePlanSelect(selectedId) {
   sel.value = selectedId;
 }
 
+// ─── مودال الإنشاء: قائمة موحدة (تجربة + 3 باقات) ──────
+// بتحل محل حقلي "الباقة"/"الحالة" المنفصلين وقت إنشاء مكتب جديد بس.
+// الباك إند (saas-admin/actionCreateOffice) بالفعل بيحسب صح لوحده حسب
+// الحالة: trial → trial_ends_at، غير كده → subscription_due_at — فمفيش
+// أي تغيير مطلوب في الباك إند، الدمج ده واجهة بس.
+function populateUnifiedPlanStatusSelect() {
+  const sel = document.getElementById('f-plan-status');
+  const trialOption = `<option value="trial">تجربة مجانية (شهر واحد)</option>`;
+  const planOptions = PLANS.map(p =>
+    `<option value="${p.id}">${p.name} (${p.monthly} ج.م/شهر)</option>`
+  ).join('');
+  sel.innerHTML = trialOption + planOptions;
+  sel.value = 'trial';
+}
+
+// بتحدّث f-plan/f-status الفعليين (اللي saveTenant() بيقرا منهم) حسب
+// اختيار القائمة الموحدة — لسه هما المصدر الحقيقي للـ payload، القائمة
+// الموحدة واجهة بس فوقهم.
+function syncPlanStatusFromUnified() {
+  const chosen = document.getElementById('f-plan-status').value;
+  if (chosen === 'trial') {
+    document.getElementById('f-status').value = 'trial';
+    document.getElementById('f-plan').value = DEFAULT_PLAN_ID;
+  } else {
+    document.getElementById('f-status').value = 'active';
+    document.getElementById('f-plan').value = chosen;
+  }
+}
+
 // ─── Modal Add ─────────────────────────────────────────
 function openAddModal() {
   document.getElementById('modal-title').textContent = 'إضافة مكتب جديد';
@@ -1395,6 +1434,13 @@ function openAddModal() {
   document.getElementById('f-status').value = 'trial';
   document.getElementById('f-plan').disabled = false;
   document.getElementById('f-status').disabled = false;
+  populateUnifiedPlanStatusSelect();
+  syncPlanStatusFromUnified();
+  document.getElementById('plan-status-create-field').classList.remove('hidden');
+  // ملحوظة: العنصر ده أصلاً "display: contents" (كلاس ثابت)، فبنقفله بـ
+  // inline style مباشر بدل كلاس "hidden" — عشان نتجنب تعارض أولوية بين
+  // كلاسين بنفس القوة (contents/hidden) في الـ stylesheet.
+  document.getElementById('plan-status-edit-fields').style.display = 'none';
   document.getElementById('plan-locked-note').style.display = 'none';
   // تعبئة تلقائية بتاريخ انتهاء تجربة شهر من النهارده — التجربة كانت
   // بتتسيب فاضية غالبًا فتفضل شغالة للأبد من غير قصد، فبقت مطلوبة دايمًا.
@@ -1414,13 +1460,13 @@ function openEditModal(id) {
   document.getElementById('f-phone').value     = t.phone || '';
   populatePlanSelect(t.subscription_plan || DEFAULT_PLAN_ID);
   document.getElementById('f-status').value    = t.status || 'active';
-  // (D5 معدّل بطلبك 9 سبتمبر 2026) الباقة/الحالة رجعوا قابلين للتعديل
-  // المباشر من مودال التعديل العادي — بقرارك الصريح، لاستخدامك الخاص مع
-  // مكاتب تجريبية بتاعتك بس. ⚠️ التعديل المباشر هنا مش بيحسب/يحدّث
-  // subscription_due_at زي "تأكيد دفع" — لأي مكتب حقيقي استخدم "تأكيد
-  // دفع" علشان ميعاد التجديد يفضل متزامن مع الباقة.
-  document.getElementById('f-plan').disabled = false;
-  document.getElementById('f-status').disabled = false;
+  document.getElementById('plan-status-create-field').classList.add('hidden');
+  document.getElementById('plan-status-edit-fields').style.display = 'contents';
+  // (D5) الباقة/الحالة بقوا للعرض بس في مودال التعديل العادي — التغيير
+  // الفعلي لازم يعدّي عن طريق "تأكيد دفع" (ترقية/تجديد) عشان
+  // subscription_due_at يفضل متزامن دايمًا مع أي تغيير باقة.
+  document.getElementById('f-plan').disabled = true;
+  document.getElementById('f-status').disabled = true;
   document.getElementById('plan-locked-note').style.display = 'block';
   document.getElementById('f-expires').value   = (t.trial_ends_at || '').slice(0,10);
   document.getElementById('f-notes').value     = t.notes || '';
