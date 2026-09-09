@@ -147,6 +147,20 @@
         <option value="suspended">موقوف</option>
         <option value="trial">تجريبي</option>
         <option value="expiring_soon">⏳ هينتهي خلال 30 يوم</option>
+        <!-- (D3) فلاتر إضافية بحالة الاشتراك الفعلية (computeSubscriptionStatus)
+             — بتغطي التجربة (مشاهدة فقط) والباقات المدفوعة المتأخرة الثلاث،
+             مش state واحدة زي فلاتر status العادية فوق. -->
+        <option value="trial_viewer">👁 تجربة – مشاهدة فقط (يوم 15-30)</option>
+        <option value="grace">⏳ فترة سماح (باقة مدفوعة)</option>
+        <option value="readonly">👁 مشاهدة فقط (باقة مدفوعة)</option>
+        <option value="locked">🔒 مقفول (باقة مدفوعة)</option>
+      </select>
+      <select id="sort-by" onchange="renderTable()"
+        class="bg-premium-card border border-white/5 rounded-xl px-3 py-2.5 text-xs text-slate-300 font-bold">
+        <option value="default">ترتيب: الأحدث</option>
+        <option value="urgency">ترتيب: الأكثر إلحاحًا أولاً</option>
+        <option value="due_soon">ترتيب: الأقرب استحقاقًا</option>
+        <option value="name">ترتيب: الاسم (أ-ي)</option>
       </select>
       <button onclick="openAddModal()"
         class="flex items-center gap-1.5 bg-gradient-to-tr from-[#8B6914] to-[#C9A84C] text-white px-4 py-2.5 rounded-xl text-xs font-black active:scale-95 transition-transform shadow-md whitespace-nowrap">
@@ -515,10 +529,26 @@ function computeTrialEndDate() {
 }
 
 // (D3) نسخة فرونت إند من دالة tenant_subscription_status SQL (15-05) —
-// للعرض بس (badge في الجدول)، القفل الفعلي مصدره السيرفر/RLS دايمًا.
-// بترجع: 'active' | 'grace' | 'readonly' | 'locked' | 'n_a'
+// للعرض بس (badge/فلتر/ترتيب في الجدول)، القفل الفعلي مصدره السيرفر/RLS
+// دايمًا. بترجع: 'active' | 'trial_viewer' | 'grace' | 'readonly' | 'locked' | 'n_a'
+//
+// (D3 — تحسين) قبل كده الدالة كانت بترجع 'n_a' لأي مكتب تجريبي بلا
+// تفرقة، فحالة "تجربة – مشاهدة فقط" (يوم 15→30) مكانتش بتظهر خالص فى
+// جدول بوابة إدارة المكاتب رغم إنها موجودة فعليًا فى تطبيق سند نفسه
+// (E1/E4). دلوقتي بتتحسب هنا كمان — نفس رقم الـ16 يوم المستخدم بالظبط
+// فى tenant_write_allowed()/tenant_lock_countdown_days (15-05/15-12) —
+// لازم أي تغيير فى الرقم ده يتغيّر فى الداتابيز مع الهوك مع الملف ده
+// التلاتة مع بعض، عشان مايبقاش فيه تعارض بين اللي كل واحد فيهم بيوريه.
 function computeSubscriptionStatus(t) {
-  if (t.status === 'trial' || !t.subscription_due_at) return 'n_a';
+  if (t.status === 'trial') {
+    if (!t.trial_ends_at) return 'n_a';
+    const trialEnd = new Date(t.trial_ends_at);
+    const viewerStart = new Date(trialEnd); viewerStart.setDate(viewerStart.getDate() - 16);
+    const now = new Date();
+    if (now >= viewerStart && now < trialEnd) return 'trial_viewer';
+    return 'n_a'; // يوم 1-14 (شغل كامل)، أو بعد الانتهاء (قفل كامل — E4 بتاخد مكانه، مش الجدول ده)
+  }
+  if (!t.subscription_due_at) return 'n_a';
   const due = new Date(t.subscription_due_at);
   const now = new Date();
   const graceEnd = new Date(due); graceEnd.setDate(graceEnd.getDate() + 7);
@@ -530,10 +560,15 @@ function computeSubscriptionStatus(t) {
 }
 
 const SUBSCRIPTION_STATUS_BADGE = {
+  trial_viewer: `<span class="px-2 py-0.5 bg-sky-500/10 border border-sky-500/25 text-sky-400 text-[9px] font-black rounded-full">👁 تجربة – مشاهدة فقط</span>`,
   grace:    `<span class="px-2 py-0.5 bg-rose-500/10 border border-rose-500/25 text-rose-400 text-[9px] font-black rounded-full">⏳ فترة سماح</span>`,
   readonly: `<span class="px-2 py-0.5 bg-amber-500/10 border border-amber-500/25 text-amber-400 text-[9px] font-black rounded-full">👁 مشاهدة فقط</span>`,
   locked:   `<span class="px-2 py-0.5 bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[9px] font-black rounded-full">🔒 مقفول</span>`,
 };
+
+// (D3) درجة إلحاح لكل حالة — مستخدمة فى ترتيب "الأكثر إلحاحًا أولاً"
+// بس (مش فى أي منطق قفل فعلي). الأعلى رقم = الأكثر احتياجًا للمتابعة.
+const SUBSCRIPTION_URGENCY = { locked: 4, readonly: 3, grace: 2, trial_viewer: 1, active: 0, n_a: 0 };
 
 // ─── أمان: تهريب أي نص قبل إدراجه في innerHTML ───────────
 // بيانات المكاتب (الاسم، الملاحظات...) بتيجي من القاعدة وممكن
@@ -837,14 +872,22 @@ function renderStats() {
 function renderTable() {
   const q  = (document.getElementById('search-input')?.value||'').toLowerCase();
   const st = document.getElementById('filter-status')?.value || 'all';
+  const sortBy = document.getElementById('sort-by')?.value || 'default';
 
   const today30 = new Date(); today30.setDate(today30.getDate() + 30); today30.setHours(23,59,59,999);
   const todayNow = new Date(); todayNow.setHours(0,0,0,0);
 
+  // (D3) فلاتر حالة الاشتراك (trial_viewer/grace/readonly/locked) بتتفحص
+  // بـcomputeSubscriptionStatus بدل t.status مباشرة — دي حالة مشتقة
+  // (تجربة أو باقة مدفوعة، الاتنين ممكن يوصلوا لنفس الحالات) مش عمود خام.
+  const SUBSCRIPTION_STATUS_FILTERS = ['trial_viewer', 'grace', 'readonly', 'locked'];
+
   const filtered = allTenants.filter(t => {
     const matchQ  = !q || t.name.toLowerCase().includes(q);
     let matchSt;
-    if (st === 'expiring_soon') {
+    if (SUBSCRIPTION_STATUS_FILTERS.includes(st)) {
+      matchSt = computeSubscriptionStatus(t) === st;
+    } else if (st === 'expiring_soon') {
       if (!t.trial_ends_at) { matchSt = false; }
       else {
         const exp = new Date(t.trial_ends_at); exp.setHours(0,0,0,0);
@@ -858,6 +901,26 @@ function renderTable() {
 
   if (!filtered.length) { showTableLoading(false, true); return; }
   showTableLoading(false);
+
+  // (D3) ترتيب — بيتطبق بعد الفلترة، مش بيغيّر allTenants الأصلية.
+  // "الأقرب استحقاقًا" بتاخد subscription_due_at للباقات المدفوعة، أو
+  // trial_ends_at للمكاتب التجريبية (نفس فكرة "التاريخ اللي هيحصل عنده
+  // تشديد جاي" فى tenant_lock_countdown_days، للعرض بس هنا).
+  const effectiveDueDate = (t) => t.subscription_due_at || t.trial_ends_at || null;
+  if (sortBy === 'urgency') {
+    filtered.sort((a, b) => (SUBSCRIPTION_URGENCY[computeSubscriptionStatus(b)]||0) - (SUBSCRIPTION_URGENCY[computeSubscriptionStatus(a)]||0));
+  } else if (sortBy === 'due_soon') {
+    filtered.sort((a, b) => {
+      const da = effectiveDueDate(a), db = effectiveDueDate(b);
+      if (!da && !db) return 0;
+      if (!da) return 1;  // مفيش تاريخ = آخر الترتيب
+      if (!db) return -1;
+      return new Date(da) - new Date(db);
+    });
+  } else if (sortBy === 'name') {
+    filtered.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  }
+  // 'default' = زي ما هي جاية من allTenants (ترتيب التحميل الأصلي من الـAPI)
 
   const statusBadge = {
     active:    `<span class="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[9px] font-black rounded-full flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full ping inline-block"></span>نشط</span>`,
