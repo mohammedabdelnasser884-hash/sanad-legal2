@@ -124,7 +124,7 @@ describe('useAdminOffice', () => {
     it('لقى صف موجود → بيحوّل الأعمدة من snake_case لـ camelCase صح، وبيولّد رابط موقّع للشعار', async () => {
       mockDb.setResult('office_settings:select:*', {
         data: {
-          name: 'مكتب الأمل', slogan: 'شعار', logo_url: 'office/tenant-1/logo.png',
+          name: 'مكتب الأمل', slogan: 'شعار', logo_url: 'tenant-1/office-logo.png',
           brand_color: '#123456', accent_color: '#654321',
           tax_number: '123', license_number: '456',
           bank_name: 'بنك مصر', bank_iban: 'EG123',
@@ -137,14 +137,14 @@ describe('useAdminOffice', () => {
       await act(async () => { await result.current.fetchOfficeSettings(); });
 
       expect(result.current.officeSettings).toMatchObject({
-        name: 'مكتب الأمل', slogan: 'شعار', logoUrl: 'office/tenant-1/logo.png',
+        name: 'مكتب الأمل', slogan: 'شعار', logoUrl: 'tenant-1/office-logo.png',
         brandColor: '#123456', accentColor: '#654321',
         taxNumber: '123', licenseNumber: '456',
         bankName: 'بنك مصر', bankIban: 'EG123',
         invoicePrefix: 'INV-2026-', invoiceFooter: 'شكرًا',
         country: 'SA',
       });
-      expect(resolveStorageUrl).toHaveBeenCalledWith('client-docs', 'office/tenant-1/logo.png');
+      expect(resolveStorageUrl).toHaveBeenCalledWith('client-docs', 'tenant-1/office-logo.png');
       await waitFor(() => expect(result.current.logoPreview).toBe('https://signed.example/logo.png'));
       expect(result.current.loadingOffice).toBe(false);
     });
@@ -229,7 +229,7 @@ describe('useAdminOffice', () => {
 
       await act(async () => { await result.current.handleSaveOfficeSettings(); });
 
-      expect(mockDb.uploadSpy).toHaveBeenCalledWith('client-docs', 'office/tenant-1/logo.png', fakeFile, { upsert: true });
+      expect(mockDb.uploadSpy).toHaveBeenCalledWith('client-docs', 'tenant-1/office-logo.png', fakeFile, { upsert: true });
       expect(mockDb.insertSpy).toHaveBeenCalledWith('office_settings', expect.objectContaining({ logo_url: 'https://signed.example/new-logo.png' }));
       expect(result.current.officeSettings.logoUrl).toBe('https://signed.example/new-logo.png');
       expect(result.current.logoFile).toBeNull();
