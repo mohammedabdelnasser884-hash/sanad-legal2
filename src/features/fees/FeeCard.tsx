@@ -9,6 +9,7 @@ import type { ClientRow, CaseFeeRow, FeePaymentRow, InvoiceRow, PaymentsByFeeId 
 import type { MappedCase } from '../../hooks/useAppData';
 import type { InvoiceModalState, ConfirmDeletePayState, FeeFormState } from './hooks/useFeesActions';
 import { resolveCaseFeeClient } from './hooks/useFeesActions';
+import { showErrorToast } from '../../shared/lib/errorReporting';
 
 interface FeeCardProps {
   fee: CaseFeeRow;
@@ -228,7 +229,7 @@ function FeeCard({
                                                             inv = await getOrCreateInvoice(p, fee);
                                                         } catch (e) {
                                                             setInvoiceLoadingFor(null);
-                                                            toast('❌ فشل إصدار الفاتورة — تحقق من الاتصال وأعد المحاولة', true);
+                                                            showErrorToast('invoice_issue', e, 'فشل إصدار الفاتورة — تحقق من الاتصال وأعد المحاولة', 'إصدار فاتورة');
                                                             return;
                                                         }
                                                         setInvoiceLoadingFor(null);
