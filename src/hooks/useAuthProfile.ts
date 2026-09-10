@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../supabaseClient';
 import { toast } from '../shared/lib/notifications';
-import { recordSuccess, trackQueryOutcome } from '../systemHealth';
+import { recordSuccess, trackQueryOutcome, setHealthScope } from '../systemHealth';
 import { setCurrentTenantId } from '../constants';
 import type { ProfileRow } from '../types';
 
@@ -208,8 +208,14 @@ export function useAuthProfile() {
     // لازم يحصل قبل أي نداء لـ loadOfficeSetting/saveOfficeSetting، وكمان
     // عند تسجيل الخروج (profile=null) عشان منفضلش شايلين tenant قديم في
     // الكاش لمستخدم بعده على نفس الجهاز. ──
+    // 🔒 FIX (10 سبتمبر 2026): setHealthScope(profile?.tenant_id) بنفس
+    // التوقيت بالظبط — نفس فئة الباج اللي التعليق فوق بيتكلم عنه، بس فى
+    // systemHealth.ts (بانرات "تعذّر: ..." كانت بتفضل ظاهرة لحساب/مكتب
+    // تاني بعده على نفس الجهاز لأنها كانت مخزّنة فى مفتاح localStorage
+    // واحد مش مربوط بأي tenant خالص). راجع systemHealth.ts للتفاصيل.
     useEffect(() => {
         setCurrentTenantId(profile?.tenant_id ?? null);
+        setHealthScope(profile?.tenant_id ?? null);
     }, [profile]);
 
     useEffect(() => {
