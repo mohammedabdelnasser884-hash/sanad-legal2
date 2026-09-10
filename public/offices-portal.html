@@ -852,39 +852,56 @@ function showTableLoading(on, empty=false) {
 }
 
 // ─── Render Alerts ────────────────────────────────────
+// ⚡ إعادة كتابة كاملة (10 سبتمبر 2026): كانت بتحسب "انتهى/Grace Period"
+// من trial_ends_at بثابت 14 يوم للجميع (تجربة وباقات مدفوعة مع بعض فى نفس
+// المنطق) — منفصل تمامًا عن نظام subscription_due_at الحقيقي (فيز 15).
+// دلوقتي بتستخدم computeSubscriptionStatus(t) (D3، فوق فى نفس الملف) —
+// نفس الدالة المستخدمة أصلاً لـbadge الجدول — عشان يبقى مصدر حقيقة واحد،
+// بدل ما نكرر منطق تانى ممكن يتفرقع تانى زي اللي حصل مع trial_ends_at.
 function renderAlerts() {
-  const today     = new Date();
-  today.setHours(0,0,0,0);
-  const in10Days  = new Date(today); in10Days.setDate(today.getDate() + 10);
-  const grace14   = new Date(today); grace14.setDate(today.getDate() - 14);
+  const now = new Date();
+  const in10DaysMs = now.getTime() + 10 * 24 * 60 * 60 * 1000;
 
-  // مكاتب منتهية (expires_at < اليوم) وحالتها active أو trial
-  const expired = allTenants.filter(t => {
-    if (!t.trial_ends_at) return false;
-    const exp = new Date(t.trial_ends_at); exp.setHours(0,0,0,0);
-    return exp < today && (t.status === 'active' || t.status === 'trial');
+  // باقات مدفوعة متأخرة عن الاستحقاق (grace/readonly/locked) — من نفس
+  // computeSubscriptionStatus المستخدمة فى الجدول، مش حساب مستقل هنا.
+  const paidOverdue = allTenants
+    .map(t => ({ t, subState: computeSubscriptionStatus(t) }))
+    .filter(x => x.subState === 'grace' || x.subState === 'readonly' || x.subState === 'locked');
+
+  // باقات مدفوعة هتستحق التجديد خلال 10 أيام (لسه active، مش متأخرة)
+  const paidExpiringSoon = allTenants.filter(t => {
+    if (t.status === 'trial' || !t.subscription_due_at) return false;
+    const dueMs = new Date(t.subscription_due_at).getTime();
+    return dueMs > now.getTime() && dueMs <= in10DaysMs;
   });
 
-  // مكاتب هتنتهي خلال 10 أيام
-  const expiringSoon = allTenants.filter(t => {
-    if (!t.trial_ends_at) return false;
-    const exp = new Date(t.trial_ends_at); exp.setHours(0,0,0,0);
-    return exp >= today && exp <= in10Days && t.status === 'active';
+  // تجربة انتهت تمامًا ولسه ما فعّلتش باقة مدفوعة (مقفولة دخول بالكامل —
+  // computeSubscriptionStatus بترجع 'n_a' للحالة دي عمدًا لأنها مش محتاجة
+  // badge فى الجدول، فبنتأكد منها هنا مباشرة من trial_ends_at).
+  const trialExpired = allTenants.filter(t =>
+    t.status === 'trial' && t.trial_ends_at && new Date(t.trial_ends_at).getTime() <= now.getTime(),
+  );
+
+  // تجربة هتنتهي خلال 10 أيام (يشمل يوم 1-14 العادي ويوم مشاهدة التجربة)
+  const trialExpiringSoon = allTenants.filter(t => {
+    if (t.status !== 'trial' || !t.trial_ends_at) return false;
+    const endMs = new Date(t.trial_ends_at).getTime();
+    return endMs > now.getTime() && endMs <= in10DaysMs;
   });
 
   const section = document.getElementById('alerts-section');
-
-  if (!expired.length && !expiringSoon.length) {
+  if (!paidOverdue.length && !paidExpiringSoon.length && !trialExpired.length && !trialExpiringSoon.length) {
     section.classList.add('hidden');
+    section.innerHTML = '';
     return;
   }
-
   section.classList.remove('hidden');
 
   let html = '';
 
-  // ── تنبيهات المنتهية ──
-  if (expired.length) {
+  // ── باقات مدفوعة متأخرة (سماح 7 أيام / مشاهدة فقط 60 يوم / قفل نهائي) ──
+  if (paidOverdue.length) {
+    const stateLabel = { grace: 'فترة سماح', readonly: 'وضع مشاهدة فقط', locked: 'مقفول نهائيًا' };
     html += `
       <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:16px;padding:14px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
@@ -894,26 +911,54 @@ function renderAlerts() {
             </svg>
           </div>
           <div>
-            <p style="font-size:11px;font-weight:900;color:#f87171">${expired.length} مكتب انتهى اشتراكه ولم يجدد</p>
-            <p style="font-size:10px;color:#64748b;font-weight:700">Grace Period: 14 يوم — يمكنهم مشاهدة البيانات فقط</p>
+            <p style="font-size:11px;font-weight:900;color:#f87171">${paidOverdue.length} مكتب متأخر عن استحقاق التجديد</p>
+            <p style="font-size:10px;color:#64748b;font-weight:700">7 أيام سماح، ثم 60 يوم وضع مشاهدة فقط، ثم قفل نهائي</p>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
-          ${expired.map(t => {
-            const exp     = new Date(t.trial_ends_at);
-            const daysDiff = Math.floor((today - exp) / (1000*60*60*24));
-            const inGrace  = daysDiff <= 14;
+          ${paidOverdue.map(({ t, subState }) => `
+              <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);border-radius:12px;padding:8px 12px">
+                <div>
+                  <p style="font-size:11px;font-weight:900;color:white">${esc(t.name)}</p>
+                  <span style="color:${subState === 'locked' ? '#7f1d1d' : '#fb923c'}"> — ${stateLabel[subState]}</span>
+                </div>
+                <button onclick="openConfirmPaymentModal('${t.id}')"
+                  style="font-size:10px;font-weight:900;color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
+                  تجديد ↗
+                </button>
+              </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // ── باقات مدفوعة هتستحق التجديد خلال 10 أيام ──
+  if (paidExpiringSoon.length) {
+    html += `
+      <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:16px;padding:14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <div style="width:28px;height:28px;border-radius:10px;background:rgba(245,158,11,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg style="width:14px;height:14px;color:#fbbf24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+            </svg>
+          </div>
+          <div>
+            <p style="font-size:11px;font-weight:900;color:#fbbf24">${paidExpiringSoon.length} مكتب هيستحق التجديد خلال 10 أيام</p>
+            <p style="font-size:10px;color:#64748b;font-weight:700">الوقت المناسب لإرسال تذكير تجديد</p>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${paidExpiringSoon.map(t => {
+            const daysLeft = Math.ceil((new Date(t.subscription_due_at).getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
             return `
               <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);border-radius:12px;padding:8px 12px">
                 <div>
                   <p style="font-size:11px;font-weight:900;color:white">${esc(t.name)}</p>
-                    ${inGrace
-                      ? `<span style="color:#fb923c"> — باقي ${14 - daysDiff} يوم من الـ Grace Period</span>`
-                      : `<span style="color:#f87171"> — تجاوز الـ Grace Period</span>`}
-                  </p>
+                  <span style="color:#fbbf24"> — باقي ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'أيام'}</span>
                 </div>
                 <button onclick="openConfirmPaymentModal('${t.id}')"
-                  style="font-size:10px;font-weight:900;color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
+                  style="font-size:10px;font-weight:900;color:#fbbf24;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
                   تجديد ↗
                 </button>
               </div>
@@ -924,35 +969,53 @@ function renderAlerts() {
     `;
   }
 
-  // ── تنبيهات القريبة من الانتهاء ──
-  if (expiringSoon.length) {
+  // ── تجربة انتهت تمامًا ولسه ما فعّلتش باقة مدفوعة (مقفولة دخول بالكامل) ──
+  if (trialExpired.length) {
     html += `
-      <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:16px;padding:14px">
+      <div style="background:rgba(127,29,29,0.15);border:1px solid rgba(239,68,68,0.25);border-radius:16px;padding:14px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <div style="width:28px;height:28px;border-radius:10px;background:rgba(245,158,11,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg style="width:14px;height:14px;color:#fbbf24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
-            </svg>
-          </div>
           <div>
-            <p style="font-size:11px;font-weight:900;color:#fbbf24">${expiringSoon.length} مكتب اشتراكه هينتهي خلال 10 أيام</p>
-            <p style="font-size:10px;color:#64748b;font-weight:700">الوقت المناسب لإرسال تذكير تجديد</p>
+            <p style="font-size:11px;font-weight:900;color:#f87171">${trialExpired.length} مكتب تجربة انتهت ولم يُفعَّل باقة مدفوعة</p>
+            <p style="font-size:10px;color:#64748b;font-weight:700">مقفول دخول بالكامل — محتاج تأكيد أول دفعة لتفعيل باقة</p>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
-          ${expiringSoon.map(t => {
-            const exp      = new Date(t.trial_ends_at);
-            const daysLeft = Math.ceil((exp - today) / (1000*60*60*24));
+          ${trialExpired.map(t => `
+              <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);border-radius:12px;padding:8px 12px">
+                <p style="font-size:11px;font-weight:900;color:white">${esc(t.name)}</p>
+                <button onclick="openConfirmPaymentModal('${t.id}')"
+                  style="font-size:10px;font-weight:900;color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
+                  تفعيل باقة ↗
+                </button>
+              </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // ── تجربة هتنتهي خلال 10 أيام ──
+  if (trialExpiringSoon.length) {
+    html += `
+      <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:16px;padding:14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <div>
+            <p style="font-size:11px;font-weight:900;color:#fbbf24">${trialExpiringSoon.length} مكتب تجربة هتنتهي خلال 10 أيام</p>
+            <p style="font-size:10px;color:#64748b;font-weight:700">الوقت المناسب لإرسال تذكير تفعيل باقة</p>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${trialExpiringSoon.map(t => {
+            const daysLeft = Math.ceil((new Date(t.trial_ends_at).getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
             return `
               <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);border-radius:12px;padding:8px 12px">
                 <div>
                   <p style="font-size:11px;font-weight:900;color:white">${esc(t.name)}</p>
-                    <span style="color:#fbbf24"> — باقي ${daysLeft} ${daysLeft===1?'يوم':'أيام'}</span>
-                  </p>
+                  <span style="color:#fbbf24"> — باقي ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'أيام'}</span>
                 </div>
                 <button onclick="openConfirmPaymentModal('${t.id}')"
                   style="font-size:10px;font-weight:900;color:#fbbf24;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
-                  تمديد ↗
+                  تفعيل باقة ↗
                 </button>
               </div>
             `;
