@@ -621,7 +621,14 @@ async function actionConfirmPayment(body: Record<string, unknown>) {
   });
   const payment = Array.isArray(paymentRows) ? paymentRows[0] : paymentRows;
 
-  return json({ tenant: { ...tenant, subscription_plan: plan, status: 'active', subscription_due_at: newDueAt }, payment });
+  // ⚠️ فيكس (10 سبتمبر 2026، اكتُشف أثناء اختبار 7 اليدوي): لازم trial_ends_at
+  // تتصفّر هنا كمان زي ما اتصفّرت فعليًا في الـPATCH فوق — قبل الفيكس ده،
+  // الـresponse كانت بترجّع trial_ends_at القديمة (من `tenant` الأصلي، قبل
+  // التحديث)، فـallTenants المحلية في offices-portal.html كانت تفضل شايلة
+  // تاريخ تجربة قديم منتهي، وrenderAlerts() (منطق تنبيهات قديم منفصل تمامًا
+  // عن subscription_due_at) كان بيعرض تنبيه "Grace Period" غلط لمكتب فعليًا
+  // active بعد تجديد ناجح — رغم إن الداتابيز نفسها كانت سليمة 100% طول الوقت.
+  return json({ tenant: { ...tenant, subscription_plan: plan, status: 'active', subscription_due_at: newDueAt, trial_ends_at: null }, payment });
 }
 
 /**
