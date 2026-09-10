@@ -30,10 +30,26 @@ afterEach(() => { cleanup(); });
 // ══════════════════════════════════════════════════════════════════
 
 type InvokeResult = { data?: { access_token?: string; refresh_token?: string; user?: { id: string; email: string }; error?: string } | null; error?: { message: string } | null };
+type GateResult = { data?: { status?: 'not_found' | 'not_admin' | 'admin_confirmed'; error?: string } | null; error?: { message: string; context?: { json?: () => Promise<{ error?: string } | null> } } | null };
 
 let invokeResult: InvokeResult = { data: null, error: null };
 let invokeImpl: (() => Promise<InvokeResult>) | null = null;
-const invoke = vi.fn((_fn: string, _opts: unknown) => (invokeImpl ? invokeImpl() : Promise.resolve(invokeResult)));
+
+// ⚡ NEW (خطة قفل استعادة كلمة المرور، 10 سبتمبر 2026): LoginScreen بقت
+// بتنادي فانكشنين مختلفين عبر نفس db.functions.invoke — office-login
+// (فورم الدخول) وforgot-password-gate (فورم "نسيت كلمة المرور؟"). الموك
+// المشترك ده كان بيرجّع نفس invokeResult لأي نداء، فلازم يتفرّع بالاسم
+// عشان تستات الدخول القديمة تفضل شغالة من غير ما تتأثر بحالة gate،
+// وتستات gate تقدر تتحكم في ردها لوحدها. الافتراضي لـgate هو
+// admin_confirmed عشان تستات resetPasswordForEmail الموجودة قبل كده
+// (اللي مبتحددش gateResult) تفضل شغالة زي ما هي من غير تعديل.
+let gateResult: GateResult = { data: { status: 'admin_confirmed' }, error: null };
+let gateImpl: (() => Promise<GateResult>) | null = null;
+
+const invoke = vi.fn((fn: string, _opts: unknown) => {
+  if (fn === 'forgot-password-gate') return gateImpl ? gateImpl() : Promise.resolve(gateResult);
+  return invokeImpl ? invokeImpl() : Promise.resolve(invokeResult);
+});
 
 let setSessionResult: { error: { message: string } | null } = { error: null };
 const setSession = vi.fn((..._args: unknown[]) => Promise.resolve(setSessionResult));
@@ -104,6 +120,8 @@ describe('LoginScreen (تدفق تكاملي مع office-login)', () => {
   beforeEach(() => {
     invokeResult = { data: null, error: null };
     invokeImpl = null;
+    gateResult = { data: { status: 'admin_confirmed' }, error: null };
+    gateImpl = null;
     setSessionResult = { error: null };
     resetPasswordResult = { error: null };
     invoke.mockClear();
@@ -265,7 +283,7 @@ describe('LoginScreen (تدفق تكاملي مع office-login)', () => {
       expect(screen.queryByPlaceholderText('••••••••')).toBeNull();
     });
 
-    it('إرسال الفورم بإيميل صحيح → resetPasswordForEmail بيتنادى بالإيميل وredirectTo الصحيح، ورسالة نجاح بتتعرض', async () => {
+    it('إرسال الفورم بإيميل أدمن (gate بترجع admin_confirmed) → forgot-password-gate بيتنادى الأول، وبعدها resetPasswordForEmail بالإيميل وredirectTo الصحيح، ورسالة نجاح بتتعرض', async () => {
       const onLogin = vi.fn();
       render(React.createElement(LoginScreen, { onLogin }));
       fireEvent.click(screen.getByTestId('login-forgot-password-link'));
@@ -273,7 +291,67 @@ describe('LoginScreen (تدفق تكاملي مع office-login)', () => {
       fireEvent.click(screen.getByTestId('forgot-password-submit'));
 
       await waitFor(() => expect(screen.getByTestId('forgot-password-success')).toBeTruthy());
+      expect(invoke).toHaveBeenCalledWith('forgot-password-gate', { body: { action: 'check', email: 'lawyer@sanad.test' } });
       expect(resetPasswordForEmail).toHaveBeenCalledWith('lawyer@sanad.test', { redirectTo: 'https://sanad.nizzam.workers.dev/reset-password' });
+    });
+
+    // ══════════════════════════════════════════════════════════════════
+    // ✅ NEW (خطة قفل استعادة كلمة المرور على أدمن المكتب، 10 سبتمبر
+    // 2026): forgot-password-gate بتتنادى قبل resetPasswordForEmail،
+    // وبتقفل الباب في حالتين (not_found/not_admin) من غير ما توصل
+    // لـSupabase auth خالص.
+    // ══════════════════════════════════════════════════════════════════
+    it('gate بترجع not_found → "هذا البريد الإلكتروني غير مسجل بالنظام"، من غير أي نداء لـ resetPasswordForEmail', async () => {
+      gateResult = { data: { status: 'not_found' }, error: null };
+      const onLogin = vi.fn();
+      render(React.createElement(LoginScreen, { onLogin }));
+      fireEvent.click(screen.getByTestId('login-forgot-password-link'));
+      fireEvent.change(screen.getByTestId('forgot-password-email'), { target: { value: 'ghost@sanad.test' } });
+      fireEvent.click(screen.getByTestId('forgot-password-submit'));
+
+      await waitFor(() => expect(screen.getByTestId('forgot-password-error')).toBeTruthy());
+      expect(screen.getByTestId('forgot-password-error').textContent).toBe('هذا البريد الإلكتروني غير مسجل بالنظام');
+      expect(resetPasswordForEmail).not.toHaveBeenCalled();
+    });
+
+    it('gate بترجع not_admin → رسالة التوجيه لمدير المكتب، من غير أي نداء لـ resetPasswordForEmail', async () => {
+      gateResult = { data: { status: 'not_admin' }, error: null };
+      const onLogin = vi.fn();
+      render(React.createElement(LoginScreen, { onLogin }));
+      fireEvent.click(screen.getByTestId('login-forgot-password-link'));
+      fireEvent.change(screen.getByTestId('forgot-password-email'), { target: { value: 'staff@sanad.test' } });
+      fireEvent.click(screen.getByTestId('forgot-password-submit'));
+
+      await waitFor(() => expect(screen.getByTestId('forgot-password-error')).toBeTruthy());
+      expect(screen.getByTestId('forgot-password-error').textContent).toBe('استرجاع الحساب من هذا الرابط مخصص فقط لمدير المكتب. يمكنك التواصل مع مدير مكتبك لتعيين كلمة سر جديدة من خلال لوحة إدارة المكتب.');
+      expect(resetPasswordForEmail).not.toHaveBeenCalled();
+    });
+
+    it('gate برجع data.error (زي 429 lockout) → نفس الرسالة بتتعرض زي ما هي، من غير أي نداء لـ resetPasswordForEmail', async () => {
+      gateResult = { data: { error: 'محاولات كثيرة، حاول مرة أخرى بعد 15 دقيقة' }, error: null };
+      const onLogin = vi.fn();
+      render(React.createElement(LoginScreen, { onLogin }));
+      fireEvent.click(screen.getByTestId('login-forgot-password-link'));
+      fireEvent.change(screen.getByTestId('forgot-password-email'), { target: { value: 'lawyer@sanad.test' } });
+      fireEvent.click(screen.getByTestId('forgot-password-submit'));
+
+      await waitFor(() => expect(screen.getByTestId('forgot-password-error')).toBeTruthy());
+      expect(screen.getByTestId('forgot-password-error').textContent).toBe('محاولات كثيرة، حاول مرة أخرى بعد 15 دقيقة');
+      expect(resetPasswordForEmail).not.toHaveBeenCalled();
+    });
+
+    it('خطأ شبكة في نداء gate نفسه (error.message من غير data) → رسالة موحّدة تتعرض، وrecordError عبر trackQueryOutcome بمفتاح forgot_password_gate، من غير أي نداء لـ resetPasswordForEmail', async () => {
+      gateResult = { data: null, error: { message: 'Failed to fetch' } };
+      const onLogin = vi.fn();
+      render(React.createElement(LoginScreen, { onLogin }));
+      fireEvent.click(screen.getByTestId('login-forgot-password-link'));
+      fireEvent.change(screen.getByTestId('forgot-password-email'), { target: { value: 'lawyer@sanad.test' } });
+      fireEvent.click(screen.getByTestId('forgot-password-submit'));
+
+      await waitFor(() => expect(screen.getByTestId('forgot-password-error')).toBeTruthy());
+      expect(screen.getByTestId('forgot-password-error').textContent).toBe('تعذّر التحقق من البريد الإلكتروني. تحقق من اتصال الإنترنت وحاول مرة أخرى.');
+      expect(recordError).toHaveBeenCalledWith('forgot_password_gate', 'Failed to fetch', expect.objectContaining({ label: 'التحقق من صلاحية استعادة كلمة المرور' }));
+      expect(resetPasswordForEmail).not.toHaveBeenCalled();
     });
 
     it('إرسال الفورم من غير إيميل → رسالة تحقق محلية، من غير أي نداء لـ resetPasswordForEmail', () => {
