@@ -37,6 +37,55 @@ function LoginScreen({onLogin}: LoginScreenProps){
         e.preventDefault();
         if(!forgotEmail){setForgotErr('يرجى إدخال البريد الإلكتروني');return;}
         setForgotLoading(true);setForgotErr('');
+
+        // ⚡ NEW (خطة قفل استعادة كلمة المرور على أدمن المكتب، 10 سبتمبر
+        // 2026 — راجع docs/reports/features/sanad-forgot-password-gate-plan-2.md):
+        // قبل أي نداء لـresetPasswordForEmail الحقيقية، ننادي forgot-password-gate
+        // الأول عشان "تفتح الباب" فقط — تتأكد إن الإيميل ده لأدمن مكتب
+        // (profiles.role === 'admin'). لو الإيميل مش مسجل أو مسجل لمستخدم
+        // مش أدمن، بنوقف هنا برسالة مناسبة من غير أي نداء لـSupabase auth
+        // خالص. is_active/is_locked وحالة اشتراك المكتب مالهمش تأثير على
+        // القرار ده عمدًا (قرار نهائي 2 في الخطة).
+        const {data:gateData,error:gateError}=await db.functions.invoke('forgot-password-gate',{body:{action:'check',email:forgotEmail}});
+
+        if(gateError||gateData?.error){
+            setForgotLoading(false);
+            if(gateData?.error){
+                setForgotErr(gateData.error);
+            } else if (gateError) {
+                const serverMessage = await getEdgeFunctionErrorMessage(gateError as EdgeFunctionError);
+                if (looksArabicUserMessage(serverMessage)) {
+                    setForgotErr(serverMessage as string);
+                } else {
+                    await trackQueryOutcome('forgot_password_gate', gateError, {
+                        label: 'التحقق من صلاحية استعادة كلمة المرور',
+                        message: 'تعذّر التحقق من البريد الإلكتروني. تحقق من اتصال الإنترنت وحاول مرة أخرى.',
+                    });
+                    setForgotErr('تعذّر التحقق من البريد الإلكتروني. تحقق من اتصال الإنترنت وحاول مرة أخرى.');
+                }
+            } else {
+                recordError('forgot_password_gate', 'رد فاضي من forgot-password-gate من غير error ولا status');
+                setForgotErr('تعذّر التحقق من البريد الإلكتروني. تحقق من اتصال الإنترنت وحاول مرة أخرى.');
+            }
+            return;
+        }
+
+        if(gateData?.status==='not_found'){
+            setForgotLoading(false);
+            setForgotErr('هذا البريد الإلكتروني غير مسجل بالنظام');
+            return;
+        }
+
+        if(gateData?.status==='not_admin'){
+            setForgotLoading(false);
+            setForgotErr('استرجاع الحساب من هذا الرابط مخصص فقط لمدير المكتب. يمكنك التواصل مع مدير مكتبك لتعيين كلمة سر جديدة من خلال لوحة إدارة المكتب.');
+            return;
+        }
+
+        // gateData?.status === 'admin_confirmed' → نكمل بنفس الكود الحالي
+        // بالظبط من غير أي تغيير في آلية الإرسال نفسها (قرار نهائي 1 في
+        // الخطة): forgot-password-gate بتفتح الباب بس، مش هي اللي بترسل
+        // رابط الاستعادة.
         const {error}=await db.auth.resetPasswordForEmail(forgotEmail,{redirectTo:PASSWORD_RESET_REDIRECT_URL});
         setForgotLoading(false);
         // ⚡ الحماية من إساءة الاستخدام (A.4، ✅ تقرر): معتمدين على
