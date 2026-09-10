@@ -33,6 +33,14 @@ interface FetchState {
   issueInvoicePaymentRows: Array<{ id: string; tenant_id: string; invoice_number: string | null; [k: string]: unknown }>;
   nextInvoiceNumberResult: string;
   paymentPatchCalls: Array<{ url: string; body: Record<string, unknown> }>;
+  // ── confirmPayment (خطة المدفوعات والفواتير — تعديل 6/9 شهور + payment_date/transaction_details) ──
+  confirmPaymentRecentPaymentRows: Array<{ created_at: string }>;
+  confirmPaymentPlanLimitsRows: Array<{ max_users: number | null; max_active_cases: number | null; max_client_portal_accounts: number | null }>;
+  confirmPaymentClientsRows: Array<{ id: string }>;
+  confirmPaymentProfilesRows: Array<{ user_id: string }>;
+  confirmPaymentCasesRows: Array<{ id: string }>;
+  tenantPatchCalls: Array<{ url: string; body: Record<string, unknown> }>;
+  paymentPostCalls: Array<Record<string, unknown>>;
 }
 
 function freshState(): FetchState {
@@ -62,6 +70,13 @@ function freshState(): FetchState {
     ],
     nextInvoiceNumberResult: 'INV-0042',
     paymentPatchCalls: [],
+    confirmPaymentRecentPaymentRows: [],
+    confirmPaymentPlanLimitsRows: [{ max_users: null, max_active_cases: null, max_client_portal_accounts: null }],
+    confirmPaymentClientsRows: [],
+    confirmPaymentProfilesRows: [],
+    confirmPaymentCasesRows: [],
+    tenantPatchCalls: [],
+    paymentPostCalls: [],
   };
 }
 
@@ -156,6 +171,15 @@ function buildFetchMock(state: FetchState) {
       match: (url, init) => (url.includes('/rest/v1/tenants') || url.includes('/rest/v1/tenant_invoices')) && (!init?.method || init.method === 'GET'),
       respond: () => ({ status: 200, body: state.queryTableRows }),
     },
+    // actionConfirmPayment: GET tenant_subscription_payments?tenant_id=eq...&limit=1 (فحص الدفع المكرر خلال 5 دقايق)
+    {
+      match: (url, init) =>
+        url.includes('/rest/v1/tenant_subscription_payments') &&
+        url.includes('tenant_id=eq.') &&
+        url.includes('limit=1') &&
+        (!init?.method || init.method === 'GET'),
+      respond: () => ({ status: 200, body: state.confirmPaymentRecentPaymentRows }),
+    },
     // actionGetPaymentHistory: GET tenant_subscription_payments?tenant_id=eq...&order=created_at.desc (بدون limit)
     {
       match: (url, init) =>
@@ -164,6 +188,46 @@ function buildFetchMock(state: FetchState) {
         !url.includes('limit=') &&
         (!init?.method || init.method === 'GET'),
       respond: () => ({ status: 200, body: state.paymentHistoryRows }),
+    },
+    // actionConfirmPayment: POST tenant_subscription_payments (تسجيل الدفعة) — بيرجّع نفس الصف المبعوت + id
+    {
+      match: (url, init) => url.includes('/rest/v1/tenant_subscription_payments') && init?.method === 'POST',
+      respond: (_url, init) => {
+        const body = JSON.parse(init!.body as string);
+        state.paymentPostCalls.push(body);
+        return { status: 201, body: [{ id: `payment-test-${state.paymentPostCalls.length}`, ...body }] };
+      },
+    },
+    // actionConfirmPayment: GET plan_limits?plan_key=eq....
+    {
+      match: (url, init) => url.includes('/rest/v1/plan_limits') && (!init?.method || init.method === 'GET'),
+      respond: () => ({ status: 200, body: state.confirmPaymentPlanLimitsRows }),
+    },
+    // actionConfirmPayment: GET clients?tenant_id=eq....&select=id
+    {
+      match: (url, init) => url.includes('/rest/v1/clients') && (!init?.method || init.method === 'GET'),
+      respond: () => ({ status: 200, body: state.confirmPaymentClientsRows }),
+    },
+    // actionConfirmPayment: GET profiles?tenant_id=eq....&select=user_id (عدّ حسابات المكتب — بدون role=eq.admin)
+    {
+      match: (url, init) =>
+        url.includes('/rest/v1/profiles') &&
+        url.includes('select=user_id') &&
+        (!init?.method || init.method === 'GET'),
+      respond: () => ({ status: 200, body: state.confirmPaymentProfilesRows }),
+    },
+    // actionConfirmPayment: GET cases?tenant_id=eq....&deleted_at=is.null&select=id
+    {
+      match: (url, init) => url.includes('/rest/v1/cases') && (!init?.method || init.method === 'GET'),
+      respond: () => ({ status: 200, body: state.confirmPaymentCasesRows }),
+    },
+    // actionConfirmPayment: PATCH tenants?id=eq.... (تحديث الباقة/الميعاد)
+    {
+      match: (url, init) => url.includes('/rest/v1/tenants') && url.includes('id=eq.') && init?.method === 'PATCH',
+      respond: (url, init) => {
+        state.tenantPatchCalls.push({ url, body: JSON.parse(init!.body as string) });
+        return { status: 200, body: [{}] };
+      },
     },
     // actionIssueInvoice: GET tenant_subscription_payments?id=eq....
     {
@@ -534,13 +598,72 @@ describe('saas-admin — action=confirmPayment، تحقق subscriptionMonths (خ
     return handler(jsonRequest({ action: 'confirmPayment', token, ...body }));
   }
 
-  it('مدة اشتراك غير معروفة (مش 1/3/12) → 400 قبل أي نداء لقاعدة البيانات', async () => {
+  it('مدة اشتراك غير معروفة (مش 1/3/6/9/12) → 400 قبل أي نداء لقاعدة البيانات', async () => {
     const res = await confirmPaymentWithToken({
-      tenantId: 'tenant-1', plan: 'lawyer', amountEgp: 250, paymentMethod: 'cash', subscriptionMonths: 6,
+      tenantId: 'tenant-1', plan: 'lawyer', amountEgp: 250, paymentMethod: 'cash', subscriptionMonths: 7,
     });
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toContain('مدة اشتراك غير معروفة');
+  });
+
+  it.each([1, 3, 6, 9, 12])('subscriptionMonths=%i مقبولة (بعد توسيع 6/9، ملاحظات جيمي 10 سبتمبر)', async (months) => {
+    const res = await confirmPaymentWithToken({
+      tenantId: 'tenant-1', plan: 'lawyer', amountEgp: 250, paymentMethod: 'cash', subscriptionMonths: months,
+    });
+    expect(res.status).not.toBe(400);
+  });
+
+  it('طريقة دفع غير معروفة (مش cash/e_wallet/bank_transfer) → 400', async () => {
+    const res = await confirmPaymentWithToken({
+      tenantId: 'tenant-1', plan: 'lawyer', amountEgp: 250, paymentMethod: 'vodafone_cash', subscriptionMonths: 1,
+    });
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain('طريقة الدفع');
+  });
+
+  it.each(['cash', 'e_wallet', 'bank_transfer'])('paymentMethod=%s مقبولة', async (method) => {
+    const res = await confirmPaymentWithToken({
+      tenantId: 'tenant-1', plan: 'lawyer', amountEgp: 250, paymentMethod: method, subscriptionMonths: 1,
+    });
+    expect(res.status).not.toBe(400);
+  });
+
+  it('transactionDetails اختياري — من غيره الطلب ينجح عادي (مثلاً كاش)', async () => {
+    const res = await confirmPaymentWithToken({
+      tenantId: 'tenant-1', plan: 'lawyer', amountEgp: 250, paymentMethod: 'cash', subscriptionMonths: 1,
+    });
+    expect(res.status).not.toBe(400);
+    const data = await res.json();
+    expect(data.payment?.transaction_details ?? null).toBeNull();
+  });
+
+  it('transactionDetails لو اتبعت بيتسجل زي ما هو على صف الدفعة', async () => {
+    const res = await confirmPaymentWithToken({
+      tenantId: 'tenant-1', plan: 'lawyer', amountEgp: 250, paymentMethod: 'bank_transfer',
+      subscriptionMonths: 1, transactionDetails: 'تحويل انستاباي رقم 123456',
+    });
+    const data = await res.json();
+    expect(data.payment?.transaction_details).toBe('تحويل انستاباي رقم 123456');
+  });
+
+  it('paymentDate اختياري — لو متبعتش بياخد تاريخ اليوم', async () => {
+    const res = await confirmPaymentWithToken({
+      tenantId: 'tenant-1', plan: 'lawyer', amountEgp: 250, paymentMethod: 'cash', subscriptionMonths: 1,
+    });
+    const data = await res.json();
+    const today = new Date().toISOString().slice(0, 10);
+    expect(data.payment?.payment_date).toBe(today);
+  });
+
+  it('paymentDate لو اتبعت بتتسجل زي ما هي (منفصلة عن period_start/period_end)', async () => {
+    const res = await confirmPaymentWithToken({
+      tenantId: 'tenant-1', plan: 'lawyer', amountEgp: 250, paymentMethod: 'cash',
+      subscriptionMonths: 1, paymentDate: '2026-09-08',
+    });
+    const data = await res.json();
+    expect(data.payment?.payment_date).toBe('2026-09-08');
   });
 });
 
