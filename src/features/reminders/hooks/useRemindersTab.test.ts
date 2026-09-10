@@ -98,7 +98,7 @@ const recordSuccess = vi.fn();
 // recordWriteFailure من systemHealth مباشرة للأخطاء العادية — الموك القديم
 // مكانش مصدّرها، فأي مسار بيوصلها كان بيرمي "recordWriteFailure غير معرّفة"
 // فعليًا (اكتشفناها في الـCI، نفس فئة باج trackQueryOutcome القديم فوق).
-const recordWriteFailure = vi.fn(() => ({ ambiguous: false }));
+const recordWriteFailure = vi.fn((..._args: unknown[]) => ({ ambiguous: false }));
 // نفس منطق trackQueryOutcome الحقيقي (systemHealth.ts): من غير error →
 // recordSuccess، مع error → recordError. لسه مستخدمة في مسارات القراءة
 // (fetchUpcoming/fetchOverdue/fetchDone) اللي مبتلمسش الفيكس ده.
