@@ -70,6 +70,17 @@
 //                 (ميجريشن 17) ويسجّله على صف الدفعة نفسه. بيرجّع كل
 //                 بيانات الدفعة جاهزة لواجهة الطباعة.
 //
+//   getSupabaseUsage      { token }
+//     → { db_size_bytes, storage_size_bytes, checked_at, egress_mb,
+//          egress_updated_at, limits }  — تاب "استخدام Supabase"
+//                 (سوبر أدمن بس). db/storage أوتوماتيك من
+//                 platform_usage_snapshot()، egress آخر قيمة اتسجلت
+//                 يدويًا (مفيش API رسمي موثّق يجيبها أوتوماتيك —
+//                 راجع تعليق الميجريشن 19).
+//
+//   setEgressUsage        { token, egressMb }
+//     → { ok }  — تسجيل/تحديث قيمة الـEgress اليدوية بالميجابايت.
+//
 //  الأمان:
 //   - الباسورد بيتقارن من SAAS_ADMIN_PASSWORD (env secret)
 //   - الـ token: JWT موقّع بـ SAAS_JWT_SECRET، صلاحيته 8 ساعات
@@ -789,6 +800,73 @@ async function actionIssueInvoice(body: Record<string, unknown>) {
   return json({ payment: { ...payment, invoice_number: invoiceNumber }, invoiceNumber });
 }
 
+// ── Supabase Free Tier usage (تاب سوبر أدمن، 10 سبتمبر 2026) ──
+
+// حدود Free Tier الحالية (راجع تعليق الميجريشن 19 — الأرقام دي
+// بتتغيّر من وقت لوقت من Supabase نفسها، فمش مربوطة بأي حساب هنا،
+// بس ثوابت عرض في الواجهة). بالبايت عشان يتقارنوا مباشرة بالأرقام
+// الراجعة من platform_usage_snapshot().
+const FREE_TIER_LIMITS_BYTES = {
+  db_size_bytes: 500 * 1024 * 1024,        // 500 MB
+  storage_size_bytes: 1024 * 1024 * 1024,  // 1 GB
+  egress_mb: 10 * 1024,                    // 10 GB (5 uncached + 5 cached)
+};
+
+/**
+ * getSupabaseUsage: بيرجّع حجم قاعدة البيانات وحجم الـStorage
+ * الفعليين (من platform_usage_snapshot()، أوتوماتيك بالكامل)، بالإضافة
+ * لآخر قيمة Egress مسجّلة يدويًا (platform_manual_metrics) مع تاريخ
+ * آخر تحديث لها — راجع تعليق الميجريشن 19 لسبب عدم أتمتة Egress.
+ */
+async function actionGetSupabaseUsage() {
+  const snapshotResult = await supabaseRest('rpc/platform_usage_snapshot', 'POST', {});
+  const snapshot = snapshotResult as {
+    db_size_bytes?: number; storage_size_bytes?: number; checked_at?: string;
+  };
+
+  const manualRows = await supabaseRest(`platform_manual_metrics?key=eq.egress_mb&select=value,updated_at`);
+  const manual = Array.isArray(manualRows) ? manualRows[0] : null;
+
+  return json({
+    db_size_bytes: snapshot?.db_size_bytes ?? 0,
+    storage_size_bytes: snapshot?.storage_size_bytes ?? 0,
+    checked_at: snapshot?.checked_at ?? null,
+    egress_mb: manual?.value ?? null,
+    egress_updated_at: manual?.updated_at ?? null,
+    limits: FREE_TIER_LIMITS_BYTES,
+  });
+}
+
+/**
+ * setEgressUsage: تسجيل قيمة Egress يدويًا (بالميجابايت) — الأدمن
+ * بيشوف الرقم من https://supabase.com/dashboard/org/_/usage
+ * وبيكتبه هنا. upsert على نفس الصف (key='egress_mb') دايمًا.
+ */
+async function actionSetEgressUsage(body: Record<string, unknown>) {
+  const { egressMb } = body as { egressMb?: number };
+  if (typeof egressMb !== 'number' || !Number.isFinite(egressMb) || egressMb < 0) {
+    return json({ error: 'egressMb لازم يكون رقم موجب' }, 400);
+  }
+
+  await fetch(`${SUPABASE_URL}/rest/v1/platform_manual_metrics`, {
+    method: 'POST',
+    headers: {
+      apikey: SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=representation',
+    },
+    body: JSON.stringify({ key: 'egress_mb', value: egressMb, unit: 'mb', updated_at: new Date().toISOString() }),
+  }).then(async (r) => {
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err?.message ?? 'فشل تسجيل قيمة الـEgress');
+    }
+  });
+
+  return json({ ok: true });
+}
+
 // ── Main handler ──────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
@@ -820,6 +898,8 @@ Deno.serve(async (req: Request) => {
       case 'undoLastPayment':        return await actionUndoLastPayment(rest);
       case 'getPaymentHistory':      return await actionGetPaymentHistory(rest);
       case 'issueInvoice':           return await actionIssueInvoice(rest);
+      case 'getSupabaseUsage':       return await actionGetSupabaseUsage();
+      case 'setEgressUsage':         return await actionSetEgressUsage(rest);
       default:                       return json({ error: `action غير معروف: ${action}` }, 400);
     }
   } catch (e) {
