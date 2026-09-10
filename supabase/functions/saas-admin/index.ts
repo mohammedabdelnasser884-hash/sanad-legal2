@@ -33,11 +33,14 @@
 //     عمود ضيّق بس من profiles (حسابات الأدمن) — مش وصول عام للجدول،
 //     غرضه الوحيد إظهار شارة "مجمّد/مقفول" وزرار الفك في اللوحة.
 //
-//   confirmPayment { token, tenantId, plan, amountEgp, paymentMethod }
+//   confirmPayment { token, tenantId, plan, amountEgp, paymentMethod,
+//                     subscriptionMonths? }
 //     → { tenant, payment }  — (D1) تسجيل دفعة يدوية (نقدي/فودافون
 //                 كاش)، يرفض لو العدد الحالي فوق حد الباقة الجديدة،
-//                 وبيحسب subscription_due_at الجديد (تجديد عادي: شهر
-//                 من آخر ميعاد قديم / ترقية أو أول تفعيل: شهر من النهارده).
+//                 وبيحسب subscription_due_at الجديد (تجديد عادي: n شهر
+//                 من آخر ميعاد قديم / ترقية أو أول تفعيل: n شهر من
+//                 النهارده) — n = subscriptionMonths (1/3/12، افتراضي 1
+//                 لو متبعتش، راجع خطة المدفوعات والفواتير 10 سبتمبر).
 //                 بيصفّر trial_ends_at (المكتب بقى مدفوع، مبقاش تجربة)،
 //                 وبيرفض العملية لو فيه دفعة اتسجلت لنفس المكتب من أقل
 //                 من DUPLICATE_PAYMENT_WINDOW_MS (حماية من تأكيد مكرر بغلط).
@@ -46,6 +49,20 @@
 //     → { ok, restoredDueAt }  — (D4) تراجع عن آخر تأكيد دفع، يمسح
 //                 آخر سجل في tenant_subscription_payments ويرجّع
 //                 subscription_due_at للقيمة قبله.
+//
+//   getPaymentHistory { token, tenantId }
+//     → [{ id, plan, amount_egp, payment_method, subscription_months,
+//          period_start, period_end, invoice_number, created_at, ... }]
+//                 (خطة المدفوعات والفواتير) كل دفعات مكتب معيّن، الأحدث
+//                 أولًا — لعرض تاب "سجل المدفوعات" في تفاصيل المكتب.
+//
+//   issueInvoice { token, paymentId }
+//     → { payment, invoiceNumber }  — (خطة المدفوعات والفواتير)
+//                 get-or-create لرقم فاتورة دفعة معيّنة: لو الدفعة دي
+//                 طبعت قبل كده بيرجّع نفس الرقم القديم من غير أي تغيير،
+//                 لو مرة أولى بياخد رقم جديد من next_tenant_invoice_number()
+//                 (ميجريشن 17) ويسجّله على صف الدفعة نفسه. بيرجّع كل
+//                 بيانات الدفعة جاهزة لواجهة الطباعة.
 //
 //  الأمان:
 //   - الباسورد بيتقارن من SAAS_ADMIN_PASSWORD (env secret)
@@ -114,14 +131,21 @@ function computeSubscriptionDueDate(): string {
   return d.toISOString();
 }
 
-// شهر من تاريخ معيّن (مش النهارده بالضرورة) — مستخدمة في D1 لحساب
-// ميعاد التجديد الجديد وقت "تجديد عادي" (شهر من آخر ميعاد قديم، مش
-// من تاريخ التأكيد نفسه).
-function addOneMonth(iso: string): string {
+// n شهر من تاريخ معيّن (مش النهارده بالضرورة) — مستخدمة في D1/خطة
+// المدفوعات والفواتير لحساب ميعاد التجديد الجديد وقت "تجديد عادي"
+// (n شهر من آخر ميعاد قديم، مش من تاريخ التأكيد نفسه). كانت
+// addOneMonth (شهر ثابت بالكود) قبل تعميم مدة الاشتراك (1/3/12 شهر)
+// في خطة المدفوعات والفواتير — راجع ALLOWED_SUBSCRIPTION_MONTHS.
+function addMonths(iso: string, months: number): string {
   const d = new Date(iso);
-  d.setMonth(d.getMonth() + 1);
+  d.setMonth(d.getMonth() + months);
   return d.toISOString();
 }
+
+// المدد المسموح بيها لتسجيل دفعة (شهر / 3 شهور / سنة) — من واجهة
+// offices-portal.html بس، لكن العمود subscription_months نفسه مش
+// مقيّد بقيم بعينها في القاعدة (راجع تعليق الميجريشن 16).
+const ALLOWED_SUBSCRIPTION_MONTHS = [1, 3, 12];
 
 // وسائل الدفع المقبولة يدويًا (مفيش بوابة دفع إلكتروني)
 const PAYMENT_METHODS = ['cash', 'vodafone_cash'];
@@ -500,10 +524,13 @@ async function actionGetOnboardingStatuses() {
  * الأدمن (جيمي) لمكتب معيّن، وحساب subscription_due_at الجديد.
  *
  *  - تجديد عادي (نفس الباقة الحالية، ومكتب كان بالفعل مدفوع من قبل
- *    — يعني عنده subscription_due_at موجود): الميعاد الجديد = شهر من
+ *    — يعني عنده subscription_due_at موجود): الميعاد الجديد = n شهر من
  *    آخر ميعاد قديم (مش من تاريخ التأكيد نفسه).
  *  - ترقية/تنزيل باقة (باقة مختلفة)، أو أول تفعيل من تجربة (مفيش
- *    subscription_due_at قديم أصلاً): الميعاد الجديد = شهر من النهارده.
+ *    subscription_due_at قديم أصلاً): الميعاد الجديد = n شهر من النهارده.
+ *  - n = subscriptionMonths (1/3/12)، افتراضي 1 لو الباراميتر متبعتش
+ *    (توافقًا مع أي نداء قديم لسه بيبعت من غير المدة — راجع خطة
+ *    المدفوعات والفواتير 10 سبتمبر 2026).
  *  - Downgrade فوق حد الباقة الجديدة: يُرفض تمامًا (لازم تقليل العدد
  *    الحالي يدويًا الأول) — نفس التحقق مطبّق على أي تغيير باقة (مش
  *    بس تنزيل) كطبقة حماية موحّدة.
@@ -516,11 +543,12 @@ async function actionGetOnboardingStatuses() {
  *    أو تلاتة كان بيضيف شهر فوق شهر على subscription_due_at.
  */
 async function actionConfirmPayment(body: Record<string, unknown>) {
-  const { tenantId, plan, amountEgp, paymentMethod } = body as {
+  const { tenantId, plan, amountEgp, paymentMethod, subscriptionMonths } = body as {
     tenantId?: string;
     plan?: string;
     amountEgp?: number;
     paymentMethod?: string;
+    subscriptionMonths?: number;
   };
 
   if (!tenantId) return json({ error: 'tenantId مطلوب' }, 400);
@@ -529,6 +557,12 @@ async function actionConfirmPayment(body: Record<string, unknown>) {
   if (!Number.isFinite(amount) || amount <= 0) return json({ error: 'المبلغ المدفوع لازم يكون رقم أكبر من صفر' }, 400);
   if (!paymentMethod || !PAYMENT_METHODS.includes(paymentMethod)) {
     return json({ error: 'طريقة الدفع لازم تكون نقدي أو فودافون كاش' }, 400);
+  }
+  // مدة الاشتراك اختيارية — افتراضي شهر واحد لو متبعتش (توافق النداء
+  // القديم قبل خطة المدفوعات والفواتير).
+  const months = subscriptionMonths == null ? 1 : Number(subscriptionMonths);
+  if (!ALLOWED_SUBSCRIPTION_MONTHS.includes(months)) {
+    return json({ error: `مدة اشتراك غير معروفة: "${subscriptionMonths}" (المسموح: شهر/3 شهور/سنة)` }, 400);
   }
 
   const tenants = await supabaseRest(`tenants?id=eq.${tenantId}&select=id,subscription_plan,subscription_due_at,status`);
@@ -597,8 +631,8 @@ async function actionConfirmPayment(body: Record<string, unknown>) {
   // ترجّع الباقة صح كمان مش الموعد بس — راجع تعليق undoLastPayment.
   const previousPlan: string | null = tenant.subscription_plan ?? null;
   const now = new Date().toISOString();
-  // تجديد عادي: شهر من آخر ميعاد قديم. ترقية/تنزيل/أول تفعيل: شهر من النهارده.
-  const newDueAt = isNormalRenewal ? addOneMonth(previousDueAt as string) : addOneMonth(now);
+  // تجديد عادي: n شهر من آخر ميعاد قديم. ترقية/تنزيل/أول تفعيل: n شهر من النهارده.
+  const newDueAt = isNormalRenewal ? addMonths(previousDueAt as string, months) : addMonths(now, months);
   const periodStart = isNormalRenewal ? (previousDueAt as string) : now;
 
   // 1) تحديث المكتب
@@ -619,6 +653,7 @@ async function actionConfirmPayment(body: Record<string, unknown>) {
     plan,
     amount_egp: amount,
     payment_method: paymentMethod,
+    subscription_months: months,
     period_start: periodStart,
     period_end: newDueAt,
     previous_due_at: previousDueAt,
@@ -677,6 +712,57 @@ async function actionUndoLastPayment(body: Record<string, unknown>) {
   return json({ ok: true, restoredDueAt: last.previous_due_at ?? null, restoredPlan: last.previous_plan ?? null });
 }
 
+/**
+ * getPaymentHistory (خطة المدفوعات والفواتير): كل صفوف
+ * tenant_subscription_payments الخاصة بمكتب معيّن، الأحدث أولًا —
+ * لتاب "سجل المدفوعات" في تفاصيل المكتب بـ offices-portal.html.
+ */
+async function actionGetPaymentHistory(body: Record<string, unknown>) {
+  const { tenantId } = body as { tenantId?: string };
+  if (!tenantId) return json({ error: 'tenantId مطلوب' }, 400);
+
+  const rows = await supabaseRest(
+    `tenant_subscription_payments?tenant_id=eq.${tenantId}&order=created_at.desc&select=id,plan,amount_egp,payment_method,subscription_months,period_start,period_end,invoice_number,created_at`,
+  );
+  return json(Array.isArray(rows) ? rows : []);
+}
+
+/**
+ * issueInvoice (خطة المدفوعات والفواتير): get-or-create لرقم فاتورة
+ * دفعة معيّنة — نفس فلسفة getOrCreateInvoice الموجودة فعليًا لفواتير
+ * الأتعاب الداخلية (useInvoicePrinting.ts)، لكن هنا على مستوى دفعات
+ * اشتراك SaaS-admin (سلسلة عامة واحدة، مش لكل مكتب).
+ *
+ * لو payment.invoice_number موجود بالفعل (اتطبعت قبل كده)، بيرجّعه
+ * زي ما هو من غير أي نداء لـnext_tenant_invoice_number() — عشان
+ * ضغطة "طباعة" تانية على نفس الدفعة متاخدش رقم جديد من السلسلة.
+ * لو NULL، بياخد رقم جديد (RPC، ميجريشن 17) ويسجّله على صف الدفعة.
+ */
+async function actionIssueInvoice(body: Record<string, unknown>) {
+  const { paymentId } = body as { paymentId?: string };
+  if (!paymentId) return json({ error: 'paymentId مطلوب' }, 400);
+
+  const rows = await supabaseRest(
+    `tenant_subscription_payments?id=eq.${paymentId}&select=id,tenant_id,plan,amount_egp,payment_method,subscription_months,period_start,period_end,invoice_number,created_at`,
+  );
+  const payment = Array.isArray(rows) ? rows[0] : null;
+  if (!payment) return json({ error: 'الدفعة غير موجودة' }, 404);
+
+  if (payment.invoice_number) {
+    return json({ payment, invoiceNumber: payment.invoice_number });
+  }
+
+  const rpcResult = await supabaseRest('rpc/next_tenant_invoice_number', 'POST', {});
+  const invoiceNumber = typeof rpcResult === 'string' ? rpcResult : null;
+  if (!invoiceNumber) return json({ error: 'تعذر توليد رقم فاتورة جديد' }, 500);
+
+  await supabaseRest(`tenant_subscription_payments?id=eq.${paymentId}`, 'PATCH', {
+    invoice_number: invoiceNumber,
+  });
+
+  return json({ payment: { ...payment, invoice_number: invoiceNumber }, invoiceNumber });
+}
+
 // ── Main handler ──────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
@@ -706,6 +792,8 @@ Deno.serve(async (req: Request) => {
       case 'getOnboardingStatuses':  return await actionGetOnboardingStatuses();
       case 'confirmPayment':         return await actionConfirmPayment(rest);
       case 'undoLastPayment':        return await actionUndoLastPayment(rest);
+      case 'getPaymentHistory':      return await actionGetPaymentHistory(rest);
+      case 'issueInvoice':           return await actionIssueInvoice(rest);
       default:                       return json({ error: `action غير معروف: ${action}` }, 400);
     }
   } catch (e) {
