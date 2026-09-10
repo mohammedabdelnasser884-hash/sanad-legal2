@@ -29,7 +29,19 @@ function makeMockDb() {
   const storageRemoveSpy = vi.fn();
 
   const setResult = (key: string, result: Result) => { configured[key] = result; };
-  const get = (key: string) => configured[key] ?? DEFAULT_RESULT;
+  // 🔒 FIX (لوجز CI — 10 سبتمبر 2026): db.from('cases').update/delete بقى بيضيف
+  // .select('id') فعليًا (فيكس F1 اليدوي، راجع lockErrorIfNoRowsAffected في
+  // errorReporting.ts)، فالموك محتاج (1) .select() قابلة للتسلسل بعد .eq()،
+  // و(2) قيمة افتراضية فيها data:[{id}] (مش data:null) عشان lockErrorIfNoRowsAffected
+  // متفهمش الافتراضي "زيرو صفوف" وتحوّل تستات النجاح الموجودة لفشل قفل وهمي.
+  // get بتدمج: لو التست عمل setResult بـ{error:...} من غير data، بترجع data
+  // الافتراضية دي بدل ما تسيبها undefined.
+  const get = (key: string, fallback: Result = DEFAULT_RESULT): Result => {
+    const cfg = configured[key];
+    if (!cfg) return fallback;
+    return { data: cfg.data !== undefined ? cfg.data : fallback.data, error: cfg.error !== undefined ? cfg.error : fallback.error };
+  };
+  const SUCCESS_ROW: Result = { data: [{ id: 'mock-id' }], error: null };
 
   const from = vi.fn((table: string) => {
     if (table === 'case_sessions') {
@@ -51,11 +63,11 @@ function makeMockDb() {
       return {
         update: vi.fn((payload: unknown) => {
           updateSpy(table, payload);
-          return { eq: vi.fn(() => Promise.resolve(get(`${table}:update`))) };
+          return { eq: vi.fn(() => ({ select: vi.fn(() => Promise.resolve(get(`${table}:update`, SUCCESS_ROW))) })) };
         }),
         delete: vi.fn(() => {
           deleteSpy(table);
-          return { eq: vi.fn(() => Promise.resolve(get(`${table}:delete`))) };
+          return { eq: vi.fn(() => ({ select: vi.fn(() => Promise.resolve(get(`${table}:delete`, SUCCESS_ROW))) })) };
         }),
         // ⚡ FIX (mock ناقص — 19 أغسطس 2026): handleUpdateCase بقى بيجيب
         // snapshot خام من cases (oldRowForDiff) *قبل* __dbWrite مباشرة —
