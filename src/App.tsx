@@ -111,10 +111,6 @@ import { useInitialDataSync } from './hooks/useInitialDataSync';
 // إجبارية بعد اللوجن مباشرة، قبل أي محتوى تاني في التطبيق.
 import TermsAcceptanceScreen from './features/terms/TermsAcceptanceScreen';
 import { useTermsAcceptance } from './features/terms/useTermsAcceptance';
-// ⚡ NEW (7 سبتمبر 2026 — تشخيص أداء بدون كمبيوتر): أداة PerfHud بتظهر
-// بس لـisAdmin — راجع src/shared/dev/PerfHud.tsx للتفاصيل الكاملة.
-// dev-only بالكامل: مفيش أي تأثير على أي مستخدم تاني غير الأدمن.
-import PerfHud from './shared/dev/PerfHud';
 // ⚡ NEW (خطة المرحلة 15 — إعادة ضبط باقات بوابة إدارة المكاتب، E1+E4،
 // 8 سبتمبر 2026): هوك حالة اشتراك المكتب الحالي + بانر التذكير (E1) +
 // شاشة القفل الكاملة (E4). راجع تعليقات الهوك نفسه لتفصيل الحالات
@@ -1061,11 +1057,7 @@ function App() {
         }),
 
         // ── Exit Confirm ──
-        React.createElement(ExitConfirmModal, { nav }),
-
-        // ⚡ NEW (7 سبتمبر 2026): PerfHud — أداة تشخيص أداء على الموبايل
-        // بلا كمبيوتر، ظاهرة بس للأدمن. راجع src/shared/dev/PerfHud.tsx.
-        isAdmin && React.createElement(PerfHud)
+        React.createElement(ExitConfirmModal, { nav })
         ) // ⚡ NEW (E1 — 8 سبتمبر 2026): إغلاق React.createElement(AppShell, ...) — الباقة
           // اللي فوق (TenantSubscriptionBanner) والقوس الأخير تحت بيقفلوا
           // React.createElement(React.Fragment, ...) اللي بيلف الاتنين.
