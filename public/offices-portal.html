@@ -361,13 +361,22 @@
       <input type="hidden" id="pay-tenant-id"/>
       <div>
         <label class="text-[10px] font-black text-slate-400 block mb-1">الباقة (بعد الدفع)</label>
-        <select id="pay-plan" class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold"></select>
+        <select id="pay-plan" onchange="updateSuggestedPaymentAmount()" class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold"></select>
         <p class="text-[9px] text-slate-500 font-bold mt-1">لو اخترت نفس الباقة الحالية = تجديد عادي. لو باقة مختلفة = ترقية/تنزيل (وقت التجديد الجديد بيتغيّر تبعًا).</p>
+      </div>
+      <div>
+        <label class="text-[10px] font-black text-slate-400 block mb-1">مدة الاشتراك</label>
+        <select id="pay-months" onchange="updateSuggestedPaymentAmount()" class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold">
+          <option value="1">شهر واحد</option>
+          <option value="3">3 شهور</option>
+          <option value="12">سنة (خصم شهرين)</option>
+        </select>
       </div>
       <div>
         <label class="text-[10px] font-black text-slate-400 block mb-1">المبلغ المدفوع (ج.م)</label>
         <input id="pay-amount" type="number" min="0" step="1"
           class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold"/>
+        <p class="text-[9px] text-slate-500 font-bold mt-1">السعر المقترح بيتحسب تلقائيًا لما تغيّر الباقة/المدة — قابل للتعديل يدويًا لو فيه اتفاق مختلف.</p>
       </div>
       <div>
         <label class="text-[10px] font-black text-slate-400 block mb-1">طريقة الدفع</label>
@@ -388,6 +397,24 @@
         تراجع عن آخر تأكيد دفع لهذا المكتب
       </button>
     </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  مودال سجل المدفوعات (خطة المدفوعات والفواتير)          -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="payment-history-modal" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
+  <div class="bg-premium-card border border-white/10 rounded-3xl w-full max-w-lg overflow-hidden slide-enter">
+    <div class="bg-[#070d1a] px-5 py-4 border-b border-white/5 flex items-center justify-between">
+      <div>
+        <h3 class="text-sm font-black text-white">سجل المدفوعات</h3>
+        <p id="payment-history-office" class="text-[10px] text-slate-500 font-bold mt-0.5"></p>
+      </div>
+      <button onclick="closePaymentHistoryModal()" class="w-8 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center text-slate-400 active:scale-95 transition-transform">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div id="payment-history-body" class="p-5 space-y-2 overflow-y-auto max-h-[70vh]"></div>
   </div>
 </div>
 
@@ -1213,6 +1240,10 @@ function renderTable() {
               class="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center active:scale-90 transition-transform">
               <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5h-15A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Z"/></svg>
             </button>
+            <button onclick="openPaymentHistoryModal('${t.id}')" title="سجل المدفوعات"
+              class="w-7 h-7 rounded-lg bg-white/5 border border-white/5 text-slate-400 flex items-center justify-center active:scale-90 transition-transform">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+            </button>
           ` : ''}
           ${isOnboardingLocked(t._onboarding) ? `
             <button onclick="unlockOnboarding('${t.id}')" title="فك قفل/تجميد الـ Onboarding"
@@ -1299,6 +1330,10 @@ function buildOfficeDetailHTML(t) {
           class="py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-black active:scale-95 transition-transform">
           تأكيد دفع / تجديد
         </button>
+        <button onclick="closeOfficeDetailModal(); openPaymentHistoryModal('${t.id}')"
+          class="py-2.5 rounded-xl bg-white/5 border border-white/5 text-slate-300 text-xs font-black active:scale-95 transition-transform">
+          سجل المدفوعات
+        </button>
       ` : ''}
       ${isOnboardingLocked(t._onboarding) ? `
         <button onclick="closeOfficeDetailModal(); unlockOnboarding('${t.id}')"
@@ -1384,9 +1419,10 @@ function openConfirmPaymentModal(tenantId) {
   const sel = document.getElementById('pay-plan');
   sel.innerHTML = PLANS.map(p => `<option value="${p.id}">${p.name} (${p.monthly} ج.م/شهر)</option>`).join('');
   sel.value = t.subscription_plan || DEFAULT_PLAN_ID;
-  document.getElementById('pay-amount').value = '';
+  document.getElementById('pay-months').value = '1';
   document.getElementById('pay-method').value = 'cash';
   document.getElementById('payment-modal-err').classList.add('hidden');
+  updateSuggestedPaymentAmount();
   showModal('payment-modal');
 }
 
@@ -1394,9 +1430,23 @@ function closeConfirmPaymentModal() {
   hideModal('payment-modal');
 }
 
+// ─── حساب السعر المقترح تلقائيًا (خطة المدفوعات والفواتير) ──
+// شهر/3 شهور: السعر الشهري × المدة بالظبط. سنة (12 شهر): خصم شهرين
+// تلقائيًا (يعني بيتحسب بسعر 10 شهور بس) — الحقل يفضل قابل للتعديل
+// اليدوي بعد كده لو فيه اتفاق مختلف مع المكتب.
+function updateSuggestedPaymentAmount() {
+  const planId = document.getElementById('pay-plan').value;
+  const months = Number(document.getElementById('pay-months').value);
+  const plan = PLANS.find(p => p.id === planId);
+  if (!plan) return;
+  const billableMonths = months === 12 ? 10 : months;
+  document.getElementById('pay-amount').value = plan.monthly * billableMonths;
+}
+
 async function submitConfirmPayment() {
   const tenantId = document.getElementById('pay-tenant-id').value;
   const plan = document.getElementById('pay-plan').value;
+  const subscriptionMonths = Number(document.getElementById('pay-months').value);
   const amountEgp = Number(document.getElementById('pay-amount').value);
   const paymentMethod = document.getElementById('pay-method').value;
   const err = document.getElementById('payment-modal-err');
@@ -1407,7 +1457,7 @@ async function submitConfirmPayment() {
   btn.disabled = true;
   btn.innerHTML = '<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full spinner mx-auto"></div>';
   try {
-    const data = await callAdminAction('confirmPayment', { tenantId, plan, amountEgp, paymentMethod });
+    const data = await callAdminAction('confirmPayment', { tenantId, plan, amountEgp, paymentMethod, subscriptionMonths });
     const idx = allTenants.findIndex(x => x.id === tenantId);
     if (idx >= 0) allTenants[idx] = { ...allTenants[idx], ...data.tenant };
     renderTable(); renderStats();
@@ -1444,6 +1494,161 @@ async function submitUndoLastPayment() {
     renderTable(); renderStats();
     showToast('✅ تم التراجع عن آخر تأكيد دفع');
     closeConfirmPaymentModal();
+  } catch (e) {
+    showToast('خطأ: ' + e.message, true);
+  }
+}
+
+// ─── مودال سجل المدفوعات (خطة المدفوعات والفواتير) ────────
+let paymentHistoryTenantId = null;
+let paymentHistoryRows = [];
+
+async function openPaymentHistoryModal(tenantId) {
+  const t = allTenants.find(x => x.id === tenantId);
+  if (!t) return;
+  paymentHistoryTenantId = tenantId;
+  document.getElementById('payment-history-office').textContent = t.name || '';
+  const body = document.getElementById('payment-history-body');
+  body.innerHTML = '<div class="flex justify-center py-6"><div class="w-6 h-6 border-2 border-[#C9A84C] border-t-transparent rounded-full spinner"></div></div>';
+  showModal('payment-history-modal');
+  try {
+    paymentHistoryRows = await callAdminAction('getPaymentHistory', { tenantId });
+    renderPaymentHistory();
+  } catch (e) {
+    body.innerHTML = `<p class="text-[11px] text-rose-400 font-bold text-center py-4">خطأ: ${esc(e.message)}</p>`;
+  }
+}
+
+function closePaymentHistoryModal() {
+  hideModal('payment-history-modal');
+  paymentHistoryTenantId = null;
+  paymentHistoryRows = [];
+}
+
+const MONTHS_LABEL = { 1: 'شهر', 3: '3 شهور', 12: 'سنة' };
+
+function renderPaymentHistory() {
+  const body = document.getElementById('payment-history-body');
+  if (!paymentHistoryRows.length) {
+    body.innerHTML = '<p class="text-[11px] text-slate-500 font-bold text-center py-6">مفيش دفعات مسجّلة لهذا المكتب لسه.</p>';
+    return;
+  }
+  body.innerHTML = paymentHistoryRows.map(p => `
+    <div class="rounded-xl border border-white/5 bg-[#070d1a] p-3 flex items-center justify-between gap-3">
+      <div class="min-w-0">
+        <p class="text-xs font-black text-white">${p.amount_egp} ج.م <span class="text-slate-500 font-bold">— ${esc(PLAN_LABEL[p.plan] || p.plan)} / ${MONTHS_LABEL[p.subscription_months] || (p.subscription_months + ' شهر')}</span></p>
+        <p class="text-[10px] text-slate-500 font-bold mt-0.5">${p.created_at ? p.created_at.slice(0,10) : '—'} · ${p.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 'نقدي'} · ${p.invoice_number ? `فاتورة ${esc(p.invoice_number)}` : 'مفيش فاتورة لسه'}</p>
+      </div>
+      <button onclick="printSubscriptionInvoice('${p.id}')"
+        class="shrink-0 py-2 px-3 rounded-lg bg-[#C9A84C]/10 border border-[#C9A84C]/20 text-[#C9A84C] text-[10px] font-black active:scale-95 transition-transform">
+        طباعة الفاتورة
+      </button>
+    </div>
+  `).join('');
+}
+
+// ─── طباعة فاتورة اشتراك (خطة المدفوعات والفواتير) ────────
+// نفس هيكل/تصميم printInvoice في useInvoicePrinting.ts (نافذة
+// window.open + document.write + طباعة تلقائية بمقاس A4)، لكن هنا:
+//  - المُصدر = سَند نفسها (مزوّد الخدمة)، مش بيانات مكتب.
+//  - "العميل" = اسم المكتب (tenant) بدل اسم الموكل.
+//  - "البند" = اشتراك باقة X لمدة Y شهر، مش أتعاب قضية.
+// عند الضغط: استدعاء issueInvoice أول مرة (get-or-create لرقم
+// الفاتورة)، بعدين فتح نافذة الطباعة مباشرة بنفس الرقم.
+const SANAD_ISSUER = {
+  name: 'سَنَد — نظام إدارة المكاتب القانونية',
+  contactLine: 'sanadnizam@gmail.com | واتساب: 01500682665',
+};
+
+async function printSubscriptionInvoice(paymentId) {
+  try {
+    const data = await callAdminAction('issueInvoice', { paymentId });
+    const payment = data.payment;
+    const idx = paymentHistoryRows.findIndex(p => p.id === paymentId);
+    if (idx >= 0) paymentHistoryRows[idx] = { ...paymentHistoryRows[idx], invoice_number: data.invoiceNumber };
+    renderPaymentHistory();
+
+    const t = allTenants.find(x => x.id === paymentHistoryTenantId);
+    const w = window.open('', '_blank', 'width=794,height=1123');
+    if (!w) return;
+
+    const planLabel = esc(PLAN_LABEL[payment.plan] || payment.plan);
+    const monthsLabel = MONTHS_LABEL[payment.subscription_months] || (payment.subscription_months + ' شهر');
+    const officeName = esc(t?.name || 'مكتب');
+    const invoiceNum = esc(data.invoiceNumber);
+    const issueDate = new Date().toISOString().slice(0, 10);
+    const periodEnd = payment.period_end ? payment.period_end.slice(0, 10) : '—';
+    const amount = payment.amount_egp;
+    const methodLabel = payment.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 'نقدي';
+
+    const css = [
+      '*{margin:0;padding:0;box-sizing:border-box;}',
+      "body{font-family:'Tahoma',sans-serif;background:#fff;color:#1a1208;direction:rtl;print-color-adjust:exact;-webkit-print-color-adjust:exact;}",
+      '.page{width:794px;min-height:1123px;padding:40px 50px;background:#fff;position:relative;}',
+      '.header{display:flex;align-items:center;justify-content:space-between;padding-bottom:24px;border-bottom:3px solid #D4AF37;margin-bottom:28px;}',
+      '.office-name{font-size:20px;font-weight:900;color:#070d1a;line-height:1.2;}',
+      '.office-sub{font-size:10px;color:#7a6b52;margin-top:2px;}',
+      '.invoice-badge{text-align:left;}',
+      '.invoice-title{font-size:13px;font-weight:700;color:#7a6b52;letter-spacing:1px;}',
+      '.invoice-num{font-size:26px;font-weight:900;color:#070d1a;}',
+      '.invoice-date{font-size:11px;color:#7a6b52;margin-top:4px;}',
+      '.gold-bar{height:4px;background:linear-gradient(90deg,#D4AF37,#E8C84A,#D4AF37);border-radius:2px;margin-bottom:28px;}',
+      '.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px;}',
+      '.info-box{background:#faf7f2;border:1px solid #e8e0d0;border-radius:10px;padding:14px 16px;}',
+      '.info-label{font-size:10px;color:#7a6b52;font-weight:600;margin-bottom:4px;}',
+      '.info-value{font-size:13px;font-weight:700;color:#1a1208;}',
+      '.amount-section{background:linear-gradient(135deg,#070d1a,#0d1a2e);border-radius:14px;padding:24px 28px;margin-bottom:28px;color:#fff;}',
+      '.amount-label{font-size:12px;color:#D4AF37;font-weight:700;margin-bottom:6px;}',
+      '.amount-value{font-size:36px;font-weight:900;color:#fff;}',
+      '.amount-sub{font-size:11px;color:rgba(255,255,255,0.5);margin-top:4px;}',
+      '.sig-row{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:36px;}',
+      '.sig-box{text-align:center;}',
+      '.sig-line{border-top:1.5px solid #1a1208;margin-top:44px;padding-top:8px;font-size:11px;color:#7a6b52;font-weight:600;}',
+      '.footer{position:absolute;bottom:28px;left:50px;right:50px;text-align:center;font-size:10px;color:#c4b89a;border-top:1px solid #e8e0d0;padding-top:10px;}',
+      '@media print{body{margin:0;}.page{padding:30px 40px;}}',
+    ].join('\n');
+
+    const autoPrintScript = '<scr' + 'ipt>window.onload=function(){window.print();}<' + '/scr' + 'ipt>';
+
+    const html = '<!DOCTYPE html>'
+      + '<html lang="ar" dir="rtl"><head><meta charset="UTF-8">'
+      + '<title>فاتورة ' + invoiceNum + '</title>'
+      + '<style>' + css + '</style></head><body>'
+      + '<div class="page">'
+      + '<div class="header">'
+      + '<div><div class="office-name">' + esc(SANAD_ISSUER.name) + '</div>'
+      + '<div class="office-sub">' + esc(SANAD_ISSUER.contactLine) + '</div></div>'
+      + '<div class="invoice-badge">'
+      + '<div class="invoice-title">فاتورة اشتراك</div>'
+      + '<div class="invoice-num">' + invoiceNum + '</div>'
+      + '<div class="invoice-date">تاريخ الإصدار: ' + issueDate + '</div>'
+      + '</div></div>'
+      + '<div class="gold-bar"></div>'
+      + '<div class="info-grid">'
+      + '<div class="info-box"><div class="info-label">العميل (المكتب)</div>'
+      + '<div class="info-value">' + officeName + '</div></div>'
+      + '<div class="info-box"><div class="info-label">البند</div>'
+      + '<div class="info-value">اشتراك باقة ' + planLabel + ' لمدة ' + monthsLabel + '</div></div>'
+      + '</div>'
+      + '<div class="info-grid" style="margin-top:-16px">'
+      + '<div class="info-box"><div class="info-label">طريقة الدفع</div>'
+      + '<div class="info-value">' + methodLabel + '</div></div>'
+      + '<div class="info-box"><div class="info-label">التجديد ساري لحد</div>'
+      + '<div class="info-value">' + periodEnd + '</div></div>'
+      + '</div>'
+      + '<div class="amount-section">'
+      + '<div class="amount-label">إجمالي الفاتورة</div>'
+      + '<div class="amount-value">' + amount + ' ج.م</div>'
+      + '</div>'
+      + '<div class="sig-row"><div class="sig-box"><div class="sig-line">توقيع سَند</div></div>'
+      + '<div class="sig-box"><div class="sig-line">توقيع واستلام المكتب</div></div></div>'
+      + '<div class="footer">' + esc(SANAD_ISSUER.name) + ' — ' + esc(SANAD_ISSUER.contactLine) + '</div>'
+      + '</div>'
+      + autoPrintScript
+      + '</body></html>';
+
+    w.document.write(html);
+    w.document.close();
   } catch (e) {
     showToast('خطأ: ' + e.message, true);
   }
