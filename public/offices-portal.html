@@ -912,7 +912,7 @@ function renderAlerts() {
                       : `<span style="color:#f87171"> — تجاوز الـ Grace Period</span>`}
                   </p>
                 </div>
-                <button onclick="openEditModal('${t.id}')"
+                <button onclick="openConfirmPaymentModal('${t.id}')"
                   style="font-size:10px;font-weight:900;color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
                   تجديد ↗
                 </button>
@@ -950,7 +950,7 @@ function renderAlerts() {
                     <span style="color:#fbbf24"> — باقي ${daysLeft} ${daysLeft===1?'يوم':'أيام'}</span>
                   </p>
                 </div>
-                <button onclick="openEditModal('${t.id}')"
+                <button onclick="openConfirmPaymentModal('${t.id}')"
                   style="font-size:10px;font-weight:900;color:#fbbf24;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
                   تمديد ↗
                 </button>
