@@ -177,6 +177,25 @@ describe('office-secrets — action=saveGroqKey', () => {
     const data = await res.json();
     expect(data.error).toBe('تعذّر تنفيذ العملية المطلوبة. لو المشكلة استمرت، تواصل مع الدعم.');
   });
+
+  // 🆕 FIX (تحقيق شامل E2/E3 — 10 سبتمبر 2026): قبل الفيكس ده، أي رفض
+  // tenant_write_allowed من set_office_groq_key (بعد ما بقت بتتحقق منه
+  // على مستوى الداتابيز فى نفس اليوم) كان بيتبلع هنا ويترجع نفس الرسالة
+  // العامة فوق — يعني مودال القفل المخصص فى الفرونت إند مستحيل يظهر
+  // لعملية حفظ مفتاح Groq وقت القفل، مهما كان الكشف فى errorReporting.ts
+  // صح. دلوقتي لازم الرسالة المعروفة (القفل) تعدي زي ما هي.
+  it('فشل الـ RPC برسالة قفل read-only (tenant_write_allowed) → بترجع رسالة القفل الموحّدة زي ما هي، مش الرسالة العامة', async () => {
+    state.rpcOk = false;
+    state.rpcErrorBody = {
+      message: 'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.',
+    };
+    const res = await handler(req({ action: 'saveGroqKey', groq_key: 'gk-secret-123' }));
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toBe(
+      'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.',
+    );
+  });
 });
 
 describe('office-secrets — action=saveTgDailyToken', () => {
