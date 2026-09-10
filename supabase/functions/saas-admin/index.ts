@@ -34,13 +34,18 @@
 //     غرضه الوحيد إظهار شارة "مجمّد/مقفول" وزرار الفك في اللوحة.
 //
 //   confirmPayment { token, tenantId, plan, amountEgp, paymentMethod,
-//                     subscriptionMonths? }
-//     → { tenant, payment }  — (D1) تسجيل دفعة يدوية (نقدي/فودافون
-//                 كاش)، يرفض لو العدد الحالي فوق حد الباقة الجديدة،
-//                 وبيحسب subscription_due_at الجديد (تجديد عادي: n شهر
-//                 من آخر ميعاد قديم / ترقية أو أول تفعيل: n شهر من
-//                 النهارده) — n = subscriptionMonths (1/3/12، افتراضي 1
-//                 لو متبعتش، راجع خطة المدفوعات والفواتير 10 سبتمبر).
+//                     subscriptionMonths?, transactionDetails?, paymentDate? }
+//     → { tenant, payment }  — (D1) تسجيل دفعة يدوية (نقدي/محفظة
+//                 إلكترونية/تحويل بنكي)، يرفض لو العدد الحالي فوق حد
+//                 الباقة الجديدة، وبيحسب subscription_due_at الجديد
+//                 (تجديد عادي: n شهر من آخر ميعاد قديم / ترقية أو أول
+//                 تفعيل: n شهر من النهارده) — n = subscriptionMonths
+//                 (1/3/6/9/12، افتراضي 1 لو متبعتش — راجع خطة المدفوعات
+//                 والفواتير 10 سبتمبر، عُدّلت لاحقًا لإضافة 6/9).
+//                 transactionDetails: نص حر اختياري (رقم عملية/تفاصيلها،
+//                 مفيش داعي له غالبًا مع الكاش). paymentDate: تاريخ توثيق
+//                 الدفعة الفعلي (YYYY-MM-DD)، منفصل تمامًا عن حساب
+//                 subscription_due_at — افتراضي النهارده لو متبعتش.
 //                 بيصفّر trial_ends_at (المكتب بقى مدفوع، مبقاش تجربة)،
 //                 وبيرفض العملية لو فيه دفعة اتسجلت لنفس المكتب من أقل
 //                 من DUPLICATE_PAYMENT_WINDOW_MS (حماية من تأكيد مكرر بغلط).
@@ -52,7 +57,8 @@
 //
 //   getPaymentHistory { token, tenantId }
 //     → [{ id, plan, amount_egp, payment_method, subscription_months,
-//          period_start, period_end, invoice_number, created_at, ... }]
+//          period_start, period_end, invoice_number, payment_date,
+//          transaction_details, created_at, ... }]
 //                 (خطة المدفوعات والفواتير) كل دفعات مكتب معيّن، الأحدث
 //                 أولًا — لعرض تاب "سجل المدفوعات" في تفاصيل المكتب.
 //
@@ -142,13 +148,18 @@ function addMonths(iso: string, months: number): string {
   return d.toISOString();
 }
 
-// المدد المسموح بيها لتسجيل دفعة (شهر / 3 شهور / سنة) — من واجهة
-// offices-portal.html بس، لكن العمود subscription_months نفسه مش
-// مقيّد بقيم بعينها في القاعدة (راجع تعليق الميجريشن 16).
-const ALLOWED_SUBSCRIPTION_MONTHS = [1, 3, 12];
+// المدد المسموح بيها لتسجيل دفعة (شهر / 3 / 6 / 9 شهور / سنة) — من
+// واجهة offices-portal.html بس، لكن العمود subscription_months نفسه
+// مش مقيّد بقيم بعينها في القاعدة (راجع تعليق الميجريشن 16). وُسّعت
+// من [1,3,12] لإضافة 6 و9 (ملاحظات جيمي، 10 سبتمبر) — خصم السنة (10
+// شهور بدل 12) فضل هو الوحيد اللي فيه خصم، الباقي سعر شهري × العدد.
+const ALLOWED_SUBSCRIPTION_MONTHS = [1, 3, 6, 9, 12];
 
-// وسائل الدفع المقبولة يدويًا (مفيش بوابة دفع إلكتروني)
-const PAYMENT_METHODS = ['cash', 'vodafone_cash'];
+// وسائل الدفع المقبولة يدويًا (مفيش بوابة دفع إلكتروني) — 'e_wallet'
+// عامة (مش مربوطة بمزوّد بعينه زي فودافون كاش)، حلّت محل القيمة
+// القديمة 'vodafone_cash' (ميجريشن 18 حوّل الصفوف القديمة تلقائيًا).
+// 'bank_transfer' إضافة جديدة (ملاحظات جيمي، 10 سبتمبر).
+const PAYMENT_METHODS = ['cash', 'e_wallet', 'bank_transfer'];
 
 // ── حماية من تجربة كل الباسوردات (brute-force) ─────────
 // نفس نمط client-portal-api: بعد MAX_ATTEMPTS محاولة فاشلة من نفس
@@ -520,7 +531,8 @@ async function actionGetOnboardingStatuses() {
 }
 
 /**
- * confirmPayment (D1): تسجيل دفعة يدوية (نقدي/فودافون كاش) أكّدها
+ * confirmPayment (D1): تسجيل دفعة يدوية (نقدي/محفظة إلكترونية/تحويل
+ * بنكي) أكّدها
  * الأدمن (جيمي) لمكتب معيّن، وحساب subscription_due_at الجديد.
  *
  *  - تجديد عادي (نفس الباقة الحالية، ومكتب كان بالفعل مدفوع من قبل
@@ -528,9 +540,12 @@ async function actionGetOnboardingStatuses() {
  *    آخر ميعاد قديم (مش من تاريخ التأكيد نفسه).
  *  - ترقية/تنزيل باقة (باقة مختلفة)، أو أول تفعيل من تجربة (مفيش
  *    subscription_due_at قديم أصلاً): الميعاد الجديد = n شهر من النهارده.
- *  - n = subscriptionMonths (1/3/12)، افتراضي 1 لو الباراميتر متبعتش
- *    (توافقًا مع أي نداء قديم لسه بيبعت من غير المدة — راجع خطة
- *    المدفوعات والفواتير 10 سبتمبر 2026).
+ *  - n = subscriptionMonths (1/3/6/9/12)، افتراضي 1 لو الباراميتر
+ *    متبعتش (توافقًا مع أي نداء قديم لسه بيبعت من غير المدة — راجع
+ *    خطة المدفوعات والفواتير 10 سبتمبر 2026، عُدّلت لاحقًا لإضافة 6/9).
+ *  - transactionDetails: نص حر اختياري لرقم العملية/تفاصيلها، وpaymentDate:
+ *    تاريخ توثيق الدفعة الفعلي (YYYY-MM-DD) منفصل تمامًا عن حساب
+ *    subscription_due_at — افتراضي تاريخ اليوم لو الباراميتر متبعتش.
  *  - Downgrade فوق حد الباقة الجديدة: يُرفض تمامًا (لازم تقليل العدد
  *    الحالي يدويًا الأول) — نفس التحقق مطبّق على أي تغيير باقة (مش
  *    بس تنزيل) كطبقة حماية موحّدة.
@@ -543,12 +558,14 @@ async function actionGetOnboardingStatuses() {
  *    أو تلاتة كان بيضيف شهر فوق شهر على subscription_due_at.
  */
 async function actionConfirmPayment(body: Record<string, unknown>) {
-  const { tenantId, plan, amountEgp, paymentMethod, subscriptionMonths } = body as {
+  const { tenantId, plan, amountEgp, paymentMethod, subscriptionMonths, transactionDetails, paymentDate } = body as {
     tenantId?: string;
     plan?: string;
     amountEgp?: number;
     paymentMethod?: string;
     subscriptionMonths?: number;
+    transactionDetails?: string;
+    paymentDate?: string;
   };
 
   if (!tenantId) return json({ error: 'tenantId مطلوب' }, 400);
@@ -556,14 +573,21 @@ async function actionConfirmPayment(body: Record<string, unknown>) {
   const amount = Number(amountEgp);
   if (!Number.isFinite(amount) || amount <= 0) return json({ error: 'المبلغ المدفوع لازم يكون رقم أكبر من صفر' }, 400);
   if (!paymentMethod || !PAYMENT_METHODS.includes(paymentMethod)) {
-    return json({ error: 'طريقة الدفع لازم تكون نقدي أو فودافون كاش' }, 400);
+    return json({ error: 'طريقة الدفع لازم تكون نقدي أو محفظة إلكترونية أو تحويل بنكي' }, 400);
   }
   // مدة الاشتراك اختيارية — افتراضي شهر واحد لو متبعتش (توافق النداء
   // القديم قبل خطة المدفوعات والفواتير).
   const months = subscriptionMonths == null ? 1 : Number(subscriptionMonths);
   if (!ALLOWED_SUBSCRIPTION_MONTHS.includes(months)) {
-    return json({ error: `مدة اشتراك غير معروفة: "${subscriptionMonths}" (المسموح: شهر/3 شهور/سنة)` }, 400);
+    return json({ error: `مدة اشتراك غير معروفة: "${subscriptionMonths}" (المسموح: شهر/3/6/9 شهور أو سنة)` }, 400);
   }
+  // transactionDetails اختياري تمامًا (نص حر) — الكاش غالبًا مفيهوش
+  // رقم عملية أصلًا، فمينفعش يتفرض كإجباري.
+  const txnDetails = transactionDetails == null || transactionDetails === '' ? null : String(transactionDetails);
+  // paymentDate اختياري — تاريخ توثيق الدفعة الفعلي، منفصل تمامًا عن
+  // حساب subscription_due_at تحت. افتراضي تاريخ اليوم (YYYY-MM-DD)
+  // لو الباراميتر متبعتش أو جه فاضي.
+  const payDate = paymentDate == null || paymentDate === '' ? new Date().toISOString().slice(0, 10) : String(paymentDate);
 
   const tenants = await supabaseRest(`tenants?id=eq.${tenantId}&select=id,subscription_plan,subscription_due_at,status`);
   const tenant = Array.isArray(tenants) ? tenants[0] : null;
@@ -658,6 +682,8 @@ async function actionConfirmPayment(body: Record<string, unknown>) {
     period_end: newDueAt,
     previous_due_at: previousDueAt,
     previous_plan: previousPlan,
+    transaction_details: txnDetails,
+    payment_date: payDate,
   });
   const payment = Array.isArray(paymentRows) ? paymentRows[0] : paymentRows;
 
@@ -722,7 +748,7 @@ async function actionGetPaymentHistory(body: Record<string, unknown>) {
   if (!tenantId) return json({ error: 'tenantId مطلوب' }, 400);
 
   const rows = await supabaseRest(
-    `tenant_subscription_payments?tenant_id=eq.${tenantId}&order=created_at.desc&select=id,plan,amount_egp,payment_method,subscription_months,period_start,period_end,invoice_number,created_at`,
+    `tenant_subscription_payments?tenant_id=eq.${tenantId}&order=created_at.desc&select=id,plan,amount_egp,payment_method,subscription_months,period_start,period_end,invoice_number,payment_date,transaction_details,created_at`,
   );
   return json(Array.isArray(rows) ? rows : []);
 }
@@ -743,7 +769,7 @@ async function actionIssueInvoice(body: Record<string, unknown>) {
   if (!paymentId) return json({ error: 'paymentId مطلوب' }, 400);
 
   const rows = await supabaseRest(
-    `tenant_subscription_payments?id=eq.${paymentId}&select=id,tenant_id,plan,amount_egp,payment_method,subscription_months,period_start,period_end,invoice_number,created_at`,
+    `tenant_subscription_payments?id=eq.${paymentId}&select=id,tenant_id,plan,amount_egp,payment_method,subscription_months,period_start,period_end,invoice_number,payment_date,transaction_details,created_at`,
   );
   const payment = Array.isArray(rows) ? rows[0] : null;
   if (!payment) return json({ error: 'الدفعة غير موجودة' }, 404);
