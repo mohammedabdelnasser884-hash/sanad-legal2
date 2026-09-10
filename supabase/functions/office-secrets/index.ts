@@ -103,6 +103,25 @@ async function rpc(name: string, args: Record<string, unknown>) {
   }
 }
 
+// 🆕 FIX (تحقيق شامل E2/E3 — 10 سبتمبر 2026): نفس منطق
+// subscriptionAwareMessage فى admin-actions/index.ts بالظبط (ولازم يفضلوا
+// متطابقين حرفيًا مع getSubscriptionAwareMessage فى errorReporting.ts —
+// أي تعديل هنا من غير ما ينعكس فى التلاتة أماكن هيكسر الكشف فى الفرونت
+// إند). قبل الفيكس ده، الـcatch العام تحت كان بيبلع أي خطأ — بما فيه
+// رفض tenant_write_allowed اللي دوال set_office_* بقت بترفعه بعد فيكس
+// اليوم نفسه على مستوى الداتابيز — ويرجّع رسالة عامة ثابتة دايمًا، يعني
+// مودال القفل المخصص كان مستحيل يظهر لعمليات حفظ مفتاح Groq/توكنات
+// التليجرام مهما كان الكشف فى الفرونت إند صح.
+const READONLY_LOCK_MESSAGE =
+  'الحساب في وضع مشاهدة فقط دلوقتي (الاشتراك محتاج تجديد، أو التجربة في مرحلة المشاهدة) — التعديل مش متاح. كلّم الإدارة لتأكيد الدفع أو ترقية الباقة.';
+
+function subscriptionAwareMessage(rawMessage: string): string | null {
+  if (!rawMessage) return null;
+  if (rawMessage.includes('وصلت للحد الأقصى')) return rawMessage;
+  if (rawMessage.includes('tenant_write_allowed') || rawMessage.includes('وضع مشاهدة فقط دلوقتي')) return READONLY_LOCK_MESSAGE;
+  return null;
+}
+
 // ── المعالج الرئيسي ────────────────────────────────────
 Deno.serve(async (req: Request) => {
   const cors = handleCors(req);
@@ -152,6 +171,12 @@ Deno.serve(async (req: Request) => {
   } catch (e) {
     const rawMessage = e instanceof Error ? e.message : String(e);
     console.error('[office-secrets]', rawMessage);
-    return json({ error: 'تعذّر تنفيذ العملية المطلوبة. لو المشكلة استمرت، تواصل مع الدعم.' }, 500);
+    // 🆕 FIX (10 سبتمبر 2026): لو الرسالة معروفة وآمنة (رفض قفل read-only
+    // أو حد باقة — نصوصنا الثابتة إحنا، مش مدخلات مستخدم أو تفاصيل RLS
+    // تقنية) بنرجّعها زي ما هي عشان الفرونت إند يقدر يكشفها ويفتح المودال
+    // المخصص. أي حاجة تانية (خطأ داخلي حقيقي غير متوقع) بتفضل برسالة
+    // fallback عامة زي الأول عشان منسربش تفاصيل داخلية.
+    const safeMessage = subscriptionAwareMessage(rawMessage);
+    return json({ error: safeMessage ?? 'تعذّر تنفيذ العملية المطلوبة. لو المشكلة استمرت، تواصل مع الدعم.' }, 500);
   }
 });
