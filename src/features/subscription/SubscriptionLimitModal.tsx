@@ -62,6 +62,24 @@ const CONTACT_OPTIONS: ContactOption[] = [
   { key: 'email', label: 'إيميل الدعم', hint: SUPPORT_EMAIL, url: `mailto:${SUPPORT_EMAIL}`, icon: EmailIcon, iconWrapClass: 'bg-amber-500/10 text-amber-400' },
 ];
 
+// 🆕 FIX (وضوح الرسالة للعميل — 10 سبتمبر 2026): العنوان كان ثابت "محتاج
+// ترقية الباقة" فى كل الحالات، حتى وقت E2 (فترة سماح/وضع مشاهدة لباقة
+// مدفوعة اتأخرت عن التجديد) واللي مش "ترقية" فعليًا — المكتب أصلاً معاه
+// باقة كافية، بس محتاج يجدّدها/يأكّد الدفع. عنوان "ترقية" فى الحالة دي
+// بيلخبط العميل (يفتكر إنه محتاج باقة أكبر بدل ما يفهم إنه بس متأخر
+// فى الدفع). العنوان دلوقتي بيتحدد من محتوى الرسالة نفسها (نفس منطق
+// الكشف فى getSubscriptionAwareMessage بـerrorReporting.ts — لازم
+// يفضلوا متسقين: أي تعديل فى نص رسالة E2/E3 هناك لازم ينعكس هنا).
+function getModalTitle(msg: string): string {
+  // E3 — وصل لحد الباقة (قضايا/حسابات/بوابة موكل) → فعلاً محتاج "ترقية"
+  if (msg.includes('وصلت للحد الأقصى')) return 'محتاج ترقية الباقة';
+  // E2 — قفل read-only (فترة سماح/تجربة مشاهدة/60 يوم) → محتاج "تجديد"
+  // أو "تأكيد دفع"، مش ترقية باقة أكبر.
+  if (msg.includes('وضع مشاهدة فقط دلوقتي')) return 'الاشتراك محتاج تجديد';
+  // fallback احتياطي لأي رسالة مستقبلية غير متوقعة — نفس العنوان القديم.
+  return 'محتاج ترقية الباقة';
+}
+
 function SubscriptionLimitModal() {
   const [message, setMessage] = useState<string | null>(null);
   const modalPresentation = useModalPresentation();
@@ -96,7 +114,7 @@ function SubscriptionLimitModal() {
           },
             React.createElement(WarningIcon)
           ),
-          React.createElement('h3', { className: 'text-base font-black text-white mb-2' }, 'محتاج ترقية الباقة'),
+          React.createElement('h3', { className: 'text-base font-black text-white mb-2' }, getModalTitle(message)),
           React.createElement('p', { className: 'text-xs leading-relaxed text-slate-300', 'data-testid': 'subscription-limit-modal-message' }, message)
         ),
         React.createElement('div', { className: 'px-4 pb-2' },
