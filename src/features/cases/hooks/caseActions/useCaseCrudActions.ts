@@ -10,7 +10,7 @@ import { toast } from '../../../../shared/lib/notifications';
 import { escapeTelegramHtml } from '../../../../shared/lib/sanitize';
 import { logActivity, buildFieldDiff, buildAddSnapshot, buildDeleteSnapshot, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
 import { checkCaseNumberDuplicate } from '../../../../shared/lib/caseValidation';
-import { showErrorToast } from '../../../../shared/lib/errorReporting';
+import { showErrorToast, lockErrorIfNoRowsAffected } from '../../../../shared/lib/errorReporting';
 import { runDuplicateCheckOfflineAware } from '../../../../shared/lib/offlineGuard';
 import { db } from '../../../../supabaseClient';
 import { withFkOfflineSentinel } from '../../../calendar/hooks/caseSessionLinkingShared';
@@ -416,7 +416,11 @@ export function createCaseCrudActions(
         const paths = (docs || []).map((d) => d.storage_path).filter((p): p is string => !!p);
 
         // ─ خطوة 2: حذف صف القضية أولًا — الداتابيز بتكمل الباقي تلقائيًا (CASCADE/SET NULL) ─
-        const { error } = await db.from('cases').delete().eq('id', caseId);
+        // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') إضافية
+        // عشان نقدر نفرّق "الحذف نجح فعلاً" عن "RESTRICTIVE RLS رفضت بصمت
+        // (مكتب readonly) — صفر صفوف، صفر error" — راجع lockErrorIfNoRowsAffected.
+        const { error: rawDeleteError, data: deletedRows } = await db.from('cases').delete().eq('id', caseId).select('id');
+        const error = lockErrorIfNoRowsAffected(rawDeleteError, deletedRows);
         if (error) {
             nav.closeModal('delete');
             setDeleteConfirm(null);
@@ -475,7 +479,10 @@ export function createCaseCrudActions(
             itemType: 'القضية',
             title: 'حذف القضية',
             onConfirmArchive: async () => {
-                const { error } = await db.from('cases').update({ deleted_at: new Date().toISOString() }).eq('id', caseId);
+                // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): نفس فيكس الحذف
+                // النهائي فوق — .select('id') + lockErrorIfNoRowsAffected.
+                const { error: rawArchiveError, data: archivedRows } = await db.from('cases').update({ deleted_at: new Date().toISOString() }).eq('id', caseId).select('id');
+                const error = lockErrorIfNoRowsAffected(rawArchiveError, archivedRows);
                 nav.closeModal('delete');
                 setDeleteConfirm(null);
                 if (error) { showErrorToast('case_archive', error, 'فشل أرشفة القضية — تحقق من الاتصال وأعد المحاولة', 'أرشفة قضية'); return; }
@@ -510,7 +517,10 @@ export function createCaseCrudActions(
 
     // ─ استرجاع قضية من الأرشيف ─
     const handleRestoreCase = async (caseId: string) => {
-        const { error } = await db.from('cases').update({ deleted_at: null }).eq('id', caseId);
+        // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): نفس فيكس الحذف/الأرشفة
+        // فوق — .select('id') + lockErrorIfNoRowsAffected.
+        const { error: rawRestoreError, data: restoredRows } = await db.from('cases').update({ deleted_at: null }).eq('id', caseId).select('id');
+        const error = lockErrorIfNoRowsAffected(rawRestoreError, restoredRows);
         // 🐛 FIX (نفس فحص handleSaveCase فوق — 9 سبتمبر 2026): استرجاع
         // قضية مؤرشفة بيرجّعها "نشطة" فعليًا، فبيخضع لنفس تريجر حد
         // القضايا (B4، PLAN_LIMIT_CASES) لو المكتب أصلاً على حد باقته —
