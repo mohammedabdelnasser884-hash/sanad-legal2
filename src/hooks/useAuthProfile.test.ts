@@ -90,10 +90,18 @@ const trackQueryOutcome = vi.fn(
     };
   }
 );
+// ⚡ FIX (setHealthScope مفقودة من الـmock — 10 سبتمبر 2026): useAuthProfile.ts
+// بقى بينادي setHealthScope(profile?.tenant_id ?? null) جنب setCurrentTenantId
+// بالظبط (فيكس تسريب بانرات صحة النظام بين المكاتب)، والموك القديم مكانش
+// مصدّرها — فأي mount للهوك كان بيرمي "setHealthScope غير معرّفة" فورًا
+// (نفس فئة باج trackQueryOutcome المفقودة قبل كده). مسجّلة هنا كـspy بسيط
+// (مفيش أي منطق حقيقي محتاج يتحاكى) عشان لو أي تست حابب يتأكد من استدعائها.
+const setHealthScope = vi.fn();
 vi.mock('../systemHealth', () => ({
   recordError: (...a: unknown[]) => recordError(...a),
   recordSuccess: (...a: unknown[]) => recordSuccess(...a),
   trackQueryOutcome: (...a: Parameters<typeof trackQueryOutcome>) => trackQueryOutcome(...a),
+  setHealthScope: (...a: unknown[]) => setHealthScope(...a),
 }));
 
 let useAuthProfile: typeof import('./useAuthProfile').useAuthProfile;
@@ -115,6 +123,7 @@ beforeEach(async () => {
   recordError.mockClear();
   recordSuccess.mockClear();
   trackQueryOutcome.mockClear();
+  setHealthScope.mockClear();
   ({ useAuthProfile } = await import('./useAuthProfile'));
 });
 
