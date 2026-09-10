@@ -1424,11 +1424,23 @@ async function submitConfirmPayment() {
 
 async function submitUndoLastPayment() {
   const tenantId = document.getElementById('pay-tenant-id').value;
-  if (!confirm('تراجع عن آخر تأكيد دفع لهذا المكتب؟ ميعاد التجديد هيرجع للقيمة اللي قبله.')) return;
+  if (!confirm('تراجع عن آخر تأكيد دفع لهذا المكتب؟ ميعاد التجديد (والباقة لو كانت اتغيّرت) هيرجعوا للقيمة اللي قبل هذا التأكيد.')) return;
   try {
     const data = await callAdminAction('undoLastPayment', { tenantId });
     const idx = allTenants.findIndex(x => x.id === tenantId);
-    if (idx >= 0) allTenants[idx].subscription_due_at = data.restoredDueAt;
+    // 🐛 FIX (10 سبتمبر 2026 — اكتُشف أثناء اختبار 10 اليدوي): كان بيحدّث
+    // subscription_due_at بس في الكاش المحلي، ومتجاهل subscription_plan
+    // تمامًا — نفس فئة باج تسريب trial_ends_at بعد confirmPayment (راجع
+    // الفيكس المماثل فوق في submitConfirmPayment). الداتابيز نفسها كانت
+    // بترجع صح من أول فيكس saas-admin (ميجريشن 15-15 + previous_plan)،
+    // لكن الواجهة كانت بتفضل عارضة الباقة القديمة (اللي قبل التراجع) لحد
+    // ما تعمل Refresh كامل للصفحة. restoredPlan ممكن يكون null لو الدفعة
+    // اللي اتراجعنا عنها اتسجلت قبل فيكس previous_plan — في الحالة دي
+    // مانلمسش الباقة في الكاش، زي ما السيرفر نفسه بيعمل بالظبط.
+    if (idx >= 0) {
+      allTenants[idx].subscription_due_at = data.restoredDueAt;
+      if (data.restoredPlan) allTenants[idx].subscription_plan = data.restoredPlan;
+    }
     renderTable(); renderStats();
     showToast('✅ تم التراجع عن آخر تأكيد دفع');
     closeConfirmPaymentModal();
