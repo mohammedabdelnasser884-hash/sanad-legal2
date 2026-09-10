@@ -130,6 +130,11 @@
         class="flex-1 text-center px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent">
         💰 المدفوعات
       </button>
+      <!-- تاب استخدام Supabase (سوبر أدمن بس) -->
+      <button onclick="switchTab('usage')" id="tab-usage"
+        class="flex-1 text-center px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border border-transparent">
+        📊 Supabase
+      </button>
     </div>
   </header>
   <!-- عنصر فاضي بارتفاع الهيدر الـfixed بالظبط (بيتظبط بالجافاسكريبت) — بياخد
@@ -239,6 +244,45 @@
         هنفعّل المتابعة المالية لما يتم ربط نظام الفوترة (Stripe).<br/>
         لحد وقتها، بيانات المكاتب والباقات شغالة عادي من تاب "المكاتب".
       </p>
+    </div>
+  </div>
+
+  <!-- ════ تاب استخدام Supabase (سوبر أدمن بس) ════ -->
+  <div id="page-usage" class="hidden flex-1 p-4 space-y-4 fade-in">
+    <div class="flex items-center justify-between">
+      <p class="text-[11px] text-slate-500 font-bold">استهلاك مشروع سند الفعلي مقابل حدود Supabase Free Tier</p>
+      <button onclick="loadUsage()" id="usage-refresh-btn"
+        class="text-[10px] font-black text-[#C9A84C] bg-[#C9A84C]/10 border border-[#C9A84C]/20 rounded-lg px-3 py-1.5 active:scale-95 transition-transform">
+        🔄 تحديث
+      </button>
+    </div>
+
+    <div id="usage-cards" class="space-y-3">
+      <!-- تتعبى ديناميكياً: usage-card-db / usage-card-storage / usage-card-egress -->
+      <div class="bg-premium-card border border-white/5 rounded-2xl p-6 text-center">
+        <p class="text-[11px] text-slate-500 font-bold">جاري التحميل...</p>
+      </div>
+    </div>
+
+    <!-- إدخال Egress يدوي -->
+    <div class="bg-premium-card border border-white/5 rounded-2xl p-4 space-y-3">
+      <div>
+        <p class="text-[11px] font-black text-white mb-0.5">تحديث استهلاك الـ Egress يدويًا</p>
+        <p class="text-[10px] text-slate-500 font-bold leading-relaxed">
+          مفيش API رسمي من Supabase يجيب الرقم ده أوتوماتيك — شوفه من
+          <a href="https://supabase.com/dashboard/org/_/usage" target="_blank" class="text-[#C9A84C] underline">صفحة Usage بالداشبورد</a>
+          واكتبه هنا بالميجابايت.
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="f-egress-mb" type="number" min="0" step="1" placeholder="مثال: 803"
+          class="flex-1 bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 font-bold"/>
+        <button onclick="saveEgressUsage()" id="egress-save-btn"
+          class="shrink-0 bg-[#C9A84C] text-[#070d1a] text-[11px] font-black rounded-xl px-4 py-2.5 active:scale-95 transition-transform">
+          حفظ
+        </button>
+      </div>
+      <p id="egress-updated-note" class="text-[10px] text-slate-600 font-bold"></p>
     </div>
   </div>
 
@@ -764,7 +808,7 @@ function doLogout() {
 // ─── Tabs ─────────────────────────────────────────────
 function switchTab(tab) {
   currentTab = tab;
-  ['offices','plans','payments'].forEach(t => {
+  ['offices','plans','payments','usage'].forEach(t => {
     const pg  = document.getElementById('page-'+t);
     const btn = document.getElementById('tab-'+t);
     if (!pg || !btn) return;
@@ -777,6 +821,104 @@ function switchTab(tab) {
     }
   });
   if (tab === 'plans')    renderPlans();
+  if (tab === 'usage')    loadUsage();
+}
+
+// ─── تاب استخدام Supabase (سوبر أدمن بس) ───────────────
+// خلفية القرار: Database Size وStorage Size بيتجابوا مباشرة من
+// platform_usage_snapshot() (أوتوماتيك بالكامل، من غير أي توكن
+// خارجي). Egress مفيش له API رسمي موثّق من Supabase حاليًا، فبيتسجل
+// يدويًا (platform_manual_metrics) — راجع تعليق الميجريشن 19.
+
+function formatBytesToMb(bytes) {
+  return (bytes / (1024 * 1024));
+}
+
+function usageBarColor(pct) {
+  if (pct >= 90) return { bar: 'bg-rose-500',   text: 'text-rose-400' };
+  if (pct >= 80) return { bar: 'bg-orange-400', text: 'text-orange-400' };
+  if (pct >= 70) return { bar: 'bg-amber-400',  text: 'text-amber-400' };
+  return { bar: 'bg-emerald-500', text: 'text-emerald-400' };
+}
+
+function renderUsageCard(label, usedMb, limitMb) {
+  const pct = limitMb > 0 ? Math.min(100, (usedMb / limitMb) * 100) : 0;
+  const c = usageBarColor(pct);
+  return `
+    <div class="bg-premium-card border border-white/5 rounded-2xl p-4">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-[11px] font-black text-white">${label}</p>
+        <p class="text-[11px] font-black ${c.text}">${pct.toFixed(0)}%</p>
+      </div>
+      <div class="w-full h-2 rounded-full bg-white/5 overflow-hidden mb-1.5">
+        <div class="h-full ${c.bar} rounded-full transition-all" style="width:${pct}%"></div>
+      </div>
+      <p class="text-[10px] text-slate-500 font-bold">${usedMb.toFixed(0)} MB / ${limitMb.toFixed(0)} MB</p>
+    </div>
+  `;
+}
+
+async function loadUsage() {
+  const container = document.getElementById('usage-cards');
+  const btn = document.getElementById('usage-refresh-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const data = await callAdminAction('getSupabaseUsage');
+    const dbMb      = formatBytesToMb(data.db_size_bytes || 0);
+    const storageMb = formatBytesToMb(data.storage_size_bytes || 0);
+    const dbLimitMb      = formatBytesToMb(data.limits.db_size_bytes);
+    const storageLimitMb = formatBytesToMb(data.limits.storage_size_bytes);
+    const egressLimitMb  = data.limits.egress_mb;
+
+    let html = renderUsageCard('Database', dbMb, dbLimitMb)
+             + renderUsageCard('Storage', storageMb, storageLimitMb);
+
+    if (data.egress_mb != null) {
+      html += renderUsageCard('Egress (يدوي)', data.egress_mb, egressLimitMb);
+    } else {
+      html += `<div class="bg-premium-card border border-white/5 rounded-2xl p-4">
+        <p class="text-[11px] font-black text-white mb-1">Egress</p>
+        <p class="text-[10px] text-slate-500 font-bold">لسه متسجّلش — اكتب القيمة تحت.</p>
+      </div>`;
+    }
+    container.innerHTML = html;
+
+    const note = document.getElementById('egress-updated-note');
+    if (note) {
+      note.textContent = data.egress_updated_at
+        ? 'آخر تحديث: ' + new Date(data.egress_updated_at).toLocaleString('ar-EG')
+        : '';
+    }
+    if (data.egress_mb != null) {
+      document.getElementById('f-egress-mb').value = data.egress_mb;
+    }
+  } catch (e) {
+    container.innerHTML = `<div class="bg-premium-card border border-rose-500/20 rounded-2xl p-4">
+      <p class="text-[11px] text-rose-400 font-bold">تعذّر تحميل بيانات الاستخدام: ${e.message}</p>
+    </div>`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function saveEgressUsage() {
+  const input = document.getElementById('f-egress-mb');
+  const btn = document.getElementById('egress-save-btn');
+  const val = parseFloat(input.value);
+  if (isNaN(val) || val < 0) {
+    showToast('اكتب رقم صحيح للـ Egress', true);
+    return;
+  }
+  btn.disabled = true;
+  try {
+    await callAdminAction('setEgressUsage', { egressMb: val });
+    showToast('اتحدّث بنجاح');
+    loadUsage();
+  } catch (e) {
+    showToast('خطأ: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ─── Load Tenants ─────────────────────────────────────
