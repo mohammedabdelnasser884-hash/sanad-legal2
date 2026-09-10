@@ -809,7 +809,7 @@ async function actionIssueInvoice(body: Record<string, unknown>) {
 const FREE_TIER_LIMITS_BYTES = {
   db_size_bytes: 500 * 1024 * 1024,        // 500 MB
   storage_size_bytes: 1024 * 1024 * 1024,  // 1 GB
-  egress_mb: 10 * 1024,                    // 10 GB (5 uncached + 5 cached)
+  egress_mb: 5 * 1024,                     // 5 GB uncached فقط — الـCached Egress حصة منفصلة (5 GB تانية) مش بتتجمع مع دي
 };
 
 /**
