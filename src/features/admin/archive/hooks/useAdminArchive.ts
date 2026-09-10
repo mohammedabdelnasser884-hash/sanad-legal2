@@ -3,7 +3,7 @@ import { db } from '../../../../supabaseClient';
 import { toast } from '../../../../shared/lib/notifications';
 import { logActivity, buildDeleteSnapshot } from '../../../../shared/lib/dataAccess';
 import { ilikeOrClause } from '../../../../shared/lib/sanitize';
-import { showErrorToast } from '../../../../shared/lib/errorReporting';
+import { showErrorToast, lockErrorIfNoRowsAffected } from '../../../../shared/lib/errorReporting';
 import type { CaseRow, ClientRow, CaseFeeRow, ProfileRow } from '../../../../types';
 
 // ⚠️ هوك مستقل بذاته (نفس فلسفة useAdminBackup/useAdminActivity) — AdminPanel
@@ -60,7 +60,10 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
     // ─ استرجاع قضية من الأرشيف (نفس منطق handleRestoreCase فى useCaseActions.ts بالحرف) ─
     const handleRestoreCase = async (caseId: string) => {
         setRestoringCaseId(caseId);
-        const { error } = await db.from('cases').update({ deleted_at: null }).eq('id', caseId);
+        // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') +
+        // lockErrorIfNoRowsAffected — راجع الشرح الكامل فى errorReporting.ts.
+        const { error: rawError, data: restoredRows } = await db.from('cases').update({ deleted_at: null }).eq('id', caseId).select('id');
+        const error = lockErrorIfNoRowsAffected(rawError, restoredRows);
         setRestoringCaseId(null);
         if (error) {
             // 🔒 FIX (تقرير الموثوقية الشامل — C-2): استرجاع قضية ممكن يتصادم مع
@@ -110,7 +113,10 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
         const paths = (docs || []).map((d) => d.storage_path).filter((p): p is string => !!p);
 
         // ─ خطوة 2: حذف صف القضية أولًا ─
-        const { error } = await db.from('cases').delete().eq('id', caseId);
+        // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') +
+        // lockErrorIfNoRowsAffected.
+        const { error: rawDeleteError, data: deletedRows } = await db.from('cases').delete().eq('id', caseId).select('id');
+        const error = lockErrorIfNoRowsAffected(rawDeleteError, deletedRows);
         if (error) {
             setDeletingCase(false);
             setConfirmDeleteCase(null);
@@ -185,7 +191,10 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
     // ─ استرجاع موكل من الأرشيف (نفس منطق handleRestoreClient فى useClientActions.ts بالحرف) ─
     const handleRestoreClient = async (clientId: string) => {
         setRestoringClientId(clientId);
-        const { error } = await db.from('clients').update({ deleted_at: null }).eq('id', clientId);
+        // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') +
+        // lockErrorIfNoRowsAffected.
+        const { error: rawError, data: restoredRows } = await db.from('clients').update({ deleted_at: null }).eq('id', clientId).select('id');
+        const error = lockErrorIfNoRowsAffected(rawError, restoredRows);
         setRestoringClientId(null);
         if (error) {
             // 🔒 FIX (تقرير الموثوقية الشامل — C-2): استرجاع موكل ممكن يتصادم مع
@@ -210,7 +219,10 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
     const handlePermanentDeleteClient = async (clientId: string) => {
         const cl = archivedClients.find((x) => x.id === clientId);
         setDeletingClient(true);
-        const { error } = await db.from('clients').delete().eq('id', clientId);
+        // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') +
+        // lockErrorIfNoRowsAffected.
+        const { error: rawError, data: deletedRows } = await db.from('clients').delete().eq('id', clientId).select('id');
+        const error = lockErrorIfNoRowsAffected(rawError, deletedRows);
         setDeletingClient(false);
         setConfirmDeleteClient(null);
         if (error) { showErrorToast('client_archive_permanent_delete', error, 'فشل حذف الموكل نهائياً — تحقق من الاتصال وأعد المحاولة', 'حذف موكل نهائيًا (أرشيف)'); return; }
@@ -272,7 +284,10 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
     // ─ استرجاع سجل أتعاب من الأرشيف (نفس منطق handleRestoreFee فى useFeesActions.ts بالحرف) ─
     const handleRestoreFee = async (feeId: string) => {
         setRestoringFeeId(feeId);
-        const { error } = await db.from('case_fees').update({ deleted_at: null }).eq('id', feeId);
+        // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') +
+        // lockErrorIfNoRowsAffected.
+        const { error: rawError, data: restoredRows } = await db.from('case_fees').update({ deleted_at: null }).eq('id', feeId).select('id');
+        const error = lockErrorIfNoRowsAffected(rawError, restoredRows);
         setRestoringFeeId(null);
         if (error) { showErrorToast('fee_archive_restore', error, 'فشل استرجاع الأتعاب — تحقق من الاتصال وأعد المحاولة', 'استرجاع أتعاب (أرشيف)'); return; }
         toast('✅ تم استرجاع الأتعاب — قد تحتاج لتحديث الصفحة لرؤيتها في القوائم الأخرى');
@@ -286,7 +301,10 @@ export function useAdminArchive(clients: ClientRow[], profile?: ProfileRow | nul
     const handlePermanentDeleteFee = async (feeId: string) => {
         const f = archivedFees.find((x) => x.id === feeId);
         setDeletingFee(true);
-        const { error } = await db.from('case_fees').delete().eq('id', feeId);
+        // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') +
+        // lockErrorIfNoRowsAffected.
+        const { error: rawError, data: deletedRows } = await db.from('case_fees').delete().eq('id', feeId).select('id');
+        const error = lockErrorIfNoRowsAffected(rawError, deletedRows);
         setDeletingFee(false);
         setConfirmDeleteFee(null);
         if (error) { showErrorToast('fee_archive_permanent_delete', error, 'فشل حذف الأتعاب نهائياً — تحقق من الاتصال وأعد المحاولة', 'حذف أتعاب نهائيًا (أرشيف)'); return; }
