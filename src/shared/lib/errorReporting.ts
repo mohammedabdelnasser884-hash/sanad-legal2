@@ -61,6 +61,34 @@ function getSubscriptionAwareMessage(rawError: unknown): string | null {
   return null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// 🆕 (اكتشاف اختبار F1 اليدوي — 10 سبتمبر 2026): نجاح صامت بدل رفض فعلي
+// ─────────────────────────────────────────────────────────────────────────
+// مشكلة مختلفة تمامًا عن E2/E3 فوق: تلاتة أماكن (حذف/أرشفة/استرجاع قضية،
+// موكل، أتعاب) بتنادي db.from(table).delete()/.update({deleted_at...})
+// مباشرة من غير .select() — ومحكومة بـRESTRICTIVE policies (tenant_write_
+// allowed_*) بس، من غير أي RPC/RAISE EXCEPTION. الـUSING clause بتاعة
+// RESTRICTIVE policy بترفض DELETE/UPDATE بصمت (بتفلتر الصف من الـWHERE
+// الفعلي) — النتيجة: صفر صفوف اتأثرت، صفر error، PostgREST بيرجّع نجاح
+// عادي. يعني مكتب read-only كان يقدر "يحذف/يؤرشف" قضية/موكل/أتعاب من
+// وجهة نظر الواجهة (توست نجاح، بيتشال من القايمة محليًا) رغم إن الصف
+// نفسه فى الداتابيز متلمّسش خالص (بيرجع يظهر تاني بعد Refresh).
+//
+// الحل: أي نداء delete()/update({deleted_at...}) لازم يضيف .select('id')
+// ويمرّر النتيجة هنا. بما إن الـid دايمًا معروف وموجود فعليًا (جاي من صف
+// ظاهر بالفعل للمستخدم فى القايمة)، صفر صفوف راجعة من غير أي error معناها
+// القفل هو السبب الوحيد المعقول — فبنصنّع رسالة تحتوي 'tenant_write_allowed'
+// يدويًا هنا، عشان showErrorToast/getSubscriptionAwareMessage فوق يتعاملوا
+// معاها زي أي رفض قفل تاني (المودال المخصص)، بدل ما الكود يكمل وكأن
+// العملية نجحت فعلاً.
+export function lockErrorIfNoRowsAffected(error: unknown, data: unknown[] | null | undefined): unknown {
+  if (error) return error;
+  if (!data || data.length === 0) {
+    return { message: 'tenant_write_allowed: rejected — 0 rows affected (RESTRICTIVE RLS silently filtered the row, likely read-only lock)' };
+  }
+  return null;
+}
+
 /**
  * دالة موحدة لعرض رسالة خطأ للمستخدم وتسجيل التفصيل الخام داخليًا في نفس الوقت.
  * تختصر التكرار اليدوي لنمط: استخراج رسالة الخطأ الخام → recordError → toast،
