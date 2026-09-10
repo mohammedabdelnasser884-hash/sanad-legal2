@@ -247,8 +247,19 @@ function loadAll(): Record<string, ServiceStatus> {
       // بيانات قديمة (قبل الفيكس، من غير scopeId خالص) — تتجاهل بدل ما
       // تتعامل كأنها تخص الحساب الحالي بالصدفة.
       if (parsed && typeof parsed === 'object' && 'scopeId' in parsed) {
-        if (parsed.scopeId === _healthScopeId) return parsed.data ?? emptyDefaults();
-        return emptyDefaults(); // scope مختلف (أو مفيش scope اتحدد بعد) — تجاهل تمامًا
+        // 🐛 FIX (10 سبتمبر 2026 — CI اتكسر فورًا بعد إضافة الـscoping فوق):
+        // `_healthScopeId` بيبدأ `undefined` (لسه محددش scope)، وJSON.stringify
+        // بيشيل أي خاصية قيمتها `undefined` من النص الناتج تلقائيًا — يعني لما
+        // saveAll تتنادي و_healthScopeId لسه undefined، الـJSON المحفوظ مبيبقاش
+        // فيه مفتاح scopeId خالص (زي البيانات القديمة قبل الفيكس بالظبط)،
+        // فبيتفسر غلط كـ"بيانات قديمة" ويترمى فورًا حتى لو اتسجل وقرأناه في نفس
+        // الثانية (السبب اللي خلّى getServiceStatus ترجع undefined في كل تستات
+        // systemHealth.classification.test.ts/useAdminPortal.test.ts اللي مبتناديش
+        // setHealthScope خالص). saveAll تحت اتصلح تكتب `null` بدل `undefined`
+        // دايمًا، فالمقارنة هنا لازم تطبّع (`?? null`) كمان عشان undefined
+        // و null يتعاملوا كنفس "مفيش scope محدد" بدل ما يتفرقوا غلط.
+        if (parsed.scopeId === (_healthScopeId ?? null)) return parsed.data ?? emptyDefaults();
+        return emptyDefaults(); // scope مختلف فعلاً — تجاهل تمامًا
       }
     }
   } catch { /* ignore */ }
@@ -258,7 +269,11 @@ function loadAll(): Record<string, ServiceStatus> {
 }
 
 function saveAll(data: Record<string, ServiceStatus>) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify({ scopeId: _healthScopeId, data })); } catch { /* ignore */ }
+  // ⚠️ لازم `?? null` هنا مش `_healthScopeId` مباشرة — JSON.stringify بتشيل
+  // خصائص قيمتها `undefined` بالكامل من النص الناتج (مش بتكتبها `null`)، فلو
+  // اتسجّلت من غير الـ`?? null` ده كان هيبقى فيه فرق سلوك حسب هل scope اتحدد
+  // قبل كده ولا لأ، بدل ما يبقى دايمًا نفس الشكل القابل للمقارنة في loadAll.
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ scopeId: _healthScopeId ?? null, data })); } catch { /* ignore */ }
 }
 
 
