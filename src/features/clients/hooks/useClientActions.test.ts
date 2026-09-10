@@ -25,16 +25,25 @@ function makeMockDb() {
   const uploadSpy = vi.fn();
 
   const setResult = (key: string, result: Result) => { configured[key] = result; };
-  const get = (key: string, fallback: Result) => configured[key] ?? fallback;
+  // 🔒 FIX (لوجز CI — 10 سبتمبر 2026): db.from('clients').update/delete بقى
+  // بيضيف .select('id') فعليًا (فيكس F1 اليدوي، راجع lockErrorIfNoRowsAffected
+  // في errorReporting.ts) — get بقى بتدمج مع fallback فيه data:[{id}] بدل ما
+  // تسيب data فاضية لو التست حدد error بس، عشان مترجعش "قفل" وهمي.
+  const get = (key: string, fallback: Result): Result => {
+    const cfg = configured[key];
+    if (!cfg) return fallback;
+    return { data: cfg.data !== undefined ? cfg.data : fallback.data, error: cfg.error !== undefined ? cfg.error : fallback.error };
+  };
+  const SUCCESS_ROW: Result = { data: [{ id: 'mock-id' }], error: null };
 
   const from = vi.fn((table: string) => ({
     update: vi.fn((payload: unknown) => {
       updateSpy(table, payload);
-      return { eq: vi.fn(() => Promise.resolve(get(`${table}:update`, { error: null }))) };
+      return { eq: vi.fn(() => ({ select: vi.fn(() => Promise.resolve(get(`${table}:update`, SUCCESS_ROW))) })) };
     }),
     delete: vi.fn(() => {
       deleteSpy(table);
-      return { eq: vi.fn(() => Promise.resolve(get(`${table}:delete`, { error: null }))) };
+      return { eq: vi.fn(() => ({ select: vi.fn(() => Promise.resolve(get(`${table}:delete`, SUCCESS_ROW))) })) };
     }),
     // ⚡ FIX: checkClientDuplicate (بينده handleSaveClient/handleUpdateClient
     // قبل أي حفظ) بيعدي مباشرة عن طريق db.from('clients').select(...).is(...)
