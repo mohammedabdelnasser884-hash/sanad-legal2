@@ -592,6 +592,10 @@ async function actionConfirmPayment(body: Record<string, unknown>) {
   const isNormalRenewal = wasPaidBefore && isSamePlan;
 
   const previousDueAt: string | null = tenant.subscription_due_at ?? null;
+  // 🆕 FIX (10 سبتمبر 2026 — اكتُشف أثناء اختبار 10 اليدوي): previous_plan
+  // بنفس منطق previous_due_at بالظبط، عشان undoLastPayment تحت تقدر
+  // ترجّع الباقة صح كمان مش الموعد بس — راجع تعليق undoLastPayment.
+  const previousPlan: string | null = tenant.subscription_plan ?? null;
   const now = new Date().toISOString();
   // تجديد عادي: شهر من آخر ميعاد قديم. ترقية/تنزيل/أول تفعيل: شهر من النهارده.
   const newDueAt = isNormalRenewal ? addOneMonth(previousDueAt as string) : addOneMonth(now);
@@ -618,6 +622,7 @@ async function actionConfirmPayment(body: Record<string, unknown>) {
     period_start: periodStart,
     period_end: newDueAt,
     previous_due_at: previousDueAt,
+    previous_plan: previousPlan,
   });
   const payment = Array.isArray(paymentRows) ? paymentRows[0] : paymentRows;
 
@@ -634,30 +639,42 @@ async function actionConfirmPayment(body: Record<string, unknown>) {
 /**
  * undoLastPayment (D4): تراجع عن آخر تأكيد دفع لمكتب معيّن — لتصحيح
  * غلطة دبل-كليك أو مبلغ/باقة غلط. بيمسح آخر سجل في
- * tenant_subscription_payments وبيرجّع subscription_due_at للقيمة
- * قبله (previous_due_at المسجّلة وقت التأكيد ده بالظبط).
+ * tenant_subscription_payments وبيرجّع subscription_due_at
+ * وsubscription_plan للقيمتين قبله (previous_due_at/previous_plan
+ * المسجّلتين وقت التأكيد ده بالظبط).
  *
- * ⚠️ ما بيرجعش subscription_plan/status للقيمة القديمة (الجدول
- * الحالي مش بيسجّل الباقة/الحالة "قبل" العملية، بس due_at) — الاستخدام
- * المقصود هو تصحيح آخر عملية دفع لسه طرية (نفس اليوم)، مش رجوع
- * تاريخي بعيد.
+ * 🔧 FIX (10 سبتمبر 2026 — اكتُشف أثناء اختبار 10 اليدوي): قبل كده كانت
+ * بترجّع subscription_due_at بس وتسيب subscription_plan زي ما هي —
+ * فبعد التراجع عن ترقية، المكتب كان بيفضل على الباقة الجديدة (الأعلى)
+ * بموعد استحقاق زي لو لسه على القديمة، وده تضارب حقيقي (باقة مدفوعة
+ * أعلى من اللي فعليًا مسدد). previous_plan بقى مسجّل بنفس منطق
+ * previous_due_at بالظبط (ميجريشن 15-15)، فالتراجع بيرجّع الاتنين سوا.
+ *
+ * ⚠️ لسه ما بيرجعش status للقيمة القديمة (نادرًا ما يتغيّر برّه
+ * confirmPayment نفسها، فمش جزء من "غلطة تأكيد دفع" اللي الزرار ده
+ * مصمم يصلحها) — الاستخدام المقصود يفضل تصحيح آخر عملية دفع لسه طرية
+ * (نفس اليوم)، مش رجوع تاريخي بعيد.
  */
 async function actionUndoLastPayment(body: Record<string, unknown>) {
   const { tenantId } = body as { tenantId?: string };
   if (!tenantId) return json({ error: 'tenantId مطلوب' }, 400);
 
   const rows = await supabaseRest(
-    `tenant_subscription_payments?tenant_id=eq.${tenantId}&order=created_at.desc&limit=1&select=id,previous_due_at`,
+    `tenant_subscription_payments?tenant_id=eq.${tenantId}&order=created_at.desc&limit=1&select=id,previous_due_at,previous_plan`,
   );
   const last = Array.isArray(rows) ? rows[0] : null;
   if (!last) return json({ error: 'مفيش دفعة مسجّلة لهذا المكتب أصلاً' }, 404);
 
-  await supabaseRest(`tenants?id=eq.${tenantId}`, 'PATCH', {
-    subscription_due_at: last.previous_due_at ?? null,
-  });
+  const patch: Record<string, unknown> = { subscription_due_at: last.previous_due_at ?? null };
+  // previous_plan ممكن يكون NULL لدفعات قديمة اتسجلت قبل ميجريشن 15-15 —
+  // في الحالة دي، مانلمسش الباقة خالص (نفس السلوك القديم تمامًا)، بدل ما
+  // نحط قيمة NULL غلط في subscription_plan (عمود NOT NULL على الأرجح).
+  if (last.previous_plan) patch.subscription_plan = last.previous_plan;
+
+  await supabaseRest(`tenants?id=eq.${tenantId}`, 'PATCH', patch);
   await supabaseRest(`tenant_subscription_payments?id=eq.${last.id}`, 'DELETE');
 
-  return json({ ok: true, restoredDueAt: last.previous_due_at ?? null });
+  return json({ ok: true, restoredDueAt: last.previous_due_at ?? null, restoredPlan: last.previous_plan ?? null });
 }
 
 // ── Main handler ──────────────────────────────────────
