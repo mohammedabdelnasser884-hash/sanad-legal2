@@ -28,6 +28,11 @@ interface FetchState {
   // ── resetAdminPassword ──
   authUserPasswordPutOk: boolean;
   authUserPasswordPutCalls: Array<{ url: string; body: Record<string, unknown> }>;
+  // ── getPaymentHistory / issueInvoice (خطة المدفوعات والفواتير) ──
+  paymentHistoryRows: unknown;
+  issueInvoicePaymentRows: Array<{ id: string; tenant_id: string; invoice_number: string | null; [k: string]: unknown }>;
+  nextInvoiceNumberResult: string;
+  paymentPatchCalls: Array<{ url: string; body: Record<string, unknown> }>;
 }
 
 function freshState(): FetchState {
@@ -48,6 +53,15 @@ function freshState(): FetchState {
     ],
     authUserPasswordPutOk: true,
     authUserPasswordPutCalls: [],
+    paymentHistoryRows: [
+      { id: 'payment-2', plan: 'office', amount_egp: 400, payment_method: 'cash', subscription_months: 1, invoice_number: null, created_at: '2026-09-05T00:00:00.000Z' },
+      { id: 'payment-1', plan: 'lawyer', amount_egp: 250, payment_method: 'cash', subscription_months: 1, invoice_number: 'INV-0001', created_at: '2026-08-05T00:00:00.000Z' },
+    ],
+    issueInvoicePaymentRows: [
+      { id: 'payment-2', tenant_id: 'tenant-1', plan: 'office', amount_egp: 400, invoice_number: null },
+    ],
+    nextInvoiceNumberResult: 'INV-0042',
+    paymentPatchCalls: [],
   };
 }
 
@@ -141,6 +155,40 @@ function buildFetchMock(state: FetchState) {
     {
       match: (url, init) => (url.includes('/rest/v1/tenants') || url.includes('/rest/v1/tenant_invoices')) && (!init?.method || init.method === 'GET'),
       respond: () => ({ status: 200, body: state.queryTableRows }),
+    },
+    // actionGetPaymentHistory: GET tenant_subscription_payments?tenant_id=eq...&order=created_at.desc (بدون limit)
+    {
+      match: (url, init) =>
+        url.includes('/rest/v1/tenant_subscription_payments') &&
+        url.includes('tenant_id=eq.') &&
+        !url.includes('limit=') &&
+        (!init?.method || init.method === 'GET'),
+      respond: () => ({ status: 200, body: state.paymentHistoryRows }),
+    },
+    // actionIssueInvoice: GET tenant_subscription_payments?id=eq....
+    {
+      match: (url, init) =>
+        url.includes('/rest/v1/tenant_subscription_payments') &&
+        url.includes('id=eq.') &&
+        (!init?.method || init.method === 'GET'),
+      respond: (url) => {
+        const id = new URL(url).searchParams.get('id')?.replace('eq.', '');
+        const row = state.issueInvoicePaymentRows.find((p) => p.id === id) ?? null;
+        return { status: 200, body: row ? [row] : [] };
+      },
+    },
+    // actionIssueInvoice: POST rpc/next_tenant_invoice_number
+    {
+      match: (url, init) => url.includes('/rest/v1/rpc/next_tenant_invoice_number') && init?.method === 'POST',
+      respond: () => ({ status: 200, body: state.nextInvoiceNumberResult }),
+    },
+    // actionIssueInvoice: PATCH tenant_subscription_payments?id=eq.... (تسجيل رقم الفاتورة)
+    {
+      match: (url, init) => url.includes('/rest/v1/tenant_subscription_payments') && init?.method === 'PATCH',
+      respond: (url, init) => {
+        state.paymentPatchCalls.push({ url, body: JSON.parse(init!.body as string) });
+        return { status: 200, body: [{}] };
+      },
     },
   ]);
 }
@@ -476,6 +524,109 @@ describe('saas-admin — action=getOnboardingStatuses', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data).toEqual([]);
+  });
+});
+
+describe('saas-admin — action=confirmPayment، تحقق subscriptionMonths (خطة المدفوعات والفواتير)', () => {
+  async function confirmPaymentWithToken(body: Record<string, unknown>) {
+    const loginRes = await login(ENV.SAAS_ADMIN_PASSWORD);
+    const { token } = await loginRes.json();
+    return handler(jsonRequest({ action: 'confirmPayment', token, ...body }));
+  }
+
+  it('مدة اشتراك غير معروفة (مش 1/3/12) → 400 قبل أي نداء لقاعدة البيانات', async () => {
+    const res = await confirmPaymentWithToken({
+      tenantId: 'tenant-1', plan: 'lawyer', amountEgp: 250, paymentMethod: 'cash', subscriptionMonths: 6,
+    });
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain('مدة اشتراك غير معروفة');
+  });
+});
+
+describe('saas-admin — action=getPaymentHistory (خطة المدفوعات والفواتير)', () => {
+  async function getHistoryWithToken(body: Record<string, unknown>) {
+    const loginRes = await login(ENV.SAAS_ADMIN_PASSWORD);
+    const { token } = await loginRes.json();
+    return handler(jsonRequest({ action: 'getPaymentHistory', token, ...body }));
+  }
+
+  it('من غير token → 401', async () => {
+    const res = await handler(jsonRequest({ action: 'getPaymentHistory', tenantId: 'tenant-1' }));
+    expect(res.status).toBe(401);
+  });
+
+  it('من غير tenantId → 400', async () => {
+    const res = await getHistoryWithToken({});
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe('tenantId مطلوب');
+  });
+
+  it('مسار النجاح → بيرجع دفعات المكتب زي ما هي (الأحدث أولًا حسب الترتيب المطلوب في الاستعلام)', async () => {
+    const res = await getHistoryWithToken({ tenantId: 'tenant-1' });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toEqual(state.paymentHistoryRows);
+  });
+
+  it('مفيش دفعات لهذا المكتب → مصفوفة فاضية، مش خطأ', async () => {
+    state.paymentHistoryRows = [];
+    const res = await getHistoryWithToken({ tenantId: 'tenant-جديد' });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toEqual([]);
+  });
+});
+
+describe('saas-admin — action=issueInvoice (خطة المدفوعات والفواتير)', () => {
+  async function issueInvoiceWithToken(body: Record<string, unknown>) {
+    const loginRes = await login(ENV.SAAS_ADMIN_PASSWORD);
+    const { token } = await loginRes.json();
+    return handler(jsonRequest({ action: 'issueInvoice', token, ...body }));
+  }
+
+  it('من غير token → 401', async () => {
+    const res = await handler(jsonRequest({ action: 'issueInvoice', paymentId: 'payment-2' }));
+    expect(res.status).toBe(401);
+  });
+
+  it('من غير paymentId → 400', async () => {
+    const res = await issueInvoiceWithToken({});
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe('paymentId مطلوب');
+  });
+
+  it('دفعة غير موجودة → 404', async () => {
+    const res = await issueInvoiceWithToken({ paymentId: 'payment-ghost' });
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe('الدفعة غير موجودة');
+  });
+
+  it('الدفعة اتطبعت قبل كده (invoice_number موجود) → بيرجّع نفس الرقم القديم من غير أي RPC أو PATCH', async () => {
+    state.issueInvoicePaymentRows = [
+      { id: 'payment-1', tenant_id: 'tenant-1', invoice_number: 'INV-0001' },
+    ];
+    const res = await issueInvoiceWithToken({ paymentId: 'payment-1' });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.invoiceNumber).toBe('INV-0001');
+    expect(data.payment.invoice_number).toBe('INV-0001');
+    expect(state.paymentPatchCalls).toEqual([]); // مفيش PATCH حصل، والرقم القديم اتحافظ عليه
+  });
+
+  it('أول طباعة (invoice_number = NULL) → بياخد رقم جديد من next_tenant_invoice_number() ويسجّله على الدفعة', async () => {
+    const res = await issueInvoiceWithToken({ paymentId: 'payment-2' });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.invoiceNumber).toBe('INV-0042');
+    expect(data.payment.invoice_number).toBe('INV-0042');
+
+    expect(state.paymentPatchCalls).toHaveLength(1);
+    expect(state.paymentPatchCalls[0].url).toContain('id=eq.payment-2');
+    expect(state.paymentPatchCalls[0].body).toEqual({ invoice_number: 'INV-0042' });
   });
 });
 
