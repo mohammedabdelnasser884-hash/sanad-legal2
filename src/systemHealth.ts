@@ -192,17 +192,34 @@ export function friendlyError(key: ServiceKey, rawError?: string, fallbackMsg?: 
 
 const LS_KEY = 'sanad_health'; // تخزين محلي لحالة الخدمات
 
-// نافذة تجميع التكرار: أي فشل لنفس المفتاح خلال ٣٠ ثانية من الفشل السابق
-// يتحسب تكرار لنفس الحادثة (occurrenceCount)، مش حادثة جديدة منفصلة.
-const DEDUPE_WINDOW_MS = 30_000;
+// 🔒 FIX (10 سبتمبر 2026 — باج تسريب حقيقي اتكشف أثناء اختبار يدوي: حساب
+// جديد فتح على نفس المتصفح بعد حساب مكتب تاني، ولقى بانرات "تعذّر: إضافة
+// موكل/حفظ التذكيرات" بتاعة المكتب الأول لسه ظاهرة — رغم إنه مكتب مختلف
+// تمامًا). السبب: LS_KEY فوق ده كان مفتاح واحد ثابت لكل المتصفح، مش مربوط
+// بحساب/مكتب معيّن خالص — عكس نمط PROFILE_CACHE_KEY في useAuthProfile.ts
+// (اللي مربوط بـuserId فعلاً من الأول). دلوقتي البيانات بتتخزن مع
+// `scopeId` (tenant_id الحالي)، وبتتضبط من برّه عن طريق setHealthScope()
+// (بتتنده من useAuthProfile.ts، جنب setCurrentTenantId بالظبط، عشان تتفادى
+// أي دورة استيراد مع constants.ts/supabaseClient.ts). أي بيانات محفوظة بـ
+// scopeId مختلف عن الحالي بتتجاهل تمامًا (مش بتتعرض) — مش بس منطق حماية
+// إضافي، دي الحماية الوحيدة الفعلية هنا.
+let _healthScopeId: string | null | undefined = undefined; // undefined = لسه محددش أي scope (أول تحميل الصفحة)
 
-function loadAll(): Record<string, ServiceStatus> {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
+/**
+ * تضبط نطاق التخزين الحالي (تنادى من useAuthProfile.ts بنفس توقيت
+ * setCurrentTenantId — عند كل تحميل بروفايل وعند تسجيل الخروج بـnull).
+ * لو النطاق اتغيّر عن آخر نطاق اتسجّلت بيه بيانات localStorage الحالية،
+ * البيانات القديمة بتتجاهل فورًا (مش هتتعرض لحساب/مكتب مختلف).
+ */
+export function setHealthScope(id: string | null) {
+  _healthScopeId = id;
+  // بث فوري: لو DashboardTab (أو أي مستمع HEALTH_EVENT) لسه mounted من
+  // حساب سابق على نفس الصفحة (بدون reload كامل)، لازم يعيد القراءة فورًا
+  // ويشيل البانرات القديمة بدل ما يفضل شايلها لحد أي حدث تاني يحصل بالصدفة.
+  broadcastHealthChange();
+}
 
-  // القيم الافتراضية للمفاتيح المعروفة بس — أي مفتاح مخصص بيتسجل أول ما يُستخدم
+function emptyDefaults(): Record<string, ServiceStatus> {
   const defaults = {} as Record<string, ServiceStatus>;
   (Object.keys(SERVICE_LABELS) as KnownServiceKey[]).forEach((key: KnownServiceKey) => {
     defaults[key] = {
@@ -218,9 +235,32 @@ function loadAll(): Record<string, ServiceStatus> {
   return defaults;
 }
 
-function saveAll(data: Record<string, ServiceStatus>) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch { /* ignore */ }
+// نافذة تجميع التكرار: أي فشل لنفس المفتاح خلال ٣٠ ثانية من الفشل السابق
+// يتحسب تكرار لنفس الحادثة (occurrenceCount)، مش حادثة جديدة منفصلة.
+const DEDUPE_WINDOW_MS = 30_000;
+
+function loadAll(): Record<string, ServiceStatus> {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { scopeId?: string | null; data?: Record<string, ServiceStatus> };
+      // بيانات قديمة (قبل الفيكس، من غير scopeId خالص) — تتجاهل بدل ما
+      // تتعامل كأنها تخص الحساب الحالي بالصدفة.
+      if (parsed && typeof parsed === 'object' && 'scopeId' in parsed) {
+        if (parsed.scopeId === _healthScopeId) return parsed.data ?? emptyDefaults();
+        return emptyDefaults(); // scope مختلف (أو مفيش scope اتحدد بعد) — تجاهل تمامًا
+      }
+    }
+  } catch { /* ignore */ }
+
+  // القيم الافتراضية للمفاتيح المعروفة بس — أي مفتاح مخصص بيتسجل أول ما يُستخدم
+  return emptyDefaults();
 }
+
+function saveAll(data: Record<string, ServiceStatus>) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ scopeId: _healthScopeId, data })); } catch { /* ignore */ }
+}
+
 
 // ─── Public API ───────────────────────────────────────────────────────────
 
