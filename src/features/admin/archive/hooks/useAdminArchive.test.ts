@@ -31,7 +31,16 @@ function makeMockDb() {
 
   const setSelectResult = (r: SelectResult) => { selectResult = r; };
   const setSimpleResult = (key: string, r: SimpleResult) => { simpleResults[key] = r; };
-  const getSimple = (key: string) => simpleResults[key] ?? DEFAULT_SIMPLE;
+  // 🔒 FIX (لوجز CI — 10 سبتمبر 2026): update/delete على cases/clients/case_fees
+  // بقى بيضيف .select('id') فعليًا (فيكس F1 اليدوي، راجع lockErrorIfNoRowsAffected
+  // في errorReporting.ts) — getSimple بقى بتدمج مع fallback فيه data:[{id}] بدل
+  // ما تسيب data فاضية لو التست حدد error بس، عشان مترجعش "قفل" وهمي.
+  const getSimple = (key: string, fallback: SimpleResult = DEFAULT_SIMPLE): SimpleResult => {
+    const cfg = simpleResults[key];
+    if (!cfg) return fallback;
+    return { data: cfg.data !== undefined ? cfg.data : fallback.data, error: cfg.error !== undefined ? cfg.error : fallback.error };
+  };
+  const SUCCESS_ROW: SimpleResult = { data: [{ id: 'mock-id' }], error: null };
 
   const selectSpy = vi.fn();
   const notSpy = vi.fn();
@@ -63,12 +72,12 @@ function makeMockDb() {
         // handleRestoreCase: .update({deleted_at:null}).eq('id', caseId)
         update: vi.fn((payload: unknown) => {
           updateSpy(table, payload);
-          return { eq: vi.fn(() => Promise.resolve(getSimple('cases:update'))) };
+          return { eq: vi.fn(() => ({ select: vi.fn(() => Promise.resolve(getSimple('cases:update', SUCCESS_ROW))) })) };
         }),
-        // handlePermanentDeleteCase خطوة 2: .delete().eq('id', caseId)
+        // handlePermanentDeleteCase خطوة 2: .delete().eq('id', caseId).select('id')
         delete: vi.fn(() => {
           deleteSpy(table);
-          return { eq: vi.fn(() => Promise.resolve(getSimple('cases:delete'))) };
+          return { eq: vi.fn(() => ({ select: vi.fn(() => Promise.resolve(getSimple('cases:delete', SUCCESS_ROW))) })) };
         }),
       };
     }
@@ -100,12 +109,12 @@ function makeMockDb() {
         // handleRestoreClient: .update({deleted_at:null}).eq('id', clientId)
         update: vi.fn((payload: unknown) => {
           updateSpy(table, payload);
-          return { eq: vi.fn(() => Promise.resolve(getSimple('clients:update'))) };
+          return { eq: vi.fn(() => ({ select: vi.fn(() => Promise.resolve(getSimple('clients:update', SUCCESS_ROW))) })) };
         }),
-        // handlePermanentDeleteClient: .delete().eq('id', clientId)
+        // handlePermanentDeleteClient: .delete().eq('id', clientId).select('id')
         delete: vi.fn(() => {
           deleteSpy(table);
-          return { eq: vi.fn(() => Promise.resolve(getSimple('clients:delete'))) };
+          return { eq: vi.fn(() => ({ select: vi.fn(() => Promise.resolve(getSimple('clients:delete', SUCCESS_ROW))) })) };
         }),
       };
     }
@@ -129,12 +138,12 @@ function makeMockDb() {
         // handleRestoreFee: .update({deleted_at:null}).eq('id', feeId)
         update: vi.fn((payload: unknown) => {
           updateSpy(table, payload);
-          return { eq: vi.fn(() => Promise.resolve(getSimple('case_fees:update'))) };
+          return { eq: vi.fn(() => ({ select: vi.fn(() => Promise.resolve(getSimple('case_fees:update', SUCCESS_ROW))) })) };
         }),
-        // handlePermanentDeleteFee: .delete().eq('id', feeId)
+        // handlePermanentDeleteFee: .delete().eq('id', feeId).select('id')
         delete: vi.fn(() => {
           deleteSpy(table);
-          return { eq: vi.fn(() => Promise.resolve(getSimple('case_fees:delete'))) };
+          return { eq: vi.fn(() => ({ select: vi.fn(() => Promise.resolve(getSimple('case_fees:delete', SUCCESS_ROW))) })) };
         }),
       };
     }
