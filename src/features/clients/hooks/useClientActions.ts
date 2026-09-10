@@ -5,7 +5,7 @@ import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
 import { safeUpdate, logActivity, buildFieldDiff, buildAddSnapshot, buildDeleteSnapshot, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import { callAdminAction, db } from '../../../supabaseClient';
 import { getCurrentTenantId } from '../../../constants';
-import { showErrorToast } from '../../../shared/lib/errorReporting';
+import { showErrorToast, lockErrorIfNoRowsAffected } from '../../../shared/lib/errorReporting';
 import { recordSuccess } from '../../../systemHealth';
 import { runDuplicateCheckOfflineAware } from '../../../shared/lib/offlineGuard';
 import { linkClientToParty, linkClientToSessionParty } from '../../calendar/hooks/caseSessionLinkingShared';
@@ -427,7 +427,10 @@ export function useClientActions(params: {
     // الحذف بيعدي عادي دايمًا (مفيش FK هيرفضه) والقضايا/الأتعاب تفضل موجودة.
     const handlePermanentDeleteClient = async (clientId: string) => {
         const cl = clients.find((x) => x.id === clientId);
-        const { error } = await db.from('clients').delete().eq('id', clientId);
+        // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') +
+        // lockErrorIfNoRowsAffected — راجع الشرح الكامل فى errorReporting.ts.
+        const { error: rawError, data: deletedRows } = await db.from('clients').delete().eq('id', clientId).select('id');
+        const error = lockErrorIfNoRowsAffected(rawError, deletedRows);
         nav.closeModal('delete');
         setDeleteConfirm(null);
         if (error) { showErrorToast('client_permanent_delete', error, 'فشل حذف الموكل نهائياً — تحقق من الاتصال وأعد المحاولة', 'حذف موكل نهائيًا'); return; }
@@ -453,7 +456,10 @@ export function useClientActions(params: {
             itemType: 'الموكل',
             title: 'حذف الموكل',
             onConfirmArchive: async () => {
-                const { error } = await db.from('clients').update({ deleted_at: new Date().toISOString() }).eq('id', clientId);
+                // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') +
+                // lockErrorIfNoRowsAffected.
+                const { error: rawError, data: archivedRows } = await db.from('clients').update({ deleted_at: new Date().toISOString() }).eq('id', clientId).select('id');
+                const error = lockErrorIfNoRowsAffected(rawError, archivedRows);
                 nav.closeModal('delete');
                 setDeleteConfirm(null);
                 if (error) { showErrorToast('client_archive', error, 'فشل أرشفة الموكل — تحقق من الاتصال وأعد المحاولة', 'أرشفة موكل'); return; }
@@ -473,7 +479,10 @@ export function useClientActions(params: {
 
     // ─ استرجاع موكل من الأرشيف ─
     const handleRestoreClient = async (clientId: string) => {
-        const { error } = await db.from('clients').update({ deleted_at: null }).eq('id', clientId);
+        // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') +
+        // lockErrorIfNoRowsAffected.
+        const { error: rawError, data: restoredRows } = await db.from('clients').update({ deleted_at: null }).eq('id', clientId).select('id');
+        const error = lockErrorIfNoRowsAffected(rawError, restoredRows);
         if (error) { showErrorToast('client_restore', error, 'فشل استرجاع الموكل — تحقق من الاتصال وأعد المحاولة', 'استرجاع موكل'); return; }
         toast('✅ تم استرجاع الموكل');
         logActivity(db, 'استرجاع موكل من الأرشيف', { userName: _userName, entity_type: 'client', entity_id: clientId });
