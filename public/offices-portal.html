@@ -369,6 +369,8 @@
         <select id="pay-months" onchange="updateSuggestedPaymentAmount()" class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold">
           <option value="1">شهر واحد</option>
           <option value="3">3 شهور</option>
+          <option value="6">6 شهور</option>
+          <option value="9">9 شهور</option>
           <option value="12">سنة (خصم شهرين)</option>
         </select>
       </div>
@@ -376,14 +378,26 @@
         <label class="text-[10px] font-black text-slate-400 block mb-1">المبلغ المدفوع (ج.م)</label>
         <input id="pay-amount" type="number" min="0" step="1"
           class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold"/>
-        <p class="text-[9px] text-slate-500 font-bold mt-1">السعر المقترح بيتحسب تلقائيًا لما تغيّر الباقة/المدة — قابل للتعديل يدويًا لو فيه اتفاق مختلف.</p>
+        <p class="text-[9px] text-slate-500 font-bold mt-1">السعر المقترح بيتحسب تلقائيًا لما تغيّر الباقة/المدة (خصم شهرين للسنة بس) — قابل للتعديل يدويًا لو فيه اتفاق مختلف.</p>
       </div>
       <div>
         <label class="text-[10px] font-black text-slate-400 block mb-1">طريقة الدفع</label>
         <select id="pay-method" class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold">
           <option value="cash">نقدي</option>
-          <option value="vodafone_cash">فودافون كاش</option>
+          <option value="e_wallet">محفظة إلكترونية</option>
+          <option value="bank_transfer">تحويل بنكي</option>
         </select>
+      </div>
+      <div id="pay-transaction-details-wrap">
+        <label class="text-[10px] font-black text-slate-400 block mb-1">رقم العملية وبياناتها <span class="text-slate-600">(اختياري)</span></label>
+        <textarea id="pay-transaction-details" rows="2" placeholder="مثال: تحويل انستاباي رقم ...، أو اسم صاحب المحفظة"
+          class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold resize-none"></textarea>
+      </div>
+      <div>
+        <label class="text-[10px] font-black text-slate-400 block mb-1">تاريخ الدفع</label>
+        <input id="pay-date" type="date"
+          class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white font-bold"/>
+        <p class="text-[9px] text-slate-500 font-bold mt-1">تاريخ استلام الفلوس فعليًا — منفصل عن ميعاد التجديد، لو سجّلت الدفعة بعد يوم مثلًا وقفلها على تاريخها الحقيقي.</p>
       </div>
       <div id="payment-modal-err" class="hidden text-[11px] text-rose-400 font-bold text-center bg-rose-500/10 border border-rose-500/20 rounded-xl py-2"></div>
     </div>
@@ -1421,6 +1435,8 @@ function openConfirmPaymentModal(tenantId) {
   sel.value = t.subscription_plan || DEFAULT_PLAN_ID;
   document.getElementById('pay-months').value = '1';
   document.getElementById('pay-method').value = 'cash';
+  document.getElementById('pay-transaction-details').value = '';
+  document.getElementById('pay-date').value = new Date().toISOString().slice(0, 10);
   document.getElementById('payment-modal-err').classList.add('hidden');
   updateSuggestedPaymentAmount();
   showModal('payment-modal');
@@ -1431,9 +1447,10 @@ function closeConfirmPaymentModal() {
 }
 
 // ─── حساب السعر المقترح تلقائيًا (خطة المدفوعات والفواتير) ──
-// شهر/3 شهور: السعر الشهري × المدة بالظبط. سنة (12 شهر): خصم شهرين
-// تلقائيًا (يعني بيتحسب بسعر 10 شهور بس) — الحقل يفضل قابل للتعديل
-// اليدوي بعد كده لو فيه اتفاق مختلف مع المكتب.
+// شهر/3/6/9 شهور: السعر الشهري × المدة بالظبط (من غير أي خصم). سنة
+// (12 شهر): خصم شهرين تلقائيًا (يعني بيتحسب بسعر 10 شهور بس) — دي
+// المدة الوحيدة اللي فيها خصم. الحقل يفضل قابل للتعديل اليدوي بعد كده
+// لو فيه اتفاق مختلف مع المكتب.
 function updateSuggestedPaymentAmount() {
   const planId = document.getElementById('pay-plan').value;
   const months = Number(document.getElementById('pay-months').value);
@@ -1449,6 +1466,8 @@ async function submitConfirmPayment() {
   const subscriptionMonths = Number(document.getElementById('pay-months').value);
   const amountEgp = Number(document.getElementById('pay-amount').value);
   const paymentMethod = document.getElementById('pay-method').value;
+  const transactionDetails = document.getElementById('pay-transaction-details').value.trim() || null;
+  const paymentDate = document.getElementById('pay-date').value || null;
   const err = document.getElementById('payment-modal-err');
   if (!amountEgp || amountEgp <= 0) {
     err.textContent = 'المبلغ المدفوع مطلوب'; err.classList.remove('hidden'); return;
@@ -1457,7 +1476,9 @@ async function submitConfirmPayment() {
   btn.disabled = true;
   btn.innerHTML = '<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full spinner mx-auto"></div>';
   try {
-    const data = await callAdminAction('confirmPayment', { tenantId, plan, amountEgp, paymentMethod, subscriptionMonths });
+    const data = await callAdminAction('confirmPayment', {
+      tenantId, plan, amountEgp, paymentMethod, subscriptionMonths, transactionDetails, paymentDate,
+    });
     const idx = allTenants.findIndex(x => x.id === tenantId);
     if (idx >= 0) allTenants[idx] = { ...allTenants[idx], ...data.tenant };
     renderTable(); renderStats();
@@ -1525,7 +1546,8 @@ function closePaymentHistoryModal() {
   paymentHistoryRows = [];
 }
 
-const MONTHS_LABEL = { 1: 'شهر', 3: '3 شهور', 12: 'سنة' };
+const MONTHS_LABEL = { 1: 'شهر', 3: '3 شهور', 6: '6 شهور', 9: '9 شهور', 12: 'سنة' };
+const PAYMENT_METHOD_LABEL = { cash: 'نقدي', e_wallet: 'محفظة إلكترونية', bank_transfer: 'تحويل بنكي' };
 
 function renderPaymentHistory() {
   const body = document.getElementById('payment-history-body');
@@ -1537,7 +1559,8 @@ function renderPaymentHistory() {
     <div class="rounded-xl border border-white/5 bg-[#070d1a] p-3 flex items-center justify-between gap-3">
       <div class="min-w-0">
         <p class="text-xs font-black text-white">${p.amount_egp} ج.م <span class="text-slate-500 font-bold">— ${esc(PLAN_LABEL[p.plan] || p.plan)} / ${MONTHS_LABEL[p.subscription_months] || (p.subscription_months + ' شهر')}</span></p>
-        <p class="text-[10px] text-slate-500 font-bold mt-0.5">${p.created_at ? p.created_at.slice(0,10) : '—'} · ${p.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 'نقدي'} · ${p.invoice_number ? `فاتورة ${esc(p.invoice_number)}` : 'مفيش فاتورة لسه'}</p>
+        <p class="text-[10px] text-slate-500 font-bold mt-0.5">دفع بتاريخ ${p.payment_date || (p.created_at ? p.created_at.slice(0,10) : '—')} · ${PAYMENT_METHOD_LABEL[p.payment_method] || p.payment_method || '—'} · ${p.invoice_number ? `فاتورة ${esc(p.invoice_number)}` : 'مفيش فاتورة لسه'}</p>
+        ${p.transaction_details ? `<p class="text-[10px] text-slate-600 font-bold mt-0.5">${esc(p.transaction_details)}</p>` : ''}
       </div>
       <button onclick="printSubscriptionInvoice('${p.id}')"
         class="shrink-0 py-2 px-3 rounded-lg bg-[#C9A84C]/10 border border-[#C9A84C]/20 text-[#C9A84C] text-[10px] font-black active:scale-95 transition-transform">
@@ -1579,7 +1602,8 @@ async function printSubscriptionInvoice(paymentId) {
     const issueDate = new Date().toISOString().slice(0, 10);
     const periodEnd = payment.period_end ? payment.period_end.slice(0, 10) : '—';
     const amount = payment.amount_egp;
-    const methodLabel = payment.payment_method === 'vodafone_cash' ? 'فودافون كاش' : 'نقدي';
+    const methodLabel = PAYMENT_METHOD_LABEL[payment.payment_method] || payment.payment_method || '—';
+    const paymentDate = payment.payment_date || (payment.created_at ? payment.created_at.slice(0, 10) : '—');
 
     const css = [
       '*{margin:0;padding:0;box-sizing:border-box;}',
@@ -1635,6 +1659,14 @@ async function printSubscriptionInvoice(paymentId) {
       + '<div class="info-value">' + methodLabel + '</div></div>'
       + '<div class="info-box"><div class="info-label">التجديد ساري لحد</div>'
       + '<div class="info-value">' + periodEnd + '</div></div>'
+      + '</div>'
+      + '<div class="info-grid" style="margin-top:-16px">'
+      + '<div class="info-box"><div class="info-label">تاريخ الدفع</div>'
+      + '<div class="info-value">' + paymentDate + '</div></div>'
+      + (payment.transaction_details
+          ? '<div class="info-box"><div class="info-label">رقم العملية / بياناتها</div>'
+            + '<div class="info-value" style="font-size:11px;">' + esc(payment.transaction_details) + '</div></div>'
+          : '<div class="info-box"></div>')
       + '</div>'
       + '<div class="amount-section">'
       + '<div class="amount-label">إجمالي الفاتورة</div>'
