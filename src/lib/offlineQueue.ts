@@ -1,6 +1,7 @@
 import { db } from '../supabaseClient';
 import type { Database } from '../database.types';
 import { showOfflineBanner, hideOfflineBanner, showSyncIndicator } from '../shared/lib/notifications';
+import { lockErrorIfNoRowsAffected } from '../shared/lib/errorReporting';
 // 🆕 (تقسيم offlineSync.ts — 24 أغسطس 2026): hideSyncIndicator/toast/
 // logActivity/recalcNextHearing كانوا مستوردين هنا بس استخدامهم الوحيد كان
 // جوه منطق المزامنة (window.__syncOfflineQueue) اللي اتنقل لـofflineSync.ts.
@@ -429,12 +430,27 @@ window.__dbWrite = async function <T extends DbWriteTable>({ type, table, data, 
                 // UPDATE وهو أونلاين، لكن مع _offlineFkTempId الجديدة (المفروض
                 // تتبعت بغض النظر عن حالة الاتصال، زي _offlineCaseTempId)، لازم
                 // تتشال هنا كمان وإلا Supabase هيرفض العملية.
+                // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): كان بينادي
+                // .select('updated_at').single() — لو RESTRICTIVE RLS
+                // (tenant_write_allowed_*) رفضت الصف بصمت (مكتب readonly)،
+                // .single() بيرمي خطأ "no rows returned" (PGRST116) — نص
+                // تقني عام مالوش أي علاقة بـtenant_write_allowed، فمودال
+                // القفل المخصص معندهوش حاجة يكتشفها ويظهر توست عام مضلّل
+                // بدل رسالة القفل الصح. الحل: .select() array بدل .single()،
+                // وlockErrorIfNoRowsAffected بتحوّل "صفر صفوف" لرسالة
+                // مكتشفة (بدل الاعتماد على نص PostgREST الخام).
                 const cleanUpdateData = stripOfflineSentinels(data);
-                const res = await dbFrom(table).update(cleanUpdateData as Database['public']['Tables']['cases']['Update']).eq('id', id as string).select('updated_at').single();
-                error = res.error;
-                updatedRow = res.data as unknown as Partial<Database['public']['Tables'][T]['Row']> | null;
+                const res = await dbFrom(table).update(cleanUpdateData as Database['public']['Tables']['cases']['Update']).eq('id', id as string).select('updated_at');
+                error = lockErrorIfNoRowsAffected(res.error, res.data) as typeof res.error;
+                updatedRow = (res.data?.[0] as unknown as Partial<Database['public']['Tables'][T]['Row']> | undefined) ?? null;
             } else if (type === 'DELETE') {
-                ({ error } = await dbFrom(table).delete().eq('id', id as string));
+                // 🔒 FIX (نفس فيكس UPDATE فوق بالحرف — 10 سبتمبر 2026):
+                // بدون .select()، DELETE مرفوضة بصمت من RESTRICTIVE RLS
+                // كانت بترجع نجاح (صفر صفوف، صفر error) — أي كولر لـ
+                // __dbWrite (جلسات، أطراف دعوى، إلخ) كان بيفتكر إن الحذف
+                // نجح فعلاً وهو ماحصلش خالص.
+                const res = await dbFrom(table).delete().eq('id', id as string).select('id');
+                error = lockErrorIfNoRowsAffected(res.error, res.data) as typeof res.error;
             }
             return { error, offline: false, data: insertedRow || updatedRow };
         } catch {
