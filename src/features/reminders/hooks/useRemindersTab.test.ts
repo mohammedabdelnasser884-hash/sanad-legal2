@@ -90,14 +90,18 @@ vi.mock('../../../shared/lib/dataAccess', async (importOriginal) => {
 
 const recordError = vi.fn();
 const recordSuccess = vi.fn();
-// ⚡ FIX (trackQueryOutcome مفقودة من الـmock — خطة "تصنيف الرسائل" دفعة
-// تحويل ٢-ج-٣): useRemindersTab.ts بقى بينادي trackQueryOutcome بدل
-// recordError المباشرة في كل مسارات الفشل (fetchUpcoming/fetchOverdue/
-// fetchDone/handleSave/handleToggleDone/handleDelete/handleEdit) — الموك
-// القديم مكانش مصدّرها، فأي مسار بيوصلها كان بيرمي "trackQueryOutcome غير
-// معرّفة" فعليًا (اكتشفناها في الـCI). نفس منطق trackQueryOutcome الحقيقي
-// (systemHealth.ts): من غير error → recordSuccess، مع error → recordError
-// بنفس التوقيع الثلاثي (key, rawError.message, opts) بالظبط.
+// ⚡ FIX (تحقيق شامل E2/E3 عبر النظام كله — 9 سبتمبر 2026): useRemindersTab.ts
+// بقى بينادي reportWriteFailure (من errorReporting.ts) بدل trackQueryOutcome
+// في مسارات الكتابة (handleSave/handleToggleDone/handleDelete/handleEdit) —
+// عشان يستفيد من كشف رسالة قفل الاشتراك (E2/E3) زي باقي الوحدات، مش بس
+// recordError عادية. reportWriteFailure (الحقيقية، مش موك) بتنادي
+// recordWriteFailure من systemHealth مباشرة للأخطاء العادية — الموك القديم
+// مكانش مصدّرها، فأي مسار بيوصلها كان بيرمي "recordWriteFailure غير معرّفة"
+// فعليًا (اكتشفناها في الـCI، نفس فئة باج trackQueryOutcome القديم فوق).
+const recordWriteFailure = vi.fn(() => ({ ambiguous: false }));
+// نفس منطق trackQueryOutcome الحقيقي (systemHealth.ts): من غير error →
+// recordSuccess، مع error → recordError. لسه مستخدمة في مسارات القراءة
+// (fetchUpcoming/fetchOverdue/fetchDone) اللي مبتلمسش الفيكس ده.
 const trackQueryOutcome = vi.fn(
   async (key: string, error: unknown, opts?: { label?: string; message?: string }) => {
     if (!error) {
@@ -122,6 +126,7 @@ vi.mock('../../../systemHealth', () => ({
   recordError: (...a: unknown[]) => recordError(...a),
   recordSuccess: (...a: unknown[]) => recordSuccess(...a),
   trackQueryOutcome: (...a: Parameters<typeof trackQueryOutcome>) => trackQueryOutcome(...a),
+  recordWriteFailure: (...a: unknown[]) => recordWriteFailure(...a),
 }));
 
 import { useRemindersTab } from './useRemindersTab';
@@ -414,15 +419,15 @@ describe('useRemindersTab', () => {
       expect(logActivity).not.toHaveBeenCalled();
     });
 
-    it('فشل الإدخال → recordError بمفتاح reminder_save، توست فشل، من غير logActivity أو إغلاق الفورم', async () => {
+    it('فشل الإدخال → recordWriteFailure بمفتاح reminder_save، توست فشل، من غير logActivity أو إغلاق الفورم', async () => {
       dbWriteMock().mockResolvedValue({ error: { message: 'insert failed' }, offline: false, queued: false });
       const { result } = await renderReady();
       act(() => { result.current.setForm({ title: 'تذكير فاشل', due_date: '2026-08-01', notes: '' }); });
 
       await act(async () => { await result.current.handleSave(); });
 
-      expect(recordError).toHaveBeenCalledWith('reminder_save', 'insert failed', expect.objectContaining({ label: 'حفظ التذكيرات' }));
-      expect(toast).toHaveBeenCalledWith('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
+      expect(recordWriteFailure).toHaveBeenCalledWith('reminder_save', { message: 'insert failed' }, expect.objectContaining({ label: 'حفظ التذكيرات' }));
+      expect(toast).toHaveBeenCalledWith('❌ تعذّر حفظ التذكير. تحقق من الاتصال بالإنترنت.', true);
       expect(logActivity).not.toHaveBeenCalled();
       expect(result.current.showForm).toBe(false); // showForm ابتدائيًا false أصلًا وملوش علاقة بمسار الفشل — بيفضل زي ما هو
     });
@@ -480,7 +485,7 @@ describe('useRemindersTab', () => {
       expect(toast).not.toHaveBeenCalledWith('✅ تم تسجيل الإنجاز');
     });
 
-    it('فشل التحديث → recordError، توست فشل، من غير fetchReminders إضافي', async () => {
+    it('فشل التحديث → recordWriteFailure، توست فشل، من غير fetchReminders إضافي', async () => {
       dbWriteMock().mockResolvedValue({ error: { message: 'toggle failed' }, offline: false, queued: false, conflict: false });
       const { result } = await renderReady();
       const reminder = makeReminder({ id: 'rem-toggle-3' });
@@ -488,8 +493,8 @@ describe('useRemindersTab', () => {
 
       await act(async () => { await result.current.handleToggleDone(reminder); });
 
-      expect(recordError).toHaveBeenCalledWith('reminder_save', 'toggle failed', expect.objectContaining({ label: 'حفظ التذكيرات' }));
-      expect(toast).toHaveBeenCalledWith('❌ تعذّر تحديث التذكير', true);
+      expect(recordWriteFailure).toHaveBeenCalledWith('reminder_save', { message: 'toggle failed' }, expect.objectContaining({ label: 'حفظ التذكيرات' }));
+      expect(toast).toHaveBeenCalledWith('❌ تعذّر تحديث التذكير. تحقق من الاتصال بالإنترنت.', true);
       expect(mockDb.from.mock.calls.length).toBe(fromCallsBefore); // مفيش fetchReminders جديد (fetch = db.from calls)
     });
   });
@@ -516,14 +521,14 @@ describe('useRemindersTab', () => {
       expect(logActivity).not.toHaveBeenCalled();
     });
 
-    it('فشل الحذف → recordError، توست فشل، من غير logActivity', async () => {
+    it('فشل الحذف → recordWriteFailure، توست فشل، من غير logActivity', async () => {
       dbWriteMock().mockResolvedValue({ error: { message: 'delete failed' }, offline: false, queued: false });
       const { result } = await renderReady();
 
       await act(async () => { await result.current.handleDelete('rem-del-2'); });
 
-      expect(recordError).toHaveBeenCalledWith('reminder_save', 'delete failed', expect.objectContaining({ label: 'حذف التذكيرات' }));
-      expect(toast).toHaveBeenCalledWith('❌ تعذّر حذف التذكير', true);
+      expect(recordWriteFailure).toHaveBeenCalledWith('reminder_save', { message: 'delete failed' }, expect.objectContaining({ label: 'حذف التذكيرات' }));
+      expect(toast).toHaveBeenCalledWith('❌ تعذّر حذف التذكير. تحقق من الاتصال بالإنترنت.', true);
       expect(logActivity).not.toHaveBeenCalled();
     });
   });
@@ -555,7 +560,7 @@ describe('useRemindersTab', () => {
       expect(toast).toHaveBeenCalledWith('⚠️ هذا التذكير عدّله شخص آخر بعد ما فتحته — أعد المحاولة', true);
     });
 
-    it('فشل (success:false, conflict:false) → recordError، توست فشل', async () => {
+    it('فشل (success:false, conflict:false) → recordWriteFailure، توست فشل', async () => {
       safeUpdate.mockResolvedValue({ success: false, conflict: false });
       const { result } = await renderReady();
       const target = makeReminder({ id: 'rem-edit-2' });
@@ -566,8 +571,8 @@ describe('useRemindersTab', () => {
 
       await act(async () => { await result.current.handleEdit(); });
 
-      expect(recordError).toHaveBeenCalledWith('reminder_save', '', expect.objectContaining({ label: 'حفظ التذكيرات' }));
-      expect(toast).toHaveBeenCalledWith('❌ حدث خطأ، يرجى المحاولة مرة أخرى', true);
+      expect(recordWriteFailure).toHaveBeenCalledWith('reminder_save', undefined, expect.objectContaining({ label: 'حفظ التذكيرات' }));
+      expect(toast).toHaveBeenCalledWith('❌ تعذّر تعديل المهمة. تحقق من الاتصال بالإنترنت.', true);
     });
 
     it('نجاح كامل → safeUpdate بـ updated_at الصحيح للهدف، توست نجاح، تسجيل نشاط، تصفير editTarget، fetchReminders', async () => {
