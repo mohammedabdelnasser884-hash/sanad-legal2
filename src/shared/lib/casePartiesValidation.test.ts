@@ -9,7 +9,13 @@ import { createEmptyParty, type PartyFieldValue } from '../parties/partyTypes';
 // ══════════════════════════════════════════════════════════════════
 
 function party(overrides: Partial<PartyFieldValue> & { side: PartyFieldValue['side']; id: string }): PartyFieldValue {
-    return { ...createEmptyParty(overrides.side, overrides.id), ...overrides };
+    // 🆕 (طلب "العنوان إجباري لكل الأطراف" — 11 سبتمبر 2026): العنوان
+    // بقى إجباري في validateParties نفسها، وده مش موضوع التستات القديمة
+    // هنا (بتغطي الاسم/الصفة/الرقم القومي/المسمى القانوني) — فبنّدي
+    // قيمة افتراضية غير فاضية عشانها ميبقوش لازم يتعدلوا كلهم واحد واحد.
+    // أي تست عايز يفحص قاعدة العنوان نفسها بيبعتها صراحةً (بتاخد أولوية
+    // على الافتراضي لأنها متمررة بعده في الـspread).
+    return { ...createEmptyParty(overrides.side, overrides.id), address: 'عنوان تجريبي', ...overrides };
 }
 
 describe('validateParties', () => {
@@ -35,6 +41,36 @@ describe('validateParties', () => {
         const result = validateParties(parties);
         expect(result.valid).toBe(false);
         expect(result.errors.some((e) => e.partyId === 'p1' && e.field === 'capacity')).toBe(true);
+    });
+
+    // ══════════════════════════════════════════════════════════
+    // 🆕 (طلب "العنوان إجباري لكل الأطراف" — 11 سبتمبر 2026): نفس منطق
+    // فحص الاسم/الصفة بالظبط، بس على حقل العنوان — بغض النظر عن is_client.
+    // ══════════════════════════════════════════════════════════
+    it('بيرفض لو العنوان فاضي لطرف موكل (is_client=true)', () => {
+        const parties = [party({ id: 'p1', side: 'plaintiff', is_client: true, name: 'أحمد محمد علي', capacity: 'مدعي', national_id: '12345678901234', address: '' })];
+        const result = validateParties(parties);
+        expect(result.valid).toBe(false);
+        expect(result.errors.some((e) => e.partyId === 'p1' && e.field === 'address')).toBe(true);
+    });
+
+    it('بيرفض لو العنوان فاضي لطرف مش موكل (خصم عادي)', () => {
+        const parties = [
+            party({ id: 'p1', side: 'plaintiff', is_client: true, name: 'أحمد محمد علي', capacity: 'مدعي', national_id: '12345678901234' }),
+            party({ id: 'd1', side: 'defendant', is_client: false, name: 'محمود سعيد إبراهيم', capacity: 'مدعى عليه', address: '' }),
+        ];
+        const result = validateParties(parties);
+        expect(result.valid).toBe(false);
+        expect(result.errors.some((e) => e.partyId === 'd1' && e.field === 'address')).toBe(true);
+    });
+
+    it('بيقبل لو العنوان مكتوب لكل الأطراف', () => {
+        const parties = [
+            party({ id: 'p1', side: 'plaintiff', is_client: true, name: 'أحمد محمد علي', capacity: 'مدعي', national_id: '12345678901234', address: 'شارع النصر، القاهرة' }),
+            party({ id: 'd1', side: 'defendant', is_client: false, name: 'محمود سعيد إبراهيم', capacity: 'مدعى عليه', address: 'شارع الجمهورية، الجيزة' }),
+        ];
+        const result = validateParties(parties);
+        expect(result.valid).toBe(true);
     });
 
     it('بيرفض لو is_client=true ومفيش رقم قومي خالص', () => {
