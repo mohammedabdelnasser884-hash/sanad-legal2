@@ -722,7 +722,7 @@ function App() {
                 React.createElement(I.Spin)
             )
         },
-        React.createElement(ArchiveTab, { cases, clients: clientsWithExtras, nav })
+        React.createElement(ArchiveTab, { cases, clients: clientsWithExtras, nav, profile })
     );
 
     const showMenu = showHeaderMenu;
