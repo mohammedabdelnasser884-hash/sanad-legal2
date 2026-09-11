@@ -758,7 +758,13 @@ function EditStandaloneModalForm({ session, db, onClose, onSaved, linkedClient =
                 React.createElement('div', { className: 'px-5 py-4 border-t border-white/5 flex gap-3' },
                     React.createElement('button', { onClick: guardedClose, className: 'flex-1 py-3 rounded-2xl text-xs font-bold text-slate-400 bg-white/5 hover:bg-white/10 transition-all', 'data-testid': 'edit-standalone-session-cancel' }, 'إلغاء'),
                     React.createElement('button', {
-                        onClick: handleSave, disabled: saving || !form.session_date,
+                        // ⚡ FIX (طلب مباشر — 11 سبتمبر 2026): نفس فيكس NewStandaloneSessionModal.tsx —
+                        // الزرار كان بيتعطل تلقائيًا لو "تاريخ الجلسة" فاضي من غير
+                        // أي توضيح، بينما باقي الحقول الإجبارية بتظهر برسالة toast
+                        // واضحة عند الضغط بس (handleSave فوق أصلاً بيتحقق من
+                        // session_date برسالة "تاريخ الجلسة مطلوب"). الزرار فعّال
+                        // دايمًا (غير وقت الحفظ)، وأي نقص بيتوضح برسالة عند الضغط.
+                        onClick: handleSave, disabled: saving,
                         className: 'flex-grow-[2] py-3 rounded-2xl text-xs font-black text-premium-bg transition-all disabled:opacity-40',
                         style: { background: saving ? '#888' : 'linear-gradient(135deg,#d4af37,#f0c040)' },
                         'data-testid': 'edit-standalone-session-save'
