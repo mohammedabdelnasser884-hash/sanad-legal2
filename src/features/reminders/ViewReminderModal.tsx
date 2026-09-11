@@ -18,10 +18,15 @@ interface ViewReminderModalProps {
   setEditTarget: (r: ReminderRow | null) => void;
   setEditForm: (form: ReminderEditForm) => void;
   setConfirmDeleteTarget: (r: ReminderRow | null) => void;
+  // ⚡ NEW (خطة تفعيل الصلاحيات الناقصة — التذكيرات، 11 سبتمبر 2026):
+  // نفس القيمتين المحسوبتين مرة واحدة فى RemindersTab وممررتين
+  // لـReminderCard كمان.
+  canEdit: boolean;
+  canDelete: boolean;
 }
 
 function ViewReminderModal({
-  viewTarget, setViewTarget, handleToggleDone, setEditTarget, setEditForm, setConfirmDeleteTarget,
+  viewTarget, setViewTarget, handleToggleDone, setEditTarget, setEditForm, setConfirmDeleteTarget, canEdit, canDelete,
 }: ViewReminderModalProps) {
   // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
   // المُطبَّق في NewCaseModal.tsx.
@@ -100,12 +105,16 @@ function ViewReminderModal({
                         : React.createElement(React.Fragment, null, React.createElement(I.Check,{className:"w-3.5 h-3.5"}), "تسجيل كمنجز")
                 ),
                 // تعديل
-                React.createElement('button',{
+                // ⚡ NEW (مرحلة 3 خطة الصلاحيات — التذكيرات): بيختفي كليًا
+                // لمن ليس له can_edit_reminders.
+                canEdit && React.createElement('button',{
                     onClick: () => { setViewTarget(null); setEditTarget(viewTarget); setEditForm({title:viewTarget.title as string,due_date:viewTarget.due_date as string,notes:viewTarget.notes||''}); },
                     className:"flex-1 py-2.5 bg-white/5 text-slate-300 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 active:scale-95"
                 }, React.createElement(I.Edit,{className:"w-3.5 h-3.5"}), "تعديل"),
                 // حذف
-                React.createElement('button',{
+                // ⚡ NEW (مرحلة 3 خطة الصلاحيات — التذكيرات): بيختفي كليًا
+                // لمن ليس له can_delete_reminders.
+                canDelete && React.createElement('button',{
                     onClick: () => { setViewTarget(null); setConfirmDeleteTarget(viewTarget); },
                     className:"w-10 py-2.5 bg-rose-500/10 text-rose-400 rounded-xl flex items-center justify-center active:scale-95"
                 }, React.createElement(I.Trash,{className:"w-3.5 h-3.5"}))
