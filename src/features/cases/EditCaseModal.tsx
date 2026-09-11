@@ -671,9 +671,11 @@ function EditCaseModalForm({caseData, onClose, onSave, countryCourts, countryCas
 
             // ٥. تاريخ الجلسة القادمة + وقت الجلسة (نفس السطر، وقت الجلسة
             // بيظهر بس بعد ما التاريخ يتحدد — قبل كده بياخد العرض كله لوحده).
+            // 🆕 (طلب مباشر — 11 سبتمبر 2026): بقى إجباري (required + فحص
+            // وقت الحفظ تحت) — زي باقي بيانات القيد الرسمي.
             form.date
                 ? React.createElement('div',{className:"grid grid-cols-2 gap-2 items-start lg:col-span-2"},
-                    React.createElement(DatePicker, {label:"تاريخ الجلسة القادمة", value:form.date, onChange:(v: string) =>s("date",v)}),
+                    React.createElement(DatePicker, {label:"تاريخ الجلسة القادمة", value:form.date, onChange:(v: string) =>s("date",v), required:true, testId:'edit-case-date-trigger', dayTestId:'edit-case-date-day'}),
                     React.createElement(Sel,{
                         label:"وقت الجلسة",
                         value:form.session_time,
@@ -681,7 +683,7 @@ function EditCaseModalForm({caseData, onClose, onSave, countryCourts, countryCas
                         options:SESSION_TIME_OPTIONS,
                     })
                 )
-                : React.createElement(DatePicker, {label:"تاريخ الجلسة القادمة", value:form.date, onChange:(v: string) =>s("date",v)}),
+                : React.createElement(DatePicker, {label:"تاريخ الجلسة القادمة", value:form.date, onChange:(v: string) =>s("date",v), required:true, testId:'edit-case-date-trigger', dayTestId:'edit-case-date-day'}),
 
             // ٦. درجة التقاضي
             // ⚡ CHANGED (طلب مباشر — 9 أغسطس 2026): نفس فيكس "المحكمة
@@ -800,6 +802,9 @@ function EditCaseModalForm({caseData, onClose, onSave, countryCourts, countryCas
                     if(!form.type.trim()){ toast('⚠️ حقل "تصنيف الدعوى" مطلوب', true); return; }
                     if(!form.circuit_number.trim()){ toast('⚠️ حقل "رقم الدائرة" مطلوب', true); return; }
                     if(!form.court_level.trim()){ toast('⚠️ حقل "درجة التقاضي" مطلوب', true); return; }
+                    // 🆕 (طلب مباشر — 11 سبتمبر 2026): تاريخ الجلسة القادمة بقى
+                    // إجباري برضو — نفس نمط باقي بيانات القيد الرسمي فوق.
+                    if(!form.date.trim()){ toast('⚠️ حقل "تاريخ الجلسة القادمة" مطلوب', true); return; }
                     // ⚡ CHANGED (مرحلة 5.1 — خطة تعدد الأطراف): فاليديشن
                     // أطراف الدعوى كلها بقت من casePartiesValidation.ts (نفس
                     // قواعد NewCaseModal.tsx مرحلة 4.1) بدل الفحوصات المفردة
