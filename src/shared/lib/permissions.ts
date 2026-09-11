@@ -49,11 +49,6 @@ export function isAdminRole(profile: RoleBearing | null | undefined): boolean {
 /** نفس الـ 8 مفاتيح اللي كانت مكتوبة حرفيًا في PERMISSION_LABELS
  *  (icons.ts) و EditUserForm.permissions/AddUserForm.permissions
  *  (useAdminUsers.ts) — دلوقتي مصدر واحد، والاتنين بيستوردوا منه. */
-// ⚡ NEW (سجل قرارات تقرير المستندات القانونية، بند 6 — 26 أغسطس 2026):
-// 'can_generate_documents' — مقفول لدوري lawyer/admin بس بلا استثناء
-// (نفس نمط القفل الأساسي بتاع can_view_fees/can_edit_fees، مش نمط
-// can_edit_fees القابل للتخصيص عبر profiles.permissions). راجع
-// checkPermission() تحت لتفاصيل القفل نفسه.
 // ⚡ NEW (خطة تفعيل الصلاحيات الناقصة — الموكلين والتذكيرات والجلسات،
 // 11 سبتمبر 2026): 6 مفاتيح جديدة بنفس نمط can_edit_cases/
 // can_delete_cases — قابلة للتخصيص لكل مستخدم عبر profiles.permissions،
@@ -75,7 +70,6 @@ export const PERMISSION_KEYS = [
   'can_delete_sessions',
   'can_view_reports',
   'can_export_data',
-  'can_generate_documents',
 ] as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[number];
@@ -95,10 +89,9 @@ export type PermissionsMap = Partial<Record<PermissionKey, boolean>>;
 
 /** مصفوفة الصلاحيات الافتراضية لكل دور (قسم 2.1 من الخطة) — نفس
  *  الترتيب اللي بترجعه has_permission() لما مفيش قيمة صريحة محفوظة
- *  في profiles.permissions. can_view_fees/can_edit_fees/
- *  can_generate_documents متسجلين هنا كمرجع توثيقي بس — checkPermission()
- *  بترفضهم (الأتعاب) أو بتقفلهم على lawyer/admin بس (توليد المستندات)
- *  قبل ما توصل للمصفوفة دي أصلاً (قفل أساسي بلا استثناء، مش افتراضي
+ *  في profiles.permissions. can_view_fees/can_edit_fees متسجلين هنا
+ *  كمرجع توثيقي بس — checkPermission() بترفضهم (الأتعاب) قبل ما
+ *  توصل للمصفوفة دي أصلاً (قفل أساسي بلا استثناء، مش افتراضي
  *  قابل للتعديل عبر profiles.permissions). */
 export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, Required<PermissionsMap>> = {
   admin: {
@@ -116,7 +109,6 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, Required<PermissionsMap>
     can_delete_sessions: true,
     can_view_reports: true,
     can_export_data: true,
-    can_generate_documents: true,
   },
   lawyer: {
     can_add_cases: true,
@@ -133,7 +125,6 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, Required<PermissionsMap>
     can_delete_sessions: false,
     can_view_reports: true,
     can_export_data: false,
-    can_generate_documents: true,
   },
   viewer: {
     can_add_cases: false,
@@ -150,7 +141,6 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, Required<PermissionsMap>
     can_delete_sessions: false,
     can_view_reports: true,
     can_export_data: false,
-    can_generate_documents: false,
   },
 };
 
@@ -188,13 +178,6 @@ export function checkPermission(
 
   // قفل أساسي للأتعاب بلا استثناء (قرار 2.1) — مطابق لـhas_permission().
   if (key === 'can_view_fees' || key === 'can_edit_fees') return false;
-
-  // ⚡ NEW (سجل قرارات تقرير المستندات القانونية، بند 6 — 26 أغسطس 2026):
-  // توليد المستندات مقفول لدوري lawyer/admin بس بلا استثناء — دور
-  // viewer ما يقدرش يولّد مستندات نهائيًا، حتى لو فيه قيمة صريحة محفوظة
-  // في profiles.permissions تحاول تفتحها له. admin أصلاً رجع true فوق،
-  // فالفحص هنا فعليًا بيحدد مصير lawyer/viewer بس.
-  if (key === 'can_generate_documents') return profile?.role === 'lawyer';
 
   const permissions = (profile?.permissions ?? null) as PermissionsMap | null;
   const explicit = permissions?.[key];
