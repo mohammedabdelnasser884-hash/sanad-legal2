@@ -120,13 +120,13 @@ describe('checkPermission — حالات حدّية', () => {
 });
 
 describe('ROLE_DEFAULT_PERMISSIONS — مطابقة مصفوفة قسم 2.1 من الخطة', () => {
-  it('admin → true لكل الـ8 مفاتيح', () => {
+  it('admin → true لكل المفاتيح (PERMISSION_KEYS)', () => {
     for (const key of PERMISSION_KEYS) {
       expect(ROLE_DEFAULT_PERMISSIONS.admin[key]).toBe(true);
     }
   });
 
-  it('lawyer → true فقط لـcan_add_cases/can_edit_cases/can_add_clients/can_view_reports/can_generate_documents', () => {
+  it('lawyer → true لـcan_add_cases/can_edit_cases/can_add_clients/can_edit_clients/can_edit_reminders/can_delete_reminders/can_edit_sessions/can_view_reports/can_generate_documents', () => {
     expect(ROLE_DEFAULT_PERMISSIONS.lawyer).toEqual({
       can_add_cases: true,
       can_edit_cases: true,
@@ -134,6 +134,12 @@ describe('ROLE_DEFAULT_PERMISSIONS — مطابقة مصفوفة قسم 2.1 من
       can_view_fees: false,
       can_edit_fees: false,
       can_add_clients: true,
+      can_edit_clients: true,
+      can_delete_clients: false,
+      can_edit_reminders: true,
+      can_delete_reminders: true,
+      can_edit_sessions: true,
+      can_delete_sessions: false,
       can_view_reports: true,
       can_export_data: false,
       can_generate_documents: true,
@@ -148,6 +154,12 @@ describe('ROLE_DEFAULT_PERMISSIONS — مطابقة مصفوفة قسم 2.1 من
       can_view_fees: false,
       can_edit_fees: false,
       can_add_clients: false,
+      can_edit_clients: false,
+      can_delete_clients: false,
+      can_edit_reminders: false,
+      can_delete_reminders: false,
+      can_edit_sessions: false,
+      can_delete_sessions: false,
       can_view_reports: true,
       can_export_data: false,
       can_generate_documents: false,
