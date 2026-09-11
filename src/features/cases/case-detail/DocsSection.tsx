@@ -4,7 +4,6 @@ import { Inp } from '@/shared/ui/Inp';
 import { Sel } from '@/shared/ui/Sel';
 import { formatArDate } from '@/shared/ui/arabicLocale';
 import type { CaseDocWithUrl } from '../hooks/useCaseDetailActions';
-import GenerateDocumentButton from '../../documentGeneration/components/GenerateDocumentButton';
 
 interface DocsSectionProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
@@ -32,9 +31,6 @@ interface DocsSectionProps {
   // مايكسرش أي استدعاء قديم لـDocsSection من غير الـprop ده — بيتعامل
   // زي "مفيش صلاحية" (false) فى الحالة دي، أأمن افتراضي.
   canDeleteDocument?: boolean;
-  // ⚡ NEW (خطة توليد المستندات القانونية، المرحلة 3): اختياري عشان
-  // ميكسرش أي استدعاء تاني حالي لـDocsSection من غير السياق ده.
-  onGenerateDocument?: () => void;
 }
 
 function DocsSection({
@@ -42,7 +38,6 @@ function DocsSection({
   docLabel, setDocLabel, docCategory, setDocCategory, handleUploadDoc, uploadingDoc,
   docs, docSearch, setDocSearch, loadingSessions, setViewingDoc, setConfirmDeleteDoc, deletingDocId,
   canDeleteDocument = false,
-  onGenerateDocument,
 }: DocsSectionProps) {
   return React.createElement('div', {className: "space-y-4 fade-in"},
 
@@ -62,8 +57,8 @@ function DocsSection({
                     style: {display: 'none'}
                 }),
 
-                // زر الرفع + زر توليد مستند (خطة توليد المستندات القانونية، المرحلة 3)
-                !showDocForm && React.createElement('div', {className: "grid grid-cols-1 sm:grid-cols-2 gap-3"},
+                // زر الرفع
+                !showDocForm && React.createElement('div', {className: "grid grid-cols-1 gap-3"},
                     React.createElement('button', {
                         'data-testid': 'doc-upload-toggle',
                         onClick: () => fileInputRef.current && fileInputRef.current.click(),
@@ -72,8 +67,7 @@ function DocsSection({
                         React.createElement('span', {className: "text-2xl"}, "📎"),
                         React.createElement('span', {className: "text-xs font-black"}, "رفع مستند جديد"),
                         React.createElement('span', {className: "text-[9px] text-slate-500"}, "صور · PDF · Word · Excel · PowerPoint")
-                    ),
-                    onGenerateDocument && React.createElement(GenerateDocumentButton, { onClick: onGenerateDocument })
+                    )
                 ),
 
                 // فورم تصنيف المستند بعد اختيار الملف
