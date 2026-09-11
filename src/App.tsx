@@ -901,6 +901,11 @@ function App() {
                         // بيبعتها لـNewCaseModal.
                         countryCourts: COUNTRY_CONFIGS[country]?.courts,
                         countryCaseTypes: COUNTRY_CONFIGS[country]?.caseTypes,
+                        // ⚡ NEW (مرحلة 3 خطة الصلاحيات — الجلسات المستقلة، 11
+                        // سبتمبر 2026): بيتمرر لـStandaloneSessionDetailModal/
+                        // EditStandaloneModal لحساب can_edit_sessions/
+                        // can_delete_sessions.
+                        profile,
                     })
                 )
             ),
