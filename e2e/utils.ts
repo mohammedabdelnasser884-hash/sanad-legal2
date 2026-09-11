@@ -404,6 +404,12 @@ export async function createClient(
   // فشل الـE2E). الحل: ناخد آخر 14 خانة بدل الأول، فيتضمن Date.now()
   // كامل (13 خانة، فريدة لكل ميلي ثانية) بدل ما نقطعه.
   const finalNationalId = nationalId ?? `2900101${Date.now()}`.slice(-14);
+  // 🔒 FIX (تحليل لوجز E2E — 11 سبتمبر 2026): نفس باج createCase (17
+  // أغسطس) — لو الهيلبر ده بينادَى بعد createTestUser مباشرة (زي تستات
+  // permissions-matrix.spec.ts الجديدة)، قسم "المستخدمين" لسه فاتح
+  // كـoverlay بملء الشاشة وبيحجب desktop-nav-clients. نفس الحراسة
+  // المستخدمة في createCase/openAdminSection.
+  await closeAdminSectionIfOpen(page);
   // ⚡ H1: نفس مبدأ openAdminArchiveTab — `desktop-nav-clients` نقرة
   // واحدة بدل `nav-more-toggle`+`nav-more-clients`.
   await page.getByTestId('desktop-nav-clients').click();
@@ -535,6 +541,10 @@ export async function addCaseSession(page: Page, day: number, description: strin
 // التقويم وتفتحها من غير ما تكرر نفس الخطوات. بيسيب مودال "تحويل لقضية؟"
 // مقفول (بيدوس "لا شكراً، إغلاق") وبيرجّع الصفحة على تبويب الجلسات.
 export async function createStandaloneSession(page: Page, title: string): Promise<void> {
+  // 🔒 FIX (تحليل لوجز E2E — 11 سبتمبر 2026): نفس باج createClient فوق
+  // (وcreateCase الأصلي، 17 أغسطس) — قسم إدارة مفتوح ممكن يحجب
+  // desktop-nav-calendar لو الهيلبر ده اتنادى بعد createTestUser مباشرة.
+  await closeAdminSectionIfOpen(page);
   // ⚡ H1: نفس مبدأ createCase — desktop-nav-calendar بدل nav-calendar.
   await page.getByTestId('desktop-nav-calendar').click();
   await page.getByTestId('calendar-new-session-button').click();
@@ -597,6 +607,10 @@ export async function addMissedSession(page: Page, description: string): Promise
 }
 
 export async function createReminder(page: Page, title: string): Promise<void> {
+  // 🔒 FIX (تحليل لوجز E2E — 11 سبتمبر 2026): نفس باج createClient فوق
+  // (وcreateCase الأصلي، 17 أغسطس) — قسم إدارة مفتوح ممكن يحجب
+  // desktop-nav-reminders لو الهيلبر ده اتنادى بعد createTestUser مباشرة.
+  await closeAdminSectionIfOpen(page);
   // ⚡ H1: نفس مبدأ createCase — desktop-nav-reminders بدل nav-reminders.
   await page.getByTestId('desktop-nav-reminders').click();
   await page.getByTestId('new-reminder-toggle').click();
