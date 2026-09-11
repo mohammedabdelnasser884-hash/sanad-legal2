@@ -35,15 +35,19 @@ test('إنشاء قضية بأكتر من مدعي واحد — فاليديشن
   await page.getByTestId('new-case-plaintiff-0-name').fill('موكل اختبار E2E تعدد');
   await page.getByTestId('new-case-plaintiff-0-capacity').fill('مدعي');
   await page.getByTestId('new-case-plaintiff-0-national-id').fill('12345678901235');
+  // 🆕 (طلب "العنوان إجباري لكل الأطراف" — 11 سبتمبر 2026)
+  await page.getByTestId('new-case-plaintiff-0-address').fill('عنوان تجريبي E2E');
   await page.getByTestId('new-case-add-plaintiff').click();
   await page.getByTestId('new-case-plaintiff-1-name').fill('وريث اختبار E2E');
   await page.getByTestId('new-case-plaintiff-1-capacity').fill('وريث');
+  await page.getByTestId('new-case-plaintiff-1-address').fill('عنوان وريث تجريبي E2E');
   // مسك المسمى القانوني فاضي عمدًا — التست ده هيتأكد من رفض الحفظ
   await page.getByTestId('new-case-plaintiff-subform-save').click();
 
   await page.getByTestId('party-side-card-defendant').click();
   await page.getByTestId('new-case-defendant-0-name').fill('خصم اختبار E2E تعدد');
   await page.getByTestId('new-case-defendant-0-capacity').fill('مدعى عليه');
+  await page.getByTestId('new-case-defendant-0-address').fill('عنوان خصم تجريبي E2E');
   await page.getByTestId('new-case-defendant-subform-save').click();
 
   // 1) محاولة حفظ من غير مسمى قانوني → رفض بتوست واضح، والمودال يفضل مفتوح
@@ -86,10 +90,13 @@ test('ضغط زرار حفظ القضية الجديدة مرتين بسرعة (
   await page.getByTestId('new-case-plaintiff-0-name').fill('موكل اختبار E2E دبل كليك');
   await page.getByTestId('new-case-plaintiff-0-capacity').fill('مدعي');
   await page.getByTestId('new-case-plaintiff-0-national-id').fill(`3${Date.now()}`.slice(0, 14));
+  // 🆕 (طلب "العنوان إجباري لكل الأطراف" — 11 سبتمبر 2026)
+  await page.getByTestId('new-case-plaintiff-0-address').fill('عنوان تجريبي E2E');
   await page.getByTestId('new-case-plaintiff-subform-save').click();
   await page.getByTestId('party-side-card-defendant').click();
   await page.getByTestId('new-case-defendant-0-name').fill('خصم اختبار E2E دبل كليك');
   await page.getByTestId('new-case-defendant-0-capacity').fill('مدعى عليه');
+  await page.getByTestId('new-case-defendant-0-address').fill('عنوان خصم تجريبي E2E');
   await page.getByTestId('new-case-defendant-subform-save').click();
 
   // نفس أسلوب تست الدبل-كليك في clients.spec.ts (مرحلة 1) — ضغطتين جوه
@@ -135,6 +142,8 @@ test('إضافة طرف ثاني في التعديل (يوجب مسمى قانو
   await page.getByTestId('edit-case-add-defendant').click();
   await page.getByTestId('edit-case-defendant-1-name').fill('خصم ثاني اختبار E2E');
   await page.getByTestId('edit-case-defendant-1-capacity').fill('مدعى عليه ثاني');
+  // 🆕 (طلب "العنوان إجباري لكل الأطراف" — 11 سبتمبر 2026)
+  await page.getByTestId('edit-case-defendant-1-address').fill('عنوان خصم ثاني تجريبي E2E');
   await page.getByTestId('edit-case-defendant-legal-title').fill('ورثة الخصم الأصلي');
   await page.getByTestId('edit-case-defendant-subform-save').click();
   await page.getByTestId('edit-case-save').click();
