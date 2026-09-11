@@ -35,12 +35,6 @@ export interface NavItem {
     testId: string;
     /** لو true، العنصر ده يظهر بس للأدمن (isAdmin) */
     adminOnly?: boolean;
-    /** ⚡ NEW (سجل قرارات تقرير المستندات القانونية، بند 6 — 26 أغسطس
-     *  2026): لو true، العنصر ده يظهر بس لو checkPermission(profile,
-     *  'can_generate_documents') === true (عمليًا lawyer/admin بس،
-     *  مقفول تمامًا لـviewer). منفصل عن adminOnly لأنه مش مقصور على
-     *  admin — lawyer برضه يشوفه. */
-    requiresCanGenerateDocuments?: boolean;
 }
 
 // العناصر الأساسية الأربعة الظاهرة دايمًا في شريط الموبايل السفلي
@@ -62,7 +56,6 @@ export const primaryNavItems: NavItem[] = [
 export const moreNavItems: NavItem[] = [
     { tab: 'clients',   icon: I.Person, label: 'الموكلين',    testId: 'nav-more-clients' },
     { tab: 'documents', icon: I.Folder, label: 'المستندات',   testId: 'nav-more-documents' },
-    { tab: 'legalDocs', icon: I.Doc,    label: 'المستندات القانونية', testId: 'nav-more-legalDocs', requiresCanGenerateDocuments: true },
     { tab: 'fees',      icon: I.Money,  label: 'الأتعاب',     testId: 'nav-more-fees', adminOnly: true },
     { tab: 'admin',     icon: I.Shield, label: 'لوحة الإدارة', testId: 'nav-more-admin', adminOnly: true },
 ];
@@ -86,8 +79,8 @@ export const desktopOnlyNavItems: NavItem[] = [
  * الديسكتوب فقط. مخصص لاستهلاك DesktopSidebar (B1) — CommandDock.tsx
  * نفسه لسه بيبني قوائمه الخاصة بشكل مستقل ومش بيستدعي الدالة دي.
  */
-export function navItemsFor(isAdmin: boolean, canGenerateDocuments: boolean): NavItem[] {
+export function navItemsFor(isAdmin: boolean): NavItem[] {
     return [...primaryNavItems, ...moreNavItems, ...desktopOnlyNavItems].filter(
-        (item) => (!item.adminOnly || isAdmin) && (!item.requiresCanGenerateDocuments || canGenerateDocuments)
+        (item) => (!item.adminOnly || isAdmin)
     );
 }
