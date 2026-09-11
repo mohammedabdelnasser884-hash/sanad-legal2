@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import {
   login, loginAs, logout,
   createTestUser, deleteTestUser, createAndOpenCase, expectToast,
+  createClient, createReminder, createStandaloneSession,
 } from './utils';
 
 // المرحلة 5 (خطة تفعيل الصلاحيات التفصيلية، 16 أغسطس 2026) — بند
@@ -150,6 +151,108 @@ test('lawyer: يقدر يضيف قضية لكن مايشوفش زرار حذف �
   await page.getByTestId('case-detail-view').waitFor({ state: 'visible', timeout: 15_000 });
   await expect(page.getByTestId('edit-case-trigger')).toBeVisible();
   await expect(page.getByTestId('case-delete-trigger')).toHaveCount(0);
+});
+
+test('lawyer: يقدر يعدّل موكل/تذكير/جلسة مستقلة، ما يقدرش يحذف موكل أو جلسة (يقدر يحذف تذكير)', async ({ page }) => {
+  // المرحلة 5 (خطة تفعيل الصلاحيات الناقصة — الموكلين/التذكيرات/الجلسات
+  // المستقلة، 11 سبتمبر 2026): بيغطي مصفوفة قسم 3 من الخطة على مستوى
+  // الواجهة (نفس فلسفة تست lawyer الأول فوق بتاع القضايا، بس للتلات
+  // أقسام الجداد). طبقة RLS نفس المصفوفة مغطاة بالاستعلام اليدوي اللي
+  // اتأكد قبل كده على الإنتاج (has_permission + سياسات clients/
+  // case_sessions/reminders) — الملف ده بيغطي مرحلة 3 (إخفاء الأزرار) بس.
+  const fullName = `اختبار E2E صلاحيات lawyer موكلين - ${Date.now()}`;
+  const clientName = `اختبار E2E صلاحيات - موكل - ${Date.now()}`;
+  const reminderTitle = `اختبار E2E صلاحيات - تذكير - ${Date.now()}`;
+  const sessionTitle = `اختبار E2E صلاحيات - جلسة مستقلة - ${Date.now()}`;
+  cleanupName = fullName;
+
+  // 1) admin: ينشئ مستخدم lawyer تجريبي + موكل + تذكير + جلسة مستقلة
+  await login(page);
+  const { email, password } = await createTestUser(page, fullName, { role: 'lawyer' });
+  await expectToast(page, '✅ تم إنشاء حساب ' + fullName);
+  await createClient(page, clientName);
+  await createReminder(page, reminderTitle);
+  await createStandaloneSession(page, sessionTitle);
+
+  // 2) يبدّل لحساب lawyer التجريبي
+  await logout(page);
+  await loginAs(page, email, password);
+
+  // الموكل: can_edit_clients=true (زرار تعديل ظاهر)، can_delete_clients=false
+  // افتراضيًا لـlawyer (زرار حذف مختفي كليًا)
+  await page.getByTestId('desktop-nav-clients').click({ timeout: 15_000 });
+  const clientRow = page.getByTestId('clients-table-row').filter({ hasText: clientName });
+  await clientRow.first().getByTestId('clients-table-row-open').click({ timeout: 15_000 });
+  await page.getByTestId('client-detail-view').waitFor({ state: 'visible', timeout: 15_000 });
+  await expect(page.getByTestId('client-edit-trigger')).toBeVisible();
+  await expect(page.getByTestId('client-delete-trigger')).toHaveCount(0);
+  await page.getByTestId('client-detail-close').click();
+
+  // التذكير: can_edit_reminders/can_delete_reminders = true الاتنين
+  // افتراضيًا لـlawyer (منطق مختلف عن الموكلين/الجلسات — راجع قسم 3
+  // من الخطة: التذكيرات أداة شخصية للمتابعة، فالحذف حر لـlawyer)
+  await page.getByTestId('desktop-nav-reminders').click({ timeout: 15_000 });
+  const reminderCard = page.locator('[data-testid^="reminder-card-"]').filter({ hasText: reminderTitle }).first();
+  await reminderCard.waitFor({ state: 'visible', timeout: 15_000 });
+  const reminderId = (await reminderCard.getAttribute('data-testid'))!.replace('reminder-card-', '');
+  await expect(page.getByTestId(`reminder-edit-btn-${reminderId}`)).toBeVisible();
+  await expect(page.getByTestId(`reminder-delete-btn-${reminderId}`)).toBeVisible();
+
+  // الجلسة المستقلة: can_edit_sessions=true (زرار تعديل ظاهر)،
+  // can_delete_sessions=false افتراضيًا لـlawyer (زرار حذف مختفي كليًا)
+  await page.getByTestId('desktop-nav-calendar').click({ timeout: 15_000 });
+  const today = new Date().getDate().toString();
+  await page.getByTestId('calendar-day').filter({ hasText: new RegExp(`^${today}$`) }).first().click();
+  const sessionCard = page.getByTestId('calendar-session-card').filter({ hasText: sessionTitle });
+  await sessionCard.first().click({ timeout: 15_000 });
+  await page.getByTestId('standalone-session-detail-modal').waitFor({ state: 'visible', timeout: 15_000 });
+  await expect(page.getByTestId('standalone-session-edit-trigger')).toBeVisible();
+  await expect(page.getByTestId('standalone-session-delete-trigger')).toHaveCount(0);
+});
+
+test('viewer: مايشوفش زرار تعديل ولا حذف فى الموكلين ولا التذكيرات ولا الجلسات المستقلة', async ({ page }) => {
+  const fullName = `اختبار E2E صلاحيات viewer موكلين - ${Date.now()}`;
+  const clientName = `اختبار E2E صلاحيات - موكل viewer - ${Date.now()}`;
+  const reminderTitle = `اختبار E2E صلاحيات - تذكير viewer - ${Date.now()}`;
+  const sessionTitle = `اختبار E2E صلاحيات - جلسة مستقلة viewer - ${Date.now()}`;
+  cleanupName = fullName;
+
+  await login(page);
+  const { email, password } = await createTestUser(page, fullName, { role: 'viewer' });
+  await expectToast(page, '✅ تم إنشاء حساب ' + fullName);
+  await createClient(page, clientName);
+  await createReminder(page, reminderTitle);
+  await createStandaloneSession(page, sessionTitle);
+
+  await logout(page);
+  await loginAs(page, email, password);
+
+  // الموكل: مفيش تعديل ولا حذف خالص لـviewer
+  await page.getByTestId('desktop-nav-clients').click({ timeout: 15_000 });
+  const clientRow = page.getByTestId('clients-table-row').filter({ hasText: clientName });
+  await clientRow.first().getByTestId('clients-table-row-open').click({ timeout: 15_000 });
+  await page.getByTestId('client-detail-view').waitFor({ state: 'visible', timeout: 15_000 });
+  await expect(page.getByTestId('client-edit-trigger')).toHaveCount(0);
+  await expect(page.getByTestId('client-delete-trigger')).toHaveCount(0);
+  await page.getByTestId('client-detail-close').click();
+
+  // التذكير: مفيش تعديل ولا حذف خالص لـviewer
+  await page.getByTestId('desktop-nav-reminders').click({ timeout: 15_000 });
+  const reminderCard = page.locator('[data-testid^="reminder-card-"]').filter({ hasText: reminderTitle }).first();
+  await reminderCard.waitFor({ state: 'visible', timeout: 15_000 });
+  const reminderId = (await reminderCard.getAttribute('data-testid'))!.replace('reminder-card-', '');
+  await expect(page.getByTestId(`reminder-edit-btn-${reminderId}`)).toHaveCount(0);
+  await expect(page.getByTestId(`reminder-delete-btn-${reminderId}`)).toHaveCount(0);
+
+  // الجلسة المستقلة: مفيش تعديل ولا حذف خالص لـviewer
+  await page.getByTestId('desktop-nav-calendar').click({ timeout: 15_000 });
+  const today = new Date().getDate().toString();
+  await page.getByTestId('calendar-day').filter({ hasText: new RegExp(`^${today}$`) }).first().click();
+  const sessionCard = page.getByTestId('calendar-session-card').filter({ hasText: sessionTitle });
+  await sessionCard.first().click({ timeout: 15_000 });
+  await page.getByTestId('standalone-session-detail-modal').waitFor({ state: 'visible', timeout: 15_000 });
+  await expect(page.getByTestId('standalone-session-edit-trigger')).toHaveCount(0);
+  await expect(page.getByTestId('standalone-session-delete-trigger')).toHaveCount(0);
 });
 
 test('viewer: مايشوفش زرار إضافة قضية ولا إضافة موكل ولا تاب الأتعاب', async ({ page }) => {
