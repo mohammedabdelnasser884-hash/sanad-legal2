@@ -3,6 +3,7 @@ import { I } from '../../constants';
 import { formatPhoneForWhatsApp } from '../../shared/lib/validation';
 import { useResolvedStorageUrl } from '../../shared/lib/storage';
 import { useModalPresentation } from '../../shared/hooks/useModalPresentation';
+import { checkPermission, type PermissionBearing } from '../../shared/lib/permissions';
 import EditClientModal from './EditClientModal';
 import type { ClientRow } from '../../types';
 import type { MappedCase } from '../../hooks/useAppData';
@@ -15,6 +16,12 @@ interface ClientDetailModalProps {
     onDelete?: (clientId: string) => void;
     onEdit?: (clientId: string, form: ClientFormData, idFile?: File | null, poaFile?: File | null, idBackFile?: File | null) => void | boolean | Promise<void | boolean>;
     onOpenCase?: (ca: MappedCase) => void;
+    // ⚡ NEW (خطة تفعيل الصلاحيات الناقصة — الموكلين، 11 سبتمبر 2026):
+    // لزراري "تعديل"/"حذف" تحت — نفس نمط CaseDetailView.tsx بالظبط
+    // (canEditCase/canDeleteCase). اختياري عشان مايكسرش أي مكان قديم
+    // بيستخدم المودال من غير profile — بيتعامل زي "مفيش صلاحية" (false)
+    // فى الحالة دي، أأمن افتراضي لو فيه استدعاء ناقص.
+    profile?: PermissionBearing | null;
     // 🔒 FIX (تقرير الموثوقية — نتيجة 1): بتتمرر لـ EditClientModal عشان
     // تقفل زرار "حفظ التعديلات" أثناء عملية الحفظ — نفس الـ state
     // (savingClient) المستخدمة أصلاً في NewClientModal.
@@ -26,8 +33,12 @@ interface ClientDetailModalProps {
     initialEditMode?: boolean;
 }
 
-function ClientDetailModal({client:c, cases, onClose, onDelete, onEdit, onOpenCase, savingClient, initialEditMode = false}: ClientDetailModalProps){
+function ClientDetailModal({client:c, cases, onClose, onDelete, onEdit, onOpenCase, savingClient, initialEditMode = false, profile}: ClientDetailModalProps){
     const typeLabel=c.type==='individual'?'فرد':c.type==='company'?'شركة':c.type==='government'?'جهة حكومية':c.type||'فرد';
+    // ⚡ NEW (مرحلة 3 خطة الصلاحيات — الموكلين): can_edit_clients/
+    // can_delete_clients لزراري "تعديل"/"حذف" فى الهيدر تحت.
+    const canEditClient = checkPermission(profile, 'can_edit_clients');
+    const canDeleteClient = checkPermission(profile, 'can_delete_clients');
     const [imgViewer,setImgViewer]=useState<string|null>(null);
     const [showEditClient, setShowEditClient]=useState(initialEditMode);
     // 🔒 FIX (باگ "رجوع/إلغاء/حفظ من فورم تعديل الموكل مش بيرجّع فورم
@@ -76,12 +87,16 @@ function ClientDetailModal({client:c, cases, onClose, onDelete, onEdit, onOpenCa
                 React.createElement('div',{className:"flex items-center justify-between mb-4"},
                     React.createElement('button',{onClick:onClose,'data-testid':'client-detail-close',className:"w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-slate-400 hover:text-white transition-colors"},"✕"),
                     React.createElement('div',{className:"flex items-center gap-2"},
-                        React.createElement('button',{
+                        // ⚡ NEW (مرحلة 3 خطة الصلاحيات): بيختفي كليًا لمن ليس له
+                        // can_edit_clients.
+                        canEditClient && React.createElement('button',{
                             onClick:()=>setShowEditClient(true),
                             'data-testid': 'client-edit-trigger',
                             className:"w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-premium-gold hover:border-premium-gold/30 active:scale-90 transition-all"
                         },React.createElement(I.Edit)),
-                        React.createElement('button',{
+                        // ⚡ NEW (مرحلة 3 خطة الصلاحيات): بيختفي كليًا لمن ليس له
+                        // can_delete_clients.
+                        canDeleteClient && React.createElement('button',{
                             onClick:()=>{ onDelete?.(c.id); },
                             className:"w-8 h-8 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 hover:bg-rose-500/20 active:scale-90 transition-all"
                         },React.createElement(I.Trash))
