@@ -19,12 +19,21 @@ interface NotesSectionProps {
   handleUpdateNote: (noteId: string, content: string) => void | Promise<void>;
   deletingNoteId: string | null;
   setConfirmDeleteNote: (v: { id: string; preview: string } | null) => void;
+  // ⚡ NEW (متابعة خطة تفعيل الصلاحيات الناقصة — بند Backlog قسم 4/9،
+  // 11 سبتمبر 2026): بتتحكم فى ظهور زراير تعديل/حذف الملاحظة تحت —
+  // نفس صلاحيتَي تعديل/حذف القضية نفسها (can_edit_cases/can_delete_cases)،
+  // مفيش مفتاح مستقل. اختياريان عشان مايكسروش أي استدعاء قديم لـ
+  // NotesSection من غير الـprops دول — بيتعاملوا زي "مفيش صلاحية"
+  // (false) فى الحالة دي، أأمن افتراضي.
+  canEditNote?: boolean;
+  canDeleteNote?: boolean;
 }
 
 function NotesSection({
   showAddNote, setShowAddNote, noteText, setNoteText, handleAddNote, savingNote,
   loadingSessions, notes, editingNoteId, setEditingNoteId, editingNoteText, setEditingNoteText,
   handleUpdateNote, deletingNoteId, setConfirmDeleteNote,
+  canEditNote = false, canDeleteNote = false,
 }: NotesSectionProps) {
   return React.createElement('div', {className: "space-y-4 fade-in"},
                 React.createElement('button', {
@@ -97,18 +106,18 @@ function NotesSection({
                                             )
                                         ),
                                         React.createElement('div', {className: "flex flex-col gap-1.5 shrink-0"},
-                                            React.createElement('button', {
+                                            canEditNote && React.createElement('button', {
                                                 onClick: () => { setEditingNoteId(n.id); setEditingNoteText(n.content as string); },
                                                 'data-testid': 'note-edit-trigger',
                                                 className: "w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center text-slate-500 hover:text-premium-gold active:scale-90 transition-all"
                                             }, React.createElement(I.Edit)),
-                                            deletingNoteId === n.id
+                                            canDeleteNote && (deletingNoteId === n.id
                                             ? React.createElement('div',{className:"w-6 h-6 flex items-center justify-center"}, React.createElement(I.Spin))
                                             : React.createElement('button', {
                                                 onClick: () => { setConfirmDeleteNote({id: n.id, preview: ((n.content as string)||'').slice(0,40)}); },
                                                 'data-testid': 'note-delete-trigger',
                                                 className: "w-6 h-6 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-400 hover:bg-rose-500/20 active:scale-90 transition-all"
-                                            }, React.createElement(I.Trash))
+                                            }, React.createElement(I.Trash)))
                                         )
                                     )
                                 )
