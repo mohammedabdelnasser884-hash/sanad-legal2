@@ -269,6 +269,51 @@ export default async function globalTeardown(): Promise<void> {
     if (clientsErr) console.warn('  ⚠️ فشل حذف من clients:', clientsErr.message);
     counts.clients = clientsCount ?? 0;
 
+    // 🆕 FIX (تنظيف تام — 11 سبتمبر 2026): المستخدمين التجريبيين
+    // (profiles) اللي بيعملهم createTestUser في e2e/utils.ts (admin-users
+    // و permissions-matrix) كانوا مش متنظفين خالص هنا — لو تست فشل قبل ما
+    // يوصل لـdeleteTestUser بتاعه في afterEach (أو afterEach نفسه فشل)،
+    // صف الـprofile كان بيفضل عالق للأبد. مع تفعيل trigger B2 (حد
+    // max_users لكل تينانت) على الإنتاج، البقايا دي بقت بتتراكم لحد ما
+    // تينانت الـE2E يعدّي حد الخطة بتاعه — فبقى أي محاولة إضافة مستخدم
+    // جديدة في التستات بتترفض بـsubscription-limit-modal بدل ما تنجح،
+    // وده اللي كسّر admin-users.spec.ts و permissions-matrix.spec.ts في
+    // رن 11 سبتمبر (الكارت الجديد مبيظهرش → timeout 15 ثانية في
+    // createTestUser، وبعدين afterEach نفسه بيفشل لإن الـmodal backdrop
+    // بيحجب زرار الرجوع).
+    //
+    // بنمسح حساب الـAuth الأول (زي delete_user في admin-actions تمامًا)
+    // عشان منسيبش حساب Auth يتيم بكلمة سر شغالة من غير بروفايل، وبعدين
+    // صف الـprofile. استثنينا حساب تسجيل الدخول بتاع الـE2E نفسه
+    // (E2E_TEST_EMAIL) كحماية إضافية فوق شرط الماركر.
+    const e2eLoginEmail = process.env.E2E_TEST_EMAIL;
+    const { data: markedProfiles, error: profilesSelectErr } = await supabase
+      .from('profiles')
+      .select('id, user_id, email')
+      .ilike('full_name', MARKER);
+    if (profilesSelectErr) {
+      console.warn('  ⚠️ فشل قراءة profiles للتنظيف:', profilesSelectErr.message);
+    } else {
+      const toDelete = (markedProfiles ?? []).filter((p) => p.email !== e2eLoginEmail);
+      let deletedProfiles = 0;
+      for (const profile of toDelete) {
+        if (profile.user_id) {
+          const { error: authDelErr } = await supabase.auth.admin.deleteUser(profile.user_id as string);
+          if (authDelErr && !/not.*found/i.test(authDelErr.message)) {
+            console.warn(`  ⚠️ فشل حذف حساب Auth (${profile.user_id}):`, authDelErr.message);
+            continue; // متمسحش الـprofile لو حساب الـAuth فشل حذفه (نفس منطق delete_user)
+          }
+        }
+        const { error: profileDelErr } = await supabase.from('profiles').delete().eq('id', profile.id);
+        if (profileDelErr) {
+          console.warn(`  ⚠️ فشل حذف profile (${profile.id}):`, profileDelErr.message);
+          continue;
+        }
+        deletedProfiles += 1;
+      }
+      counts.profiles = deletedProfiles;
+    }
+
     // المهام (reminders): كانت مش متضافة في التنظيف خالص قبل كده —
     // createReminder() في utils.ts بيعمل صفوف بعنوان فيه الماركر.
     const { error: remindersErr, count: remindersCount } = await supabase
