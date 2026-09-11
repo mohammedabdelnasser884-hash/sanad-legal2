@@ -107,8 +107,12 @@ export function validateUploadFile(file: { name: string; size: number }): string
     const isPdfWord = PDF_WORD_EXTENSIONS.includes(ext);
     const maxSize = isPdfWord ? MAX_PDF_WORD_SIZE_BYTES : MAX_UPLOAD_SIZE_BYTES;
     if (file.size > maxSize) {
+        // ⚠️ لازم تفضل تبدأ بـ"حجم الملف أكبر من المسموح" حرفيًا — تست
+        // useCaseDocuments.test.ts بيتحقق بـstringContaining على الجزء ده
+        // بالظبط (كان الرسالة الموحّدة القديمة قبل تقسيمها PDF/Word مقابل
+        // الباقي). راجع اللوج الفاشل 11 سبتمبر 2026.
         return isPdfWord
-            ? 'حجم ملفات PDF/Word أكبر من المسموح (1 ميجابايت كحد أقصى).'
+            ? 'حجم الملف أكبر من المسموح لملفات PDF/Word (1 ميجابايت كحد أقصى).'
             : 'حجم الملف أكبر من المسموح (20 ميجابايت كحد أقصى).';
     }
     return null;
