@@ -11,7 +11,7 @@ import type { EditUserForm } from './hooks/useAdminUsers';
 // لغير admin بلا استثناء (قرار 2.1)، فمفيش معنى نعرضهم كـcheckbox قابل
 // للتفعيل. الاسمين لسه موجودين فى PERMISSION_KEYS/has_permission() عادي،
 // بس هنا بالذات بنستبعدهم من العرض.
-const EDITABLE_PERMISSION_KEYS = PERMISSION_KEYS.filter(
+export const EDITABLE_PERMISSION_KEYS = PERMISSION_KEYS.filter(
   (k): k is Exclude<PermissionKey, 'can_view_fees' | 'can_edit_fees'> =>
     k !== 'can_view_fees' && k !== 'can_edit_fees'
 );
