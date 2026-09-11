@@ -84,7 +84,18 @@ function TermsAcceptanceScreen({ profile, onAccepted }: TermsAcceptanceScreenPro
             React.createElement('h3', { className: 'text-xs font-black text-[#C9A84C] mb-1' }, section.title),
             React.createElement('p', { className: 'text-[11px] leading-relaxed text-slate-300' }, section.body)
           )
-        )
+        ),
+        // 🆕 لينك اختياري لصفحة السياسات والخصوصية الكاملة في اللاندنج
+        // بيدج — النص فوق ملخّص بس. فتحه اختياري، لكن الموافقة بالـ
+        // checkbox+زرار تحت بتعتبر قبول للسياسات كاملة سواء المستخدم
+        // فتح اللينك أو لأ.
+        React.createElement('a', {
+          href: 'https://sanad-nizam.vercel.app/privacy',
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          'data-testid': 'terms-full-policy-link',
+          className: 'block text-[11px] font-bold text-[#C9A84C] underline underline-offset-2 pb-1',
+        }, 'اطلع على كافة السياسات والخصوصية')
       ),
 
       // فوتر: checkbox + زرار
@@ -97,7 +108,7 @@ function TermsAcceptanceScreen({ profile, onAccepted }: TermsAcceptanceScreenPro
             className: `w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center border transition-all ${agreed ? 'bg-[#C9A84C] border-[#C9A84C]' : 'border-white/20 bg-white/5'}`,
           }, agreed && React.createElement(I.Check, { className: 'w-3.5 h-3.5 text-premium-bg' })),
           React.createElement('span', { className: 'text-[11px] text-slate-300 leading-relaxed' },
-            'قرأت الشروط والأحكام وإخلاء المسؤولية أعلاه بالكامل، وأوافق عليها.')
+            'قرأت الشروط والأحكام وإخلاء المسؤولية أعلاه بالكامل، بما فيها السياسات الكاملة المذكورة أعلاه، وأوافق عليها.')
         ),
         err && React.createElement('p', { className: 'text-[10px] text-red-400' }, err),
         React.createElement('button', {
