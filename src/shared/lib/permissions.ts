@@ -54,6 +54,12 @@ export function isAdminRole(profile: RoleBearing | null | undefined): boolean {
 // (نفس نمط القفل الأساسي بتاع can_view_fees/can_edit_fees، مش نمط
 // can_edit_fees القابل للتخصيص عبر profiles.permissions). راجع
 // checkPermission() تحت لتفاصيل القفل نفسه.
+// ⚡ NEW (خطة تفعيل الصلاحيات الناقصة — الموكلين والتذكيرات والجلسات،
+// 11 سبتمبر 2026): 6 مفاتيح جديدة بنفس نمط can_edit_cases/
+// can_delete_cases — قابلة للتخصيص لكل مستخدم عبر profiles.permissions،
+// من غير قفل أساسي زي الأتعاب. can_edit_sessions/can_delete_sessions
+// بيتحكموا فى الجلسات *المستقلة* بس (case_id IS NULL) — جلسات القضايا
+// لسه تابعة لـcan_edit_cases/can_delete_cases (قرار قسم 6.7 من الخطة).
 export const PERMISSION_KEYS = [
   'can_add_cases',
   'can_edit_cases',
@@ -61,6 +67,12 @@ export const PERMISSION_KEYS = [
   'can_view_fees',
   'can_edit_fees',
   'can_add_clients',
+  'can_edit_clients',
+  'can_delete_clients',
+  'can_edit_reminders',
+  'can_delete_reminders',
+  'can_edit_sessions',
+  'can_delete_sessions',
   'can_view_reports',
   'can_export_data',
   'can_generate_documents',
@@ -96,6 +108,12 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, Required<PermissionsMap>
     can_view_fees: true,
     can_edit_fees: true,
     can_add_clients: true,
+    can_edit_clients: true,
+    can_delete_clients: true,
+    can_edit_reminders: true,
+    can_delete_reminders: true,
+    can_edit_sessions: true,
+    can_delete_sessions: true,
     can_view_reports: true,
     can_export_data: true,
     can_generate_documents: true,
@@ -107,6 +125,12 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, Required<PermissionsMap>
     can_view_fees: false,
     can_edit_fees: false,
     can_add_clients: true,
+    can_edit_clients: true,
+    can_delete_clients: false,
+    can_edit_reminders: true,
+    can_delete_reminders: true,
+    can_edit_sessions: true,
+    can_delete_sessions: false,
     can_view_reports: true,
     can_export_data: false,
     can_generate_documents: true,
@@ -118,6 +142,12 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<UserRole, Required<PermissionsMap>
     can_view_fees: false,
     can_edit_fees: false,
     can_add_clients: false,
+    can_edit_clients: false,
+    can_delete_clients: false,
+    can_edit_reminders: false,
+    can_delete_reminders: false,
+    can_edit_sessions: false,
+    can_delete_sessions: false,
     can_view_reports: true,
     can_export_data: false,
     can_generate_documents: false,
