@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from '../../shared/lib/notifications';
 import { validateUploadFile, resolveStorageUrl } from '../../shared/lib/storage';
+import { compressImageFile } from '../../shared/lib/imageCompression';
 import { logActivity, buildAddSnapshot, buildDeleteSnapshot } from '../../shared/lib/dataAccess';
 import { ilikeOrClause } from '../../shared/lib/sanitize';
 import { Inp } from '@/shared/ui/Inp';
@@ -19,6 +20,11 @@ import type { NavigationState } from '../../useNavigation';
 import { checkPermission, type PermissionBearing } from '../../shared/lib/permissions';
 
 const PAGE_SIZE = 15;
+
+// نفس قائمة الصور المسموحة في validateUploadFile (storage.ts) — هنا بنستخدمها
+// بس عشان نقرر هل نضغط الملف قبل الرفع ولا لأ (pdf/doc/xls/ppt بتفضل زي ما هي).
+// (نفس المنطق بالظبط المطبّق في useCaseDocuments.ts لمستندات القضية.)
+const IMAGE_UPLOAD_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
 // ─────────────────────────────────────────────────────────
 //  🔒 FIX (متابعة تقرير فحص أعطال الأوف لاين — 13 أغسطس 2026): تاب أرشيف
@@ -213,13 +219,18 @@ function ArchiveTab({cases, clients, nav, profile}: ArchiveTabProps){
         fetchDocs(0, searchQ, filterCat, sort, false);
     };
 
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const f = (e.target.files as FileList)[0];
         if (!f) return;
         const validationError = validateUploadFile(f);
         if (validationError) { toast('❌ ' + validationError, true); e.target.value = ''; return; }
-        setPendingFile(f);
-        setDocLabel(f.name.replace(/\.[^/.]+$/,''));
+        // 🆕 ضغط الصور قبل الرفع (نفس compressImageFile المستخدمة لصور
+        // البطاقة/التوكيل، وبنفس المنطق المطبّق في useCaseDocuments.ts
+        // لمستندات القضية) — PDF/Word/Excel بيفضلوا زي ما هم.
+        const ext = (f.name.split('.').pop() || '').toLowerCase();
+        const finalFile = IMAGE_UPLOAD_EXTENSIONS.includes(ext) ? await compressImageFile(f) : f;
+        setPendingFile(finalFile);
+        setDocLabel(finalFile.name.replace(/\.[^/.]+$/,''));
         setShowForm(true);
     };
 
