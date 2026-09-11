@@ -115,8 +115,12 @@ describe('usePartyFields', () => {
         expect(result.current.validation.valid).toBe(false);
 
         act(() => result.current.updateParty(id, 'national_id', '12345678901234'));
+        // 🆕 (طلب "العنوان إجباري لكل الأطراف" — 11 سبتمبر 2026): بقى
+        // إجباري لكل طرف — لازم يتملى هنا كمان عشان التست يعدي لـ true.
+        act(() => result.current.updateParty(id, 'address', 'شارع النصر، القاهرة'));
         act(() => result.current.updateParty(result.current.defendants[0].id, 'name', 'محمود سعيد إبراهيم'));
         act(() => result.current.updateParty(result.current.defendants[0].id, 'capacity', 'مدعى عليه'));
+        act(() => result.current.updateParty(result.current.defendants[0].id, 'address', 'شارع الجمهورية، الجيزة'));
 
         expect(result.current.validation.valid).toBe(true);
     });
@@ -128,10 +132,10 @@ describe('usePartyFields', () => {
     it('من غير domainContext: طرف عنده client_id بيعدي فحص الاسم زي ما كان (توافق خلفي)', () => {
         const { result } = renderHook(() => usePartyFields({
             initialPlaintiffs: [
-                { id: 'p1', side: 'plaintiff', is_client: true, name: 'أحمد', capacity: 'مدعي', national_id: '12345678901234', address: '', power_of_attorney: '', client_id: 'c1' },
+                { id: 'p1', side: 'plaintiff', is_client: true, name: 'أحمد', capacity: 'مدعي', national_id: '12345678901234', address: 'عنوان تجريبي', power_of_attorney: '', client_id: 'c1' },
             ],
             initialDefendants: [
-                { id: 'd1', side: 'defendant', is_client: false, name: 'محمود سعيد إبراهيم', capacity: 'مدعى عليه', national_id: '', address: '', power_of_attorney: '', client_id: null },
+                { id: 'd1', side: 'defendant', is_client: false, name: 'محمود سعيد إبراهيم', capacity: 'مدعى عليه', national_id: '', address: 'عنوان تجريبي', power_of_attorney: '', client_id: null },
             ],
         }));
         expect(result.current.validation.valid).toBe(true);
@@ -141,7 +145,7 @@ describe('usePartyFields', () => {
         const ctx: PartyDomainContext = { primaryClientId: null, clients: [] }; // c1 مش موجود خالص → orphan
         const { result } = renderHook(() => usePartyFields({
             initialPlaintiffs: [
-                { id: 'p1', side: 'plaintiff', is_client: true, name: 'أحمد', capacity: 'مدعي', national_id: '12345678901234', address: '', power_of_attorney: '', client_id: 'c1' },
+                { id: 'p1', side: 'plaintiff', is_client: true, name: 'أحمد', capacity: 'مدعي', national_id: '12345678901234', address: 'عنوان تجريبي', power_of_attorney: '', client_id: 'c1' },
             ],
             domainContext: ctx,
         }));
@@ -153,10 +157,10 @@ describe('usePartyFields', () => {
         const ctx: PartyDomainContext = { primaryClientId: null, clients: [{ id: 'c1' }] };
         const { result } = renderHook(() => usePartyFields({
             initialPlaintiffs: [
-                { id: 'p1', side: 'plaintiff', is_client: true, name: 'أحمد', capacity: 'مدعي', national_id: '12345678901234', address: '', power_of_attorney: '', client_id: 'c1' },
+                { id: 'p1', side: 'plaintiff', is_client: true, name: 'أحمد', capacity: 'مدعي', national_id: '12345678901234', address: 'عنوان تجريبي', power_of_attorney: '', client_id: 'c1' },
             ],
             initialDefendants: [
-                { id: 'd1', side: 'defendant', is_client: false, name: 'محمود سعيد إبراهيم', capacity: 'مدعى عليه', national_id: '', address: '', power_of_attorney: '', client_id: null },
+                { id: 'd1', side: 'defendant', is_client: false, name: 'محمود سعيد إبراهيم', capacity: 'مدعى عليه', national_id: '', address: 'عنوان تجريبي', power_of_attorney: '', client_id: null },
             ],
             domainContext: ctx,
         }));
@@ -166,7 +170,7 @@ describe('usePartyFields', () => {
     it('بيقبل initialPlaintiffs/initialDefendants جاهزين (وضع تعديل قضية موجودة)', () => {
         const { result } = renderHook(() => usePartyFields({
             initialPlaintiffs: [
-                { id: 'existing-1', side: 'plaintiff', is_client: true, name: 'أحمد', capacity: 'مدعي', national_id: '12345678901234', address: '', power_of_attorney: '', client_id: null },
+                { id: 'existing-1', side: 'plaintiff', is_client: true, name: 'أحمد', capacity: 'مدعي', national_id: '12345678901234', address: 'عنوان تجريبي', power_of_attorney: '', client_id: null },
             ],
         }));
         expect(result.current.plaintiffs).toHaveLength(1);
