@@ -91,7 +91,6 @@ const PERMISSION_LABELS: Record<PermissionKey, { label: string; icon: string }> 
   can_delete_sessions:  { label:'حذف جلسات مستقلة',   icon:'📅' },
   can_view_reports: { label:'عرض التقارير',    icon:'📊' },
   can_export_data:  { label:'تصدير البيانات',  icon:'📤' },
-  can_generate_documents: { label:'توليد المستندات', icon:'📄' },
 };
 
 // ─────────────────────────────────────────
