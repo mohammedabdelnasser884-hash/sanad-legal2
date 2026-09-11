@@ -98,6 +98,7 @@ function ClientDetailModal({client:c, cases, onClose, onDelete, onEdit, onOpenCa
                         // can_delete_clients.
                         canDeleteClient && React.createElement('button',{
                             onClick:()=>{ onDelete?.(c.id); },
+                            'data-testid': 'client-delete-trigger',
                             className:"w-8 h-8 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 hover:bg-rose-500/20 active:scale-90 transition-all"
                         },React.createElement(I.Trash))
                     )
