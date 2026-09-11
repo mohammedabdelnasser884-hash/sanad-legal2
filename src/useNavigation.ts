@@ -27,7 +27,6 @@ export type TabName =
   | 'reminders'
   | 'team'
   | 'documents'
-  | 'legalDocs'
   | 'admin';
 
 export type ModalName =
@@ -57,7 +56,7 @@ export type ModalName =
 
 const VALID_TABS: TabName[] = [
   'dashboard', 'cases', 'clients', 'calendar',
-  'fees', 'reminders', 'team', 'documents', 'legalDocs', 'admin',
+  'fees', 'reminders', 'team', 'documents', 'admin',
 ];
 
 const TAB_PATHS: Record<TabName, string> = {
@@ -69,7 +68,6 @@ const TAB_PATHS: Record<TabName, string> = {
   reminders:  '/reminders',
   team:       '/team',
   documents:  '/documents',
-  legalDocs:  '/legal-documents',
   admin:      '/admin',
 };
 
