@@ -282,6 +282,20 @@ export default async function globalTeardown(): Promise<void> {
     // createTestUser، وبعدين afterEach نفسه بيفشل لإن الـmodal backdrop
     // بيحجب زرار الرجوع).
     //
+    // ⚠️ FIX (تغطية admin-security.spec.ts — 11 سبتمبر 2026): الشرط الأصلي
+    // (full_name ILIKE MARKER بس) كان بيفوّت مستخدمين createTestUser في
+    // admin-security.spec.ts تحديدًا — أسماؤهم فيها "اختبار" بس مش
+    // "اختبار E2E" الحرفية اللي بيدور عليها MARKER (مثال: 'أمان اختبار
+    // 1789...'، 'قفل اختبار 1789...'). الإيميل هو الماركر الوحيد المتسق
+    // فعليًا في كل ملفات createTestUser الثلاثة (admin-users،
+    // admin-security، permissions-matrix) — بالنمط الثابت
+    // e2e-user-<timestamp>@example.com. الشرط بقى OR بين الاتنين (مش
+    // استبدال) عشان يفضل يغطي full_name القديم كمان من غير أي تغيير
+    // سلوك، ويقفل فجوة admin-security.spec.ts اللي كانت السبب الفعلي في
+    // فشل رن 11 سبتمبر. (⚠️ الـ'%' هنا حرفي زي MARKER فوق بالظبط — مش
+    // %25-encoded — لإن .or() بتاخد النص وتسيبه لـfetch/PostgREST يتعامل
+    // معاه؛ نفس المنطق المطبّق فعليًا في استعلامي activity_log/clients فوق.)
+    //
     // بنمسح حساب الـAuth الأول (زي delete_user في admin-actions تمامًا)
     // عشان منسيبش حساب Auth يتيم بكلمة سر شغالة من غير بروفايل، وبعدين
     // صف الـprofile. استثنينا حساب تسجيل الدخول بتاع الـE2E نفسه
@@ -290,7 +304,7 @@ export default async function globalTeardown(): Promise<void> {
     const { data: markedProfiles, error: profilesSelectErr } = await supabase
       .from('profiles')
       .select('id, user_id, email')
-      .ilike('full_name', MARKER);
+      .or(`full_name.ilike.${MARKER},email.ilike.e2e-user-%@example.com`);
     if (profilesSelectErr) {
       console.warn('  ⚠️ فشل قراءة profiles للتنظيف:', profilesSelectErr.message);
     } else {
