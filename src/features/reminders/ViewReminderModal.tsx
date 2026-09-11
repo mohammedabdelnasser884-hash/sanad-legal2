@@ -109,6 +109,7 @@ function ViewReminderModal({
                 // لمن ليس له can_edit_reminders.
                 canEdit && React.createElement('button',{
                     onClick: () => { setViewTarget(null); setEditTarget(viewTarget); setEditForm({title:viewTarget.title as string,due_date:viewTarget.due_date as string,notes:viewTarget.notes||''}); },
+                    'data-testid': 'view-reminder-edit-trigger',
                     className:"flex-1 py-2.5 bg-white/5 text-slate-300 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 active:scale-95"
                 }, React.createElement(I.Edit,{className:"w-3.5 h-3.5"}), "تعديل"),
                 // حذف
@@ -116,6 +117,7 @@ function ViewReminderModal({
                 // لمن ليس له can_delete_reminders.
                 canDelete && React.createElement('button',{
                     onClick: () => { setViewTarget(null); setConfirmDeleteTarget(viewTarget); },
+                    'data-testid': 'view-reminder-delete-trigger',
                     className:"w-10 py-2.5 bg-rose-500/10 text-rose-400 rounded-xl flex items-center justify-center active:scale-95"
                 }, React.createElement(I.Trash,{className:"w-3.5 h-3.5"}))
             )
