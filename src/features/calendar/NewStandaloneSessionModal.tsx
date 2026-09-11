@@ -759,8 +759,13 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
                         label: 'رقم القضية',
                         required: true,
                         value: form.case_number,
-                        onChange: set('case_number'),
+                        // 🔢 FIX (طلب مباشر — 11 سبتمبر 2026): "رقم الدعوى" أرقام بس
+                        // (بدون أي حروف أو رموز) — نفس onlyDigits المستخدمة لحقول
+                        // الأرقام التانية (موبايل السكرتير...)، من غير حد أقصى للطول
+                        // هنا (بعكس السنة اللي محددة بـ4 أرقام).
+                        onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm((f: Form) => ({ ...f, case_number: onlyDigits(e.target.value) })),
                         placeholder: 'مثال: 1234',
+                        inputMode: 'numeric',
                         'data-testid': 'new-session-case-number'
                     }),
                     React.createElement(Inp, {
