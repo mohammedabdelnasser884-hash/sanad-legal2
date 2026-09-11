@@ -64,6 +64,8 @@ test('2) إنشاء جلسة مستقلة بأكتر من طرف — فاليد�
   await page.getByTestId('new-session-plaintiff-0-name').fill('موكل اختبار E2E متعدد');
   await page.getByTestId('new-session-plaintiff-0-capacity').fill('مدعي');
   await page.getByTestId('new-session-plaintiff-0-national-id').fill('11111111111111');
+  // 🆕 (طلب "العنوان إجباري لكل الأطراف" — 11 سبتمبر 2026)
+  await page.getByTestId('new-session-plaintiff-0-address').fill('عنوان تجريبي E2E');
   await page.getByTestId('new-session-plaintiff-subform-save').click();
 
   // إضافة مدعى عليه تاني — من غير ما نملأ "المسمى القانوني" الجامع،
@@ -73,9 +75,11 @@ test('2) إنشاء جلسة مستقلة بأكتر من طرف — فاليد�
   await page.getByTestId('party-side-card-defendant').click();
   await page.getByTestId('new-session-defendant-0-name').fill('مدعى عليه أول E2E');
   await page.getByTestId('new-session-defendant-0-capacity').fill('مدعى عليه');
+  await page.getByTestId('new-session-defendant-0-address').fill('عنوان مدعى عليه أول E2E');
   await page.getByTestId('new-session-add-defendant').click();
   await page.getByTestId('new-session-defendant-1-name').fill('مدعى عليه ثاني E2E');
   await page.getByTestId('new-session-defendant-1-capacity').fill('مدعى عليه');
+  await page.getByTestId('new-session-defendant-1-address').fill('عنوان مدعى عليه ثاني E2E');
 
   // زرار الحفظ العام للجلسة لازم يفشل (توست تحذير) طول ما المسمى
   // القانوني الجامع لجهة المدعى عليهم فاضي.
@@ -129,6 +133,8 @@ test('3) مودال "تحويل لقضية؟" — إنشاء قضية من بي�
   await page.getByTestId('new-session-plaintiff-0-name').fill(`اختبار E2E - موكل تحويل ${Date.now()}`);
   await page.getByTestId('new-session-plaintiff-0-capacity').fill('مدعي');
   await page.getByTestId('new-session-plaintiff-0-national-id').fill(`3${Date.now()}`.slice(0, 14));
+  // 🆕 (طلب "العنوان إجباري لكل الأطراف" — 11 سبتمبر 2026)
+  await page.getByTestId('new-session-plaintiff-0-address').fill('عنوان تجريبي E2E');
   await page.getByTestId('new-session-plaintiff-subform-save').click();
   // 🔒 FIX (نفس باج تست 4 تحت — usePartyFields.ts بيبدأ دايمًا بطرف مدعى-عليه
   // فاضي افتراضيًا حتى لو مالمسناهوش، وفاليديشن casePartiesValidation.ts
