@@ -92,15 +92,24 @@ const ALLOWED_UPLOAD_EXTENSIONS = [
     'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
     'jpg', 'jpeg', 'png', 'gif', 'webp',
 ];
-const MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
+const MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024; // 20MB — الحد العام (صور/إكسل/بوربوينت)
+// 🆕 حد أضيق لملفات PDF/Word تحديدًا (1 ميجا) — طلب صريح من صاحب المشروع
+// (11 سبتمبر 2026)، منفصل عن حد الـ20 ميجا العام. الفحص بالامتداد نفسه
+// المستخدم أصلاً فوق، مش بـfile.type.
+const PDF_WORD_EXTENSIONS = ['pdf', 'doc', 'docx'];
+const MAX_PDF_WORD_SIZE_BYTES = 1 * 1024 * 1024; // 1MB
 
 export function validateUploadFile(file: { name: string; size: number }): string | null {
     const ext = (file.name.split('.').pop() || '').toLowerCase();
     if (!ALLOWED_UPLOAD_EXTENSIONS.includes(ext)) {
         return `صيغة الملف ".${ext}" غير مسموحة. الصيغ المسموحة: PDF، Word، Excel، PowerPoint، أو صورة (jpg/png/gif/webp).`;
     }
-    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-        return 'حجم الملف أكبر من المسموح (20 ميجابايت كحد أقصى).';
+    const isPdfWord = PDF_WORD_EXTENSIONS.includes(ext);
+    const maxSize = isPdfWord ? MAX_PDF_WORD_SIZE_BYTES : MAX_UPLOAD_SIZE_BYTES;
+    if (file.size > maxSize) {
+        return isPdfWord
+            ? 'حجم ملفات PDF/Word أكبر من المسموح (1 ميجابايت كحد أقصى).'
+            : 'حجم الملف أكبر من المسموح (20 ميجابايت كحد أقصى).';
     }
     return null;
 }
