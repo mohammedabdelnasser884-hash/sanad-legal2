@@ -712,7 +712,11 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
             activeSection === 'notes' && React.createElement(NotesSection, { showAddNote, setShowAddNote, noteText, setNoteText, handleAddNote, savingNote, loadingSessions, notes, editingNoteId, setEditingNoteId, editingNoteText, setEditingNoteText, handleUpdateNote, deletingNoteId, setConfirmDeleteNote }),
 
             // ═══ المستندات ═══
-            activeSection === 'docs' && React.createElement(DocsSection, { fileInputRef, handleFileSelect, showDocForm, setShowDocForm, pendingFile, setPendingFile, docLabel, setDocLabel, docCategory, setDocCategory, handleUploadDoc, uploadingDoc, docs, docSearch, setDocSearch, loadingSessions, setViewingDoc, setConfirmDeleteDoc, deletingDocId, onGenerateDocument: onGenerateDocument ? () => onGenerateDocument(caseData.id) : undefined }),
+            // ⚡ NEW (متابعة خطة تفعيل الصلاحيات الناقصة — بند Backlog
+            // قسم 6.5، 11 سبتمبر 2026): canDeleteCase (محسوبة أصلاً فوق
+            // لزرار حذف القضية) بتتمرر هنا كـcanDeleteDocument — حذف
+            // مستند القضية بيتبع نفس صلاحية حذف القضية نفسها بالقرار.
+            activeSection === 'docs' && React.createElement(DocsSection, { fileInputRef, handleFileSelect, showDocForm, setShowDocForm, pendingFile, setPendingFile, docLabel, setDocLabel, docCategory, setDocCategory, handleUploadDoc, uploadingDoc, docs, docSearch, setDocSearch, loadingSessions, setViewingDoc, setConfirmDeleteDoc, deletingDocId, canDeleteDocument: canDeleteCase, onGenerateDocument: onGenerateDocument ? () => onGenerateDocument(caseData.id) : undefined }),
 
             // ═══ البيانات ═══
             activeSection === 'info' && React.createElement(InfoSection, {
