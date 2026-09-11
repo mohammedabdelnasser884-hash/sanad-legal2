@@ -639,7 +639,8 @@ function EditCaseModalForm({caseData, onClose, onSave, countryCourts, countryCas
             React.createElement('div', null,
                 React.createElement('label', {className:"block text-[10px] font-bold text-slate-400 mb-1.5"}, "رقم الدعوى الرسمي",React.createElement('span',{className:"text-rose-400 mr-1"},"*")),
                 React.createElement('div', {className:"flex gap-2 items-center"},
-                    React.createElement('input', {value:form.caseNum, onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('caseNum',normalizeArabicDigits(e.target.value)), placeholder:"رقم الدعوى", className:"flex-1 p-3 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600 text-center", style:inpStyle,'data-testid':'edit-case-number'}),
+                    // 🔢 FIX (طلب مباشر — 11 سبتمبر 2026): نفس فيكس فورم إنشاء القضية — "رقم الدعوى" أرقام بس.
+                    React.createElement('input', {value:form.caseNum, onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('caseNum',onlyDigits(e.target.value)), placeholder:"رقم الدعوى", inputMode:"numeric", className:"flex-1 p-3 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600 text-center", style:inpStyle,'data-testid':'edit-case-number'}),
                     React.createElement('span', {className:"text-slate-500 font-black text-sm shrink-0"}, "/"),
                     React.createElement('input', {value:form.caseYear, onChange:(e: React.ChangeEvent<HTMLInputElement>) =>s('caseYear',normalizeArabicDigits(e.target.value)), placeholder:"السنة", maxLength:4, className:"w-24 p-3 text-xs rounded-xl border border-white/10 bg-premium-bg text-white placeholder-slate-600 text-center", style:inpStyle,'data-testid':'edit-case-year'})
                 )
