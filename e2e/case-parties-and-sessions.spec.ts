@@ -28,6 +28,9 @@ test('إنشاء قضية بأكتر من مدعي واحد — فاليديشن
   await page.getByTestId('new-case-type').fill('مدني');
   await page.getByTestId('new-case-circuit').fill('1');
   await page.getByTestId('new-case-court-level').fill('ابتدائي');
+  // 🆕 (طلب مباشر — 11 سبتمبر 2026): تاريخ الجلسة القادمة بقى إجباري.
+  await page.getByTestId('new-case-date-trigger').click();
+  await page.getByTestId('new-case-date-day').filter({ hasText: /^1$/ }).click();
 
   // مدعي أول (موكلنا ⭐) + مدعي تاني (مش موكل، بلا رقم قومي مطلوب)
   await page.getByTestId('party-side-card-plaintiff').click();
@@ -85,6 +88,9 @@ test('ضغط زرار حفظ القضية الجديدة مرتين بسرعة (
   await page.getByTestId('new-case-type').fill('مدني');
   await page.getByTestId('new-case-circuit').fill('1');
   await page.getByTestId('new-case-court-level').fill('ابتدائي');
+  // 🆕 (طلب مباشر — 11 سبتمبر 2026): تاريخ الجلسة القادمة بقى إجباري.
+  await page.getByTestId('new-case-date-trigger').click();
+  await page.getByTestId('new-case-date-day').filter({ hasText: /^1$/ }).click();
   await page.getByTestId('party-side-card-plaintiff').click();
   await page.getByTestId('new-case-plaintiff-0-star').click();
   await page.getByTestId('new-case-plaintiff-0-name').fill('موكل اختبار E2E دبل كليك');
