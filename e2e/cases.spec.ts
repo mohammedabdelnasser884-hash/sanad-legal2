@@ -33,6 +33,9 @@ test('إنشاء قضية جديدة والتأكد من ظهورها في ال�
   await page.getByTestId('new-case-type').fill('مدني');
   await page.getByTestId('new-case-circuit').fill('1');
   await page.getByTestId('new-case-court-level').fill('ابتدائي');
+  // 🆕 (طلب مباشر — 11 سبتمبر 2026): تاريخ الجلسة القادمة بقى إجباري.
+  await page.getByTestId('new-case-date-trigger').click();
+  await page.getByTestId('new-case-date-day').filter({ hasText: /^1$/ }).click();
   // ⚡ CHANGED (خطة "تطوير أطراف الدعوى" — مرحلة 4، 23 يوليو 2026): حقول
   // كل طرف بقت جوه نموذج فرعي (PartySubform) بيتفتح من كارت مطوي، مش
   // ظاهرة مفتوحة دايمًا زي الشكل القديم.
