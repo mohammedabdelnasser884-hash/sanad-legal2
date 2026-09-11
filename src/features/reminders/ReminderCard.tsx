@@ -10,6 +10,12 @@ interface ReminderCardProps {
     onView: (r: ReminderRow) => void;
     onEdit: (r: ReminderRow) => void;
     onDelete: (r: ReminderRow) => void;
+    // ⚡ NEW (خطة تفعيل الصلاحيات الناقصة — التذكيرات، 11 سبتمبر 2026):
+    // بيتحسبوا مرة واحدة فى RemindersTab (الأب) ويتمرروا هنا — نفس
+    // نمط RemindersTab اللي بيحسب حاجات زي pillSections مرة واحدة بدل
+    // ما كل كارت يعيد الحساب لوحده.
+    canEdit: boolean;
+    canDelete: boolean;
 }
 
 const fmtCompletedAt = (iso: string) => {
@@ -20,7 +26,7 @@ const fmtCompletedAt = (iso: string) => {
 
 // BUG-09 FIX: نُقل خارج RemindersTab عشان React ميعتبروش نوع جديد كل render
 // (كان بيسبب unmount/remount كامل لكل الكروت مع كل حرف في البحث)
-function ReminderCard({ r, todayStr, onToggleDone, onView, onEdit, onDelete }: ReminderCardProps){
+function ReminderCard({ r, todayStr, onToggleDone, onView, onEdit, onDelete, canEdit, canDelete }: ReminderCardProps){
     // كاست بسيط: due_date عمود string|null في السكيما، والمقارنة هنا كانت
     // شغالة قبل كده وقت التشغيل حتى لو null (بترجع false) — نفس السلوك بالظبط.
     const isOverdue = !r.done && (r.due_date as string) < todayStr;
@@ -55,12 +61,14 @@ function ReminderCard({ r, todayStr, onToggleDone, onView, onEdit, onDelete }: R
 
             // أزرار
             React.createElement('div',{className:"flex items-center gap-1 shrink-0"},
-                React.createElement('button',{
+                // ⚡ NEW (مرحلة 3 خطة الصلاحيات — التذكيرات): بيختفي كليًا
+                // لمن ليس له can_edit_reminders/can_delete_reminders.
+                canEdit && React.createElement('button',{
                     onClick:(e: React.MouseEvent<HTMLButtonElement>)=>{ e.stopPropagation(); onEdit(r); },
                     'data-testid': `reminder-edit-btn-${r.id}`,
                     className:"w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center text-slate-400 hover:text-premium-gold hover:bg-white/10 active:scale-90"
                 }, React.createElement(I.Edit,{className:"w-3 h-3"})),
-                React.createElement('button',{
+                canDelete && React.createElement('button',{
                     onClick:(e: React.MouseEvent<HTMLButtonElement>)=>{ e.stopPropagation(); onDelete(r); },
                     className:"w-6 h-6 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-400 hover:bg-rose-500/20 active:scale-90"
                 }, React.createElement(I.Trash,{className:"w-3 h-3"}))
