@@ -652,6 +652,7 @@ function DashboardTab({
             onOpenCase: (c: MappedCase) => setSelectedCase(c, 'timeline'),
             countryCourts,
             countryCaseTypes,
+            profile,
         })),
         Dashboard
   );
