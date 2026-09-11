@@ -78,6 +78,17 @@ const PERMISSION_LABELS: Record<PermissionKey, { label: string; icon: string }> 
   can_view_fees:    { label:'عرض الأتعاب',     icon:'💰' },
   can_edit_fees:    { label:'تعديل الأتعاب',   icon:'💳' },
   can_add_clients:  { label:'إضافة موكلين',    icon:'👤' },
+  // ⚡ NEW (خطة تفعيل الصلاحيات الناقصة — الموكلين والتذكيرات
+  // والجلسات، 11 سبتمبر 2026):
+  can_edit_clients:     { label:'تعديل موكلين',    icon:'📝' },
+  can_delete_clients:   { label:'حذف موكلين',      icon:'🗑️' },
+  can_edit_reminders:   { label:'تعديل تذكيرات',   icon:'⏰' },
+  can_delete_reminders: { label:'حذف تذكيرات',     icon:'🔕' },
+  // ملحوظة: دول بيتحكموا فى الجلسات المستقلة بس — جلسات القضايا
+  // لسه تابعة لـcan_edit_cases/can_delete_cases (راجع تعليق الملف
+  // 03-rls-case-sessions-split.sql).
+  can_edit_sessions:    { label:'تعديل جلسات مستقلة', icon:'🗓️' },
+  can_delete_sessions:  { label:'حذف جلسات مستقلة',   icon:'📅' },
   can_view_reports: { label:'عرض التقارير',    icon:'📊' },
   can_export_data:  { label:'تصدير البيانات',  icon:'📤' },
   can_generate_documents: { label:'توليد المستندات', icon:'📄' },
