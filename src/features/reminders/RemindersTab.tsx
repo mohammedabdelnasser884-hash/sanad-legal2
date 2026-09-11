@@ -9,6 +9,7 @@ import ViewReminderModal from './ViewReminderModal';
 import EditReminderModal from './EditReminderModal';
 import AddReminderForm from './AddReminderForm';
 import { useRemindersTab } from './hooks/useRemindersTab';
+import { checkPermission } from '../../shared/lib/permissions';
 import type { ReminderRow, ProfileRow } from '../../types';
 import type { NavigationState } from '../../useNavigation';
 
@@ -38,6 +39,11 @@ function RemindersTab({initialFilter, profile=null, nav, externalRefreshSignal}:
         handleSearchOpen, handleSearchClear, handleSearchChange,
     } = useRemindersTab(initialFilter, profile, externalRefreshSignal);
 
+    // ⚡ NEW (مرحلة 3 خطة الصلاحيات — التذكيرات، 11 سبتمبر 2026): بيتحسبوا
+    // مرة واحدة هنا (بدل كل كارت لوحده) وبيتمرروا لـReminderCard وViewReminderModal.
+    const canEditReminder = checkPermission(profile, 'can_edit_reminders');
+    const canDeleteReminder = checkPermission(profile, 'can_delete_reminders');
+
     const showForm = nav.isOpen('reminderForm') ? showFormRaw : false;
     const viewTarget = nav.isOpen('reminderView') ? viewTargetRaw : null;
     const editTarget = nav.isOpen('reminderEdit') ? editTargetRaw : null;
@@ -48,7 +54,7 @@ function RemindersTab({initialFilter, profile=null, nav, externalRefreshSignal}:
     const setConfirmDeleteTarget = (v: ReminderRow | null) => { setConfirmDeleteTargetRaw(v); if (v) nav.openModal('delete'); else nav.closeModal('delete'); };
 
     // ── مودال عرض المهمة ──
-    const ViewModal = React.createElement(ViewReminderModal, { viewTarget, setViewTarget, handleToggleDone, setEditTarget, setEditForm, setConfirmDeleteTarget });
+    const ViewModal = React.createElement(ViewReminderModal, { viewTarget, setViewTarget, handleToggleDone, setEditTarget, setEditForm, setConfirmDeleteTarget, canEdit: canEditReminder, canDelete: canDeleteReminder });
 
     // مودال تأكيد الحذف (BUG-15 FIX)
     const ConfirmDeleteModal = confirmDeleteTarget && createPortal(React.createElement(DeleteConfirmModal,{
@@ -186,6 +192,8 @@ function RemindersTab({initialFilter, profile=null, nav, externalRefreshSignal}:
                         onView: (t: ReminderRow)=>setViewTarget(t),
                         onEdit: (t: ReminderRow)=>{ setEditTarget(t); setEditForm({title:t.title as string,due_date:t.due_date as string,notes:t.notes||''}); },
                         onDelete: (t: ReminderRow)=>setConfirmDeleteTarget(t),
+                        canEdit: canEditReminder,
+                        canDelete: canDeleteReminder,
                     })),
 
                     // زرار تحميل المزيد للتابات الـ paginated
