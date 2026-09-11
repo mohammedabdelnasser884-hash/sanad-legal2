@@ -70,6 +70,7 @@ function ReminderCard({ r, todayStr, onToggleDone, onView, onEdit, onDelete, can
                 }, React.createElement(I.Edit,{className:"w-3 h-3"})),
                 canDelete && React.createElement('button',{
                     onClick:(e: React.MouseEvent<HTMLButtonElement>)=>{ e.stopPropagation(); onDelete(r); },
+                    'data-testid': `reminder-delete-btn-${r.id}`,
                     className:"w-6 h-6 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-400 hover:bg-rose-500/20 active:scale-90"
                 }, React.createElement(I.Trash,{className:"w-3 h-3"}))
             )
