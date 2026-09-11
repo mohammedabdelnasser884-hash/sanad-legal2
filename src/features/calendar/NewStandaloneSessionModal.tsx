@@ -915,7 +915,15 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
                 }, 'إلغاء'),
                 React.createElement('button', {
                     onClick: handleSave,
-                    disabled: saving || !form.session_date,
+                    // ⚡ FIX (طلب مباشر — 11 سبتمبر 2026): الزرار كان بيتعطل تلقائيًا
+                    // لو "تاريخ الجلسة" فاضي بس (من غير أي رسالة توضح للمستخدم
+                    // السبب)، رغم إن باقي الحقول الإجبارية (المحكمة/رقم القضية/
+                    // السنة...) مكانش بيمنعها زر متعطل أصلاً — كانت بتظهر كرسالة
+                    // toast واضحة وقت الضغط بس (handleSave فوق). الزرار دلوقتي
+                    // فعّال دايمًا (غير وقت الحفظ الفعلي)، وأي حقل ناقص أو غلط —
+                    // بما فيهم تاريخ الجلسة — بيظهر برسالة toast محددة بنفس شكل
+                    // باقي الحقول عند الضغط (الفحص موجود بالفعل في handleSave).
+                    disabled: saving,
                     className: 'flex-2 flex-grow-[2] py-3 rounded-2xl text-xs font-black text-premium-bg transition-all disabled:opacity-40',
                     style: { background: saving ? '#888' : 'linear-gradient(135deg,#d4af37,#f0c040)' },
                     'data-testid': 'new-session-save'
