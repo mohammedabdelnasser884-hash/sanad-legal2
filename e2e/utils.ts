@@ -225,6 +225,10 @@ export async function createCase(page: Page, title: string, opts?: { linkClientN
   await page.getByTestId('new-case-type').fill('مدني');
   await page.getByTestId('new-case-circuit').fill('1');
   await page.getByTestId('new-case-court-level').fill('ابتدائي');
+  // 🆕 (طلب مباشر — 11 سبتمبر 2026): تاريخ الجلسة القادمة بقى إجباري —
+  // راجع نفس الفحص في NewCaseModal.tsx.handleSave.
+  await page.getByTestId('new-case-date-trigger').click();
+  await page.getByTestId('new-case-date-day').filter({ hasText: /^1$/ }).click();
   // ⚡ CHANGED (خطة "تطوير أطراف الدعوى" — مرحلة 4، 23 يوليو 2026): حقول
   // كل طرف بقت جوه نموذج فرعي منفصل (PartySubform) بيتفتح من كارت مطوي
   // (party-side-card-<side>)، مش ظاهرة مفتوحة دايمًا زي الشكل القديم —
