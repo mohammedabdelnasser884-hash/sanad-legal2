@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { toast } from '../../../shared/lib/notifications';
 import { I } from '../../../constants';
 import { Inp } from '@/shared/ui/Inp';
-import { ROLE_CONFIG } from '../icons';
+import { ROLE_CONFIG, PERMISSION_LABELS } from '../icons';
+import { EDITABLE_PERMISSION_KEYS } from './EditUserModal';
+import { ROLE_DEFAULT_PERMISSIONS, isValidRole, type PermissionKey } from '@/shared/lib/permissions';
 import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import type { AddUserForm } from './hooks/useAdminUsers';
 
@@ -104,10 +106,66 @@ function UserFormModal({ onClose, onSave, loading, title = 'إضافة مستخ�
                             const rc = ROLE_CONFIG[role];
                             return React.createElement('button', {
                                 key: role, type: "button",
-                                onClick: () => s('role', role),
+                                onClick: () => setForm((p: UserForm) => ({ ...p, role, permissions: {} })),
                                 'data-testid': 'admin-user-role-' + role,
                                 className: `py-2.5 rounded-xl text-[11px] font-black border transition-all ${form.role === role ? `${rc.bg} ${rc.color} ${rc.border}` : 'bg-white/5 text-slate-500 border-white/10'}`
                             }, rc.label);
+                        })
+                    )
+                ),
+
+                // ⚡ NEW (طلب تفعيل تخصيص الصلاحيات وقت إضافة المستخدم،
+                // 11 سبتمبر 2026): نفس UI الصلاحيات التفصيلية الموجود فى
+                // EditUserModal.tsx بالظبط، بس هنا بيتفعّل وقت الإنشاء
+                // مباشرة بدل ما يحتاج المستخدم رجعة لشاشة "تعديل" منفصلة.
+                // الباك إند (create_lawyer فى admin-actions) كان جاهز أصلاً
+                // بيقبل ويحفظ body.permissions من غير أي تعديل مطلوب —
+                // الفجوة كانت هنا فى الواجهة بس. مفيش checkbox لـ
+                // can_view_fees/can_edit_fees هنا برضو (مقفولين على admin
+                // بلا استثناء، زي شاشة التعديل بالظبط).
+                form.role !== 'admin' && React.createElement('div', null,
+                    React.createElement('div', { className: "flex items-center justify-between mb-2" },
+                        React.createElement('label', { className: "text-[10px] font-bold text-slate-400" }, "الصلاحيات التفصيلية"),
+                        React.createElement('div', { className: "flex items-center gap-2 text-[8px] text-slate-500" },
+                            React.createElement('span', { className: "flex items-center gap-1" },
+                                React.createElement('span', { className: "w-2 h-2 rounded-full bg-white/15 inline-block" }), "افتراضي الدور"),
+                            React.createElement('span', { className: "flex items-center gap-1" },
+                                React.createElement('span', { className: "w-2 h-2 rounded-full bg-[#C9A84C] inline-block" }), "استثناء صريح")
+                        )
+                    ),
+                    React.createElement('p', { className: "text-[9px] text-slate-500 mb-2 leading-relaxed" },
+                        "عرض/تعديل الأتعاب مقفول تمامًا لغير المدير ولا يظهر هنا."),
+                    React.createElement('div', { className: "space-y-1.5" },
+                        EDITABLE_PERMISSION_KEYS.map((key: PermissionKey) => {
+                            const roleDefault = isValidRole(form.role) ? ROLE_DEFAULT_PERMISSIONS[form.role][key] : false;
+                            const explicit = form.permissions?.[key];
+                            const isOverride = explicit !== undefined && explicit !== null;
+                            const checked = isOverride ? !!explicit : roleDefault;
+                            const meta = PERMISSION_LABELS[key];
+                            return React.createElement('button', {
+                                key,
+                                type: 'button',
+                                onClick: () => setForm((p: UserForm) => ({
+                                    ...p,
+                                    permissions: { ...p.permissions, [key]: !checked },
+                                })),
+                                'data-testid': 'admin-adduser-permission-' + key,
+                                className: `w-full flex items-center justify-between p-2 rounded-lg border transition-all ${
+                                    isOverride ? 'bg-[#C9A84C]/8 border-[#C9A84C]/25' : 'bg-white/5 border-white/8'
+                                }`
+                            },
+                                React.createElement('span', { className: "flex items-center gap-2 text-[10px] font-bold text-white" },
+                                    React.createElement('span', null, meta?.icon),
+                                    meta?.label || key
+                                ),
+                                React.createElement('span', {
+                                    className: `w-9 h-5 rounded-full transition-all relative flex-shrink-0 ${checked ? 'bg-[#C9A84C]' : 'bg-slate-600'}`
+                                },
+                                    React.createElement('span', {
+                                        className: `absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all shadow ${checked ? 'right-0.5' : 'left-0.5'}`
+                                    })
+                                )
+                            );
                         })
                     )
                 ),
