@@ -9,6 +9,7 @@ import { escapeHtml } from '../../../shared/lib/sanitize';
 import { PDF_FONT_FAMILY, PDF_FONT_LINK } from '../../../shared/lib/pdf';
 import DeleteConfirmModal from '@/shared/modals/DeleteConfirmModal';
 import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
+import { checkPermission, type PermissionBearing } from '../../../shared/lib/permissions';
 import type { SessionWithLegacyFields } from '../../../types';
 import { findClientDataMismatches, fetchSessionClientParties, unlinkClientFromSessionParty, makeOfflineTempId, buildCaseInsertData, linkSessionGroupToCase } from '../hooks/caseSessionLinkingShared';
 import { checkCaseNumberDuplicate } from '@/shared/lib/caseValidation';
@@ -70,9 +71,19 @@ interface StandaloneSessionDetailModalProps {
     // EditStandaloneModalProps فوق.
     countryCourts?: string[];
     countryCaseTypes?: string[];
+    // ⚡ NEW (خطة تفعيل الصلاحيات الناقصة — الجلسات، 11 سبتمبر 2026):
+    // لزراري "تعديل"/"حذف" تحت — نفس نمط CaseDetailView.tsx. اختياري
+    // عشان مايكسرش أي استدعاء قديم؛ بيتعامل زي "مفيش صلاحية" لو غايب.
+    profile?: PermissionBearing | null;
 }
 
-function StandaloneSessionDetailModal({ session: partialSession, db, onClose, onDone, onNotify, onClientAdded, clients = [], onOpenClientProfile, onOpenCase, countryCourts, countryCaseTypes, clientProfileOpen = false }: StandaloneSessionDetailModalProps) {
+function StandaloneSessionDetailModal({ session: partialSession, db, onClose, onDone, onNotify, onClientAdded, clients = [], onOpenClientProfile, onOpenCase, countryCourts, countryCaseTypes, clientProfileOpen = false, profile }: StandaloneSessionDetailModalProps) {
+    // ⚡ NEW (مرحلة 3 خطة الصلاحيات — الجلسات المستقلة): can_edit_sessions/
+    // can_delete_sessions لزراري "تعديل"/"حذف" تحت. الجلسة دي مستقلة
+    // دايمًا (case_id IS NULL) — المودال ده أصلًا مخصص للجلسات المستقلة
+    // بس، فمفيش داعي لفحص case_id هنا زي ما اتعمل فى RLS.
+    const canEditSession = checkPermission(profile, 'can_edit_sessions');
+    const canDeleteSession = checkPermission(profile, 'can_delete_sessions');
     // 🆕 (F3): مودال "تفاصيل الجلسة" — بيستخدم isDesktop بس (بدون تغيير
     // max-width، الشاشة دي عرض/قراءة مش فورم شبكي فمحتاجاش عرض أوسع).
     const modalPresentation = useModalPresentation();
@@ -850,13 +861,17 @@ ${PDF_FONT_LINK}
                         className: 'flex-1 py-2.5 rounded-2xl text-xs font-bold text-slate-300 bg-white/5 hover:bg-white/10 transition-all disabled:opacity-50',
                         'data-testid': 'standalone-session-export-pdf-trigger'
                     }, exportingPdf ? '⏳ ...' : '📄 طباعة'),
-                    React.createElement('button', {
+                    // ⚡ NEW (مرحلة 3 خطة الصلاحيات — الجلسات المستقلة):
+                    // بيختفي كليًا لمن ليس له can_edit_sessions.
+                    canEditSession && React.createElement('button', {
                         onClick: () => setShowEdit(true),
                         disabled: loadingFull,
                         className: 'flex-1 py-2.5 rounded-2xl text-xs font-bold text-slate-300 bg-white/5 hover:bg-white/10 transition-all disabled:opacity-50',
                         'data-testid': 'standalone-session-edit-trigger'
                     }, '✏️ تعديل'),
-                    React.createElement('button', {
+                    // ⚡ NEW (مرحلة 3 خطة الصلاحيات — الجلسات المستقلة):
+                    // بيختفي كليًا لمن ليس له can_delete_sessions.
+                    canDeleteSession && React.createElement('button', {
                         onClick: () => setShowConfirmDelete(true),
                         disabled: deleting,
                         className: 'flex-1 py-2.5 rounded-2xl text-xs font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 transition-all disabled:opacity-40',
