@@ -47,15 +47,19 @@ test('قضية متعددة الأطراف ببيانات سليمة (مسمى �
   await page.getByTestId('new-case-plaintiff-0-name').fill('موكل اختبار E2E مراجعة');
   await page.getByTestId('new-case-plaintiff-0-capacity').fill('مدعي');
   await page.getByTestId('new-case-plaintiff-0-national-id').fill(`4${Date.now()}`.slice(0, 14));
+  // 🆕 (طلب "العنوان إجباري لكل الأطراف" — 11 سبتمبر 2026)
+  await page.getByTestId('new-case-plaintiff-0-address').fill('عنوان تجريبي E2E');
   await page.getByTestId('new-case-add-plaintiff').click();
   await page.getByTestId('new-case-plaintiff-1-name').fill('وريث اختبار E2E مراجعة');
   await page.getByTestId('new-case-plaintiff-1-capacity').fill('وريث');
+  await page.getByTestId('new-case-plaintiff-1-address').fill('عنوان وريث تجريبي E2E');
   await page.getByTestId('new-case-plaintiff-legal-title').fill('ورثة المرحوم اختبار E2E مراجعة');
   await page.getByTestId('new-case-plaintiff-subform-save').click();
 
   await page.getByTestId('party-side-card-defendant').click();
   await page.getByTestId('new-case-defendant-0-name').fill('خصم اختبار E2E مراجعة');
   await page.getByTestId('new-case-defendant-0-capacity').fill('مدعى عليه');
+  await page.getByTestId('new-case-defendant-0-address').fill('عنوان خصم تجريبي E2E');
   await page.getByTestId('new-case-defendant-subform-save').click();
   await page.getByTestId('new-case-save').click();
 
