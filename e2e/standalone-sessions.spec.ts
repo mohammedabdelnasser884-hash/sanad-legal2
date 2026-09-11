@@ -144,6 +144,12 @@ test('3) مودال "تحويل لقضية؟" — إنشاء قضية من بي�
   await page.getByTestId('party-side-card-defendant').click();
   await page.getByTestId('new-session-defendant-0-name').fill(`خصم تحويل E2E ${Date.now()}`);
   await page.getByTestId('new-session-defendant-0-capacity').fill('مدعى عليه');
+  // 🔒 FIX (تحليل لوجز E2E — 11 سبتمبر 2026): نفس "العنوان إجباري لكل
+  // الأطراف" المطبّق على المدعي فوق — كان ناقص هنا للمدعى-عليه، فـ
+  // new-session-save كان بيرجّع توست "عنوان الطرف مطلوب" بدل ما يفتح
+  // مودال "تحويل لقضية؟"، وpostsave-create-case كان بيفضل مستني 60
+  // ثانية من غير ما يظهر أصلاً.
+  await page.getByTestId('new-session-defendant-0-address').fill('عنوان خصم تجريبي E2E');
   await page.getByTestId('new-session-defendant-subform-save').click();
   await page.getByTestId('new-session-save').click();
 
@@ -210,6 +216,10 @@ test('4) حفظ الجلسة المستقلة أوفلاين', async ({ page, co
   await page.getByTestId('new-session-plaintiff-0-name').fill('موكل أوفلاين E2E');
   await page.getByTestId('new-session-plaintiff-0-capacity').fill('مدعي');
   await page.getByTestId('new-session-plaintiff-0-national-id').fill(`5${Date.now()}`.slice(0, 14));
+  // 🔒 FIX (تحليل لوجز E2E — 11 سبتمبر 2026): "العنوان إجباري لكل
+  // الأطراف" (casePartiesValidation.ts) — من غيره new-session-save كان
+  // بيرجّع توست "عنوان الطرف مطلوب" بدل توست الأوفلاين المتوقع.
+  await page.getByTestId('new-session-plaintiff-0-address').fill('عنوان تجريبي E2E');
   await page.getByTestId('new-session-plaintiff-subform-save').click();
   // ⚠️ FIX (تحليل لوجز E2E — 26 يوليو 2026): usePartyFields.ts بيبدأ
   // دايمًا بطرف مدعى-عليه فاضي افتراضيًا حتى لو التست ملوش قصد يضيفه —
@@ -220,6 +230,9 @@ test('4) حفظ الجلسة المستقلة أوفلاين', async ({ page, co
   await page.getByTestId('party-side-card-defendant').click();
   await page.getByTestId('new-session-defendant-0-name').fill('خصم أوفلاين E2E');
   await page.getByTestId('new-session-defendant-0-capacity').fill('مدعى عليه');
+  // 🔒 FIX (تحليل لوجز E2E — 11 سبتمبر 2026): نفس فيكس المدعي فوق —
+  // راجع تعليقه الكامل.
+  await page.getByTestId('new-session-defendant-0-address').fill('عنوان خصم تجريبي E2E');
   await page.getByTestId('new-session-defendant-subform-save').click();
 
   await context.setOffline(true);
