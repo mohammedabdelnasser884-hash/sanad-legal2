@@ -87,11 +87,6 @@ export interface DesktopSidebarProps {
     tab: TabName;
     setTab: (tab: TabName) => void;
     isAdmin: boolean;
-    /** ⚡ NEW (سجل قرارات تقرير المستندات القانونية، بند 6 — 26 أغسطس
-     *  2026): checkPermission(profile, 'can_generate_documents') من
-     *  App.tsx — بيتحكم في ظهور عنصر "المستندات القانونية" بس (نفس
-     *  نمط isAdmin مع 'fees'/'admin'). */
-    canGenerateDocuments: boolean;
     /** نفس handleAIButtonClick الممرّرة لـCommandDock — بتتولى منطق
      *  قفل القسم لغير السوبر أدمن بنفسها، السايدبار مش محتاج يعرف التفاصيل. */
     onAIClick: (v: boolean) => void;
@@ -134,12 +129,11 @@ function SidebarTooltip({ label }: { label: string }) {
     }, label);
 }
 
-function DesktopSidebar({ tab, setTab, isAdmin, canGenerateDocuments, onAIClick }: DesktopSidebarProps) {
+function DesktopSidebar({ tab, setTab, isAdmin, onAIClick }: DesktopSidebarProps) {
     const { collapsed, toggleCollapsed } = useSidebarCollapsed();
     useSidebarWidthVar(collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH);
 
-    const isVisible = (item: NavItem) =>
-        (!item.adminOnly || isAdmin) && (!item.requiresCanGenerateDocuments || canGenerateDocuments);
+    const isVisible = (item: NavItem) => (!item.adminOnly || isAdmin);
     const visiblePrimary = primaryNavItems.filter(isVisible);
     const visibleMore = moreNavItems.filter(isVisible);
     const visibleDesktopOnly = desktopOnlyNavItems.filter(isVisible);
