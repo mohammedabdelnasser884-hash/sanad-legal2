@@ -374,7 +374,11 @@ function AppModals({
             // لو جينا هنا عن طريق زرار "✏️ عدّل من ملف الموكل"، نفتح فورم
             // التعديل على طول بدل ما المستخدم يحتاج يضغط تاني.
             initialEditMode: !!selectedClientEditMode,
-            onOpenCase: (ca) => { nav.closeModal('clientDetail'); _setSelectedClient(null); setSelectedCase(ca); }
+            onOpenCase: (ca) => { nav.closeModal('clientDetail'); _setSelectedClient(null); setSelectedCase(ca); },
+            // ⚡ NEW (مرحلة 3 خطة الصلاحيات — الموكلين، 11 سبتمبر 2026):
+            // profile متوفر أصلًا فى AppModalsProps (بيتمرر لـCaseDetailView
+            // وAILegalAssistant تحت بنفس الطريقة).
+            profile,
         }),
         // ⚡ Suspense مطلوب هنا لأن CaseDetailView بقى React.lazy فوق — نفس
         // فكرة AILegalAssistant/NewStandaloneSessionModal بالظبط.
