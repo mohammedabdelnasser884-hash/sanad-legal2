@@ -709,7 +709,17 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
             activeSection === 'timeline' && React.createElement(TimelineSection, { showAddSession, setShowAddSession, sessionForm, setSessionForm, handleAddSession, savingSession, loadingSessions, sessions, editingSession, setEditingSession, handleUpdateSession, setSessionUpdateTarget, deletingSessionId, setConfirmDeleteSession }), // end sessions outer div
 
             // ═══ الملاحظات ═══
-            activeSection === 'notes' && React.createElement(NotesSection, { showAddNote, setShowAddNote, noteText, setNoteText, handleAddNote, savingNote, loadingSessions, notes, editingNoteId, setEditingNoteId, editingNoteText, setEditingNoteText, handleUpdateNote, deletingNoteId, setConfirmDeleteNote }),
+            activeSection === 'notes' && React.createElement(NotesSection, {
+                showAddNote, setShowAddNote, noteText, setNoteText, handleAddNote, savingNote,
+                loadingSessions, notes, editingNoteId, setEditingNoteId, editingNoteText, setEditingNoteText,
+                handleUpdateNote, deletingNoteId, setConfirmDeleteNote,
+                // ⚡ NEW (متابعة خطة تفعيل الصلاحيات الناقصة — بند Backlog
+                // قسم 4/9، 11 سبتمبر 2026): canEditCase/canDeleteCase
+                // (محسوبتان أصلاً فوق لزراير القضية نفسها) بيتمرروا هنا
+                // كـcanEditNote/canDeleteNote — نفس منطق تمرير canDeleteCase
+                // لـDocsSection تحت.
+                canEditNote: canEditCase, canDeleteNote: canDeleteCase,
+            }),
 
             // ═══ المستندات ═══
             // ⚡ NEW (متابعة خطة تفعيل الصلاحيات الناقصة — بند Backlog
