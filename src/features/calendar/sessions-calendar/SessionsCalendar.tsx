@@ -8,6 +8,7 @@ import { I } from '../../../constants';
 import type { MappedCase, MappedClient } from '../../../hooks/useAppData';
 import type { CaseSessionRow } from '../../../types';
 import type { NavigationState } from '../../../useNavigation';
+import type { PermissionBearing } from '../../../shared/lib/permissions';
 // ⚡ PERF (خطة تحسين الأداء، المرحلة 2 — 6 سبتمبر 2026): كان static import
 // رغم إن المودال بيتعرض بس لما standaloneTarget يتحدد (شرط `&&` تحت) —
 // نفس الفيكس المطبَّق في DashboardTab.tsx. حوّلناه لـReact.lazy مع Suspense
@@ -39,6 +40,10 @@ interface SessionsCalendarProps {
     // (COUNTRY_CONFIGS[country]).
     countryCourts?: string[];
     countryCaseTypes?: string[];
+    // ⚡ NEW (خطة تفعيل الصلاحيات الناقصة — الجلسات، 11 سبتمبر 2026):
+    // بيتمرر لـStandaloneSessionDetailModal لحساب can_edit_sessions/
+    // can_delete_sessions.
+    profile?: PermissionBearing | null;
 }
 
 // شكل صف case_sessions اللي بيترجع من استعلامي fetchMissedCount هنا
@@ -53,7 +58,7 @@ interface OverdueReminderRow {
     done: boolean;
 }
 
-function SessionsCalendar({ cases, clients, onOpenCase, onOpenReminders, onClientAdded, initialTab, nav, onOpenClientProfile, externalRefreshSignal, countryCourts, countryCaseTypes }: SessionsCalendarProps & { externalRefreshSignal?: number }) {
+function SessionsCalendar({ cases, clients, onOpenCase, onOpenReminders, onClientAdded, initialTab, nav, onOpenClientProfile, externalRefreshSignal, countryCourts, countryCaseTypes, profile }: SessionsCalendarProps & { externalRefreshSignal?: number }) {
     const [activeTab, setActiveTab] = useState<'month'|'calendar'|'missed'>(initialTab || 'calendar');
     const [missedCount, setMissedCount] = useState(0);
     // النوع الأعم (CalendarSessionRow) بيغطي كل الاستخدامات التلاتة (Calendar/Missed/Month)
@@ -151,6 +156,7 @@ function SessionsCalendar({ cases, clients, onOpenCase, onOpenReminders, onClien
             onOpenCase,
             countryCourts,
             countryCaseTypes,
+            profile,
         })),
         React.createElement('div', { className: "space-y-2 fade-in" },
 
