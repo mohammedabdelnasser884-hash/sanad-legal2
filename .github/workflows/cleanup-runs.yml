@@ -1,0 +1,23 @@
+name: Cleanup Workflow Runs
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  delete-runs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all previous workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          repo="${{ github.repository }}"
+          gh run list --repo "$repo" --limit 1000 --json databaseId -q '.[].databaseId' | while read -r id; do
+            if [ "$id" != "$GITHUB_RUN_ID" ]; then
+              echo "Deleting run $id"
+              gh run delete "$id" --repo "$repo" || true
+            fi
+          done
