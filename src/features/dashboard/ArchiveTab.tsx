@@ -16,6 +16,7 @@ import { recordError, recordSuccess, trackQueryOutcome } from '../../systemHealt
 import type { MappedCase, MappedClient } from '../../hooks/useAppData';
 import type { CaseDocumentRow } from '../../types';
 import type { NavigationState } from '../../useNavigation';
+import { checkPermission, type PermissionBearing } from '../../shared/lib/permissions';
 
 const PAGE_SIZE = 15;
 
@@ -49,9 +50,19 @@ interface ArchiveTabProps {
     cases: MappedCase[];
     clients: MappedClient[];
     nav: NavigationState;
+    // ⚡ NEW (متابعة خطة تفعيل الصلاحيات الناقصة — بند Backlog قسم 6.5،
+    // 11 سبتمبر 2026): لزرار حذف المستند تحت — تاب "المستندات" ده شاشة
+    // أرشيف عامة (كل مستندات القضايا، مش جوه قضية معينة) متاحة لأي دور
+    // من قائمة "المزيد"، فمحتاجة نفس الفحص اللي جوه CaseDetailView.tsx.
+    // اختياري عشان مايكسرش أي استدعاء قديم — بيتعامل زي "مفيش صلاحية"
+    // (false) فى الحالة دي، أأمن افتراضي.
+    profile?: PermissionBearing | null;
 }
 
-function ArchiveTab({cases, clients, nav}: ArchiveTabProps){
+function ArchiveTab({cases, clients, nav, profile}: ArchiveTabProps){
+    // نفس صلاحية حذف القضية (can_delete_cases) — بالقرار، حذف مستند
+    // القضية يتبع نفس صلاحية حذف القضية نفسها، مفيش مفتاح مستقل.
+    const canDeleteDocument = checkPermission(profile, 'can_delete_cases');
     const [docs, setDocs]           = useState<CaseDocumentRow[]>([]);
     const [docsTotal, setDocsTotal] = useState(0);
     const [docsPage, setDocsPage]   = useState(0);
@@ -449,7 +460,10 @@ function ArchiveTab({cases, clients, nav}: ArchiveTabProps){
                             React.createElement('div',{className:"flex items-center gap-1 shrink-0"},
                                 canPreview&&React.createElement('button',{onClick:()=>setViewingDoc(doc),className:"w-7 h-7 rounded-lg bg-purple-500/10 border border-purple-500/15 flex items-center justify-center text-purple-400 active:scale-90 text-sm"},"👁"),
                                 React.createElement('a',{href:doc.file_url as string,target:'_blank',rel:'noreferrer',className:"w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 active:scale-90"},React.createElement(I.Download,{className:"w-3.5 h-3.5"})),
-                                React.createElement('button',{onClick:()=>setConfirmDeleteDoc(doc),disabled:deletingId===doc.id,className:"w-7 h-7 rounded-lg bg-rose-500/5 border border-rose-500/10 flex items-center justify-center text-rose-400/60 hover:text-rose-400 active:scale-90 disabled:opacity-40"},deletingId===doc.id?React.createElement(I.Spin):React.createElement(I.Trash,{className:"w-3.5 h-3.5"}))
+                                // ⚡ NEW (متابعة خطة تفعيل الصلاحيات الناقصة — بند
+                                // Backlog قسم 6.5): بيختفي كليًا لمن ليس له
+                                // can_delete_cases.
+                                canDeleteDocument && React.createElement('button',{'data-testid':'archive-doc-delete-trigger',onClick:()=>setConfirmDeleteDoc(doc),disabled:deletingId===doc.id,className:"w-7 h-7 rounded-lg bg-rose-500/5 border border-rose-500/10 flex items-center justify-center text-rose-400/60 hover:text-rose-400 active:scale-90 disabled:opacity-40"},deletingId===doc.id?React.createElement(I.Spin):React.createElement(I.Trash,{className:"w-3.5 h-3.5"}))
                             )
                         );
                     }),
