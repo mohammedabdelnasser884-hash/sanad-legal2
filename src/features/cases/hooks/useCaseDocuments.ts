@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { db } from '../../../supabaseClient';
 import { toast } from '../../../shared/lib/notifications';
 import { validateUploadFile, resolveStorageUrl } from '../../../shared/lib/storage';
+import { compressImageFile } from '../../../shared/lib/imageCompression';
 import { logActivity, buildDeleteSnapshot, buildAddSnapshot } from '../../../shared/lib/dataAccess';
 import { getCurrentTenantId } from '../../../constants';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
@@ -11,10 +12,16 @@ import type { MappedCase } from '../../../hooks/useAppData';
 
 export type CaseDocWithUrl = CaseDocumentRow & { file_url: string | null };
 
+// نفس قائمة الصور المسموحة في validateUploadFile (storage.ts) — هنا بنستخدمها
+// بس عشان نقرر هل نضغط الملف قبل الرفع ولا لأ (pdf/doc/xls/ppt بتفضل زي ما هي).
+const IMAGE_UPLOAD_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
 /**
  * منطق رفع/حذف/اختيار مستندات القضية — منقول حرفيًا من useCaseDetailActions.ts
- * (نفس المنطق تمامًا، صفر تغيير سلوك). بعد أي رفع أو حذف بينادي refetchAll()
- * اللي هي fetchSessions المجمّعة (سيشنز+ملاحظات+مستندات) بالظبط زي الأصل.
+ * (نفس المنطق تمامًا، صفر تغيير سلوك، ما عدا 🆕 ضغط الصور تلقائيًا قبل
+ * الرفع — راجع IMAGE_UPLOAD_EXTENSIONS فوق). بعد أي رفع أو حذف بينادي
+ * refetchAll() اللي هي fetchSessions المجمّعة (سيشنز+ملاحظات+مستندات)
+ * بالظبط زي الأصل.
  */
 export function useCaseDocuments(
   caseData: MappedCase,
@@ -32,15 +39,21 @@ export function useCaseDocuments(
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [confirmDeleteDoc, setConfirmDeleteDoc] = useState<{ id: string; file_name: string | null; storage_path: string | null } | null>(null);
 
-  const handleFileSelect = (e: { target: HTMLInputElement }) => {
+  const handleFileSelect = async (e: { target: HTMLInputElement }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     // ⚠️ فحص نوع وحجم الملف قبل القبول — يمنع رفع .html/.svg أو ملفات
     // ضخمة على باكت عام بيُفتح رابطه مباشرة لأي حد (راجع validateUploadFile).
     const validationError = validateUploadFile(file);
     if (validationError) { toast('❌ ' + validationError, true); e.target.value = ''; return; }
-    setPendingFile(file);
-    setDocLabel(file.name.replace(/\.[^/.]+$/, ''));
+    // 🆕 ضغط الصور قبل الرفع (نفس compressImageFile المستخدمة أصلاً لصور
+    // البطاقة/التوكيل) — بيقلل حجم صور مستندات القضية (سكان بالموبايل
+    // مثلًا) من غير أي تأثير على PDF/Word/Excel. الفحص بالامتداد (مش
+    // file.type) عشان يفضل متسق مع باقي الملف (راجع ext في handleUploadDoc).
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const finalFile = IMAGE_UPLOAD_EXTENSIONS.includes(ext) ? await compressImageFile(file) : file;
+    setPendingFile(finalFile);
+    setDocLabel(finalFile.name.replace(/\.[^/.]+$/, ''));
     setShowDocForm(true);
   };
 
