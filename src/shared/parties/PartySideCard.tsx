@@ -42,6 +42,7 @@ function shortReason(error: PartyValidationError): string {
     const message = error.message;
     if (message.includes('مكرر')) return 'الرقم القومي مكرر';
     if (message.includes('الرقم القومي')) return 'الرقم القومي ناقص';
+    if (message.includes('عنوان')) return 'العنوان ناقص';
     if (message.includes('ثلاثي')) return 'الاسم لازم يكون ثلاثي';
     if (message.includes('ثنائي')) return 'الاسم لازم يكون ثنائي على الأقل';
     if (message.includes('صفة')) return 'الصفة ناقصة';
