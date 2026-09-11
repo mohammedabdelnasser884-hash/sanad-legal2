@@ -34,7 +34,7 @@ import AppShell from './app/shell/AppShell';
 // الوحيد لو مفيش tab محفوظ في URL/localStorage). DashboardTab بس فضل
 // static (راجع تعليقه تحت) لأنه التاب الأغلبية المطلقة من المستخدمين
 // بيشوفوه فورًا؛ الباقي اتحول لـReact.lazy زي AdminPanel/ArchiveTab/
-// LegalDocumentsPage بالظبط (Suspense في كل مكان رندر تحت).
+// AdminPanel/ArchiveTab بالظبط (Suspense في كل مكان رندر تحت).
 // ⚡ PERF (خطة تحسين الأداء، المرحلة 1.1 — 6 سبتمبر 2026): لُفّوا بـReact.memo.
 // راجعنا كل الـprops الممررة لـCasesTab/ClientsTab في نقطة الرندر تحت (سطور
 // CasesTabContent/ClientsTabContent) وتأكدنا إنها كلها إما: (أ) قيم بدائية
@@ -59,14 +59,11 @@ const SessionsCalendar = React.lazy(() => import('@/features/calendar/sessions-c
 // React.Suspense في مكان الرندر).
 const AdminPanel = React.lazy(() => import('./features/admin/AdminPanel'));
 // ⚡ FIX (تحليل bundle build:analyze — 30 أغسطس 2026): ArchiveTab (تاب
-// "الأرشيف") وLegalDocumentsPage (تاب "المستندات القانونية") كانا من
-// أكبر المساهمين في الـchunk الرئيسي (index، ~1MB) لأنهم بيتحمّلوا
-// statically مع فتح التطبيق، رغم إن غالبية المستخدمين مبيدخلوش عليهم
-// فورًا (خصوصًا legalDocs، مقصور أصلًا على حساب واحد بس — راجع
-// canGenerateDocuments تحت). نفس نمط AdminPanel فوق بالظبط: React.lazy
-// + React.Suspense في مكان الرندر تحت.
+// "الأرشيف") كان من أكبر المساهمين في الـchunk الرئيسي (index، ~1MB)
+// لأنه كان بيتحمّل statically مع فتح التطبيق، رغم إن غالبية المستخدمين
+// مبيدخلوش عليه فورًا. نفس نمط AdminPanel فوق بالظبط: React.lazy +
+// React.Suspense في مكان الرندر تحت.
 const ArchiveTab = React.lazy(() => import('./features/dashboard/ArchiveTab'));
-const LegalDocumentsPage = React.lazy(() => import('./pages/LegalDocumentsPage'));
 
 // ─── Dashboard Components ─────────────────
 import AppHeaderRaw from './features/dashboard/AppHeader';
@@ -219,17 +216,6 @@ function App() {
     const [savingClient,   setSavingClient]   = useState(false);
     const [sessionsInitialTab,      setSessionsInitialTab]      = useState<'month'|'calendar'|'missed'|null>(null);
     const [remindersInitialFilter,  setRemindersInitialFilter]  = useState<string|null>(null);
-    // ⚡ NEW (خطة توليد المستندات القانونية، المرحلة 3): caseId جاي من زرار
-    // "توليد مستند" جوه تبويب docs بالـCaseDetailView — بيتقرا مرة واحدة بس
-    // من جوه LegalDocumentsPage (onInitialCaseConsumed) عشان زيارة تانية
-    // للتاب من غير سياق قضية متبدأش نفس تدفق case_bound تلقائيًا.
-    const [legalDocsInitialCaseId, setLegalDocsInitialCaseId] = useState<string | null>(null);
-    // ⚡ NEW (أولوية 4 — الترتيب حسب نوع القضية، القسم 5.1): نوع القضية
-    // (MappedCase.type) بيتحسب هنا وقت الدخول (onGenerateDocument تحت)
-    // لأن casesWithExtras متاحة في السكوب ده، ومش متاحة جوه LegalDocumentsPage
-    // نفسها. نفس نمط legalDocsInitialCaseId بالظبط.
-    const [legalDocsInitialCaseType, setLegalDocsInitialCaseType] = useState<string | null>(null);
-
     const [selectedCase,      _setSelectedCase]  = useState<MappedCase | null>(null);
     const [selectedCaseInitialTab, setSelectedCaseInitialTab] = useState('timeline');
     const [selectedClient,    _setSelectedClient]= useState<MappedClient | null>(null);
@@ -565,26 +551,6 @@ function App() {
     // على القاعدة هو المرجع الحقيقي دايمًا).
     const canViewFees = checkPermission(profile, 'can_view_fees');
 
-    // ⚡ NEW (سجل قرارات تقرير المستندات القانونية، بند 6 — 26 أغسطس
-    // 2026): can_generate_documents مقفول لدوري lawyer/admin بس بلا
-    // استثناء (نفس فلسفة canViewFees فوق — checkPermission() صراحةً
-    // بدل تكرار شرط الدور هنا، عشان يفضل متوافق تلقائيًا مع
-    // has_permission() على القاعدة لو القرار اتغيّر يومًا ما).
-    //
-    // ⚡ NEW (طلب جيمي، 26 أغسطس 2026 — إخفاء قسم المستندات القانونية):
-    // فوق شرط الدور، القسم كله بقى مقصور على حساب السوبر أدمن الوحيد
-    // بس (نفس isAISuperAdmin فوق — m.gemy4231@gmail.com؛ نفس الإيميل
-    // بالظبط اللي بيتحكم في قسم AI، فمفيش داعي لتكرار الثابت تاني).
-    // محدش تاني هيشوف تاب "المستندات القانونية" ولا زرار "توليد
-    // مستند" ولا هيقدر يوصله حتى برابط مباشر (deep link)، حتى لو دوره
-    // lawyer/admin وعنده can_generate_documents=true فعليًا على قاعدة
-    // البيانات — canGenerateDocuments هي المصدر الوحيد المستخدم في كل
-    // نقاط التحكم دي (CommandDock، DesktopSidebar/TabletDrawer عبر
-    // requiresCanGenerateDocuments، تاب legalDocs جوه App.tsx، وزرار
-    // "توليد مستند" في AppModals) فتقييدها هنا كافٍ يغطيهم كلهم من
-    // مصدر واحد بلا تكرار.
-    const canGenerateDocuments = checkPermission(profile, 'can_generate_documents') && isAISuperAdmin;
-
     // ── Initial data fetch + إعادة تحميل بعد المزامنة الأوفلاين ──
     useInitialDataSync({
         profile, casesFilter, clientSearch,
@@ -759,7 +725,7 @@ function App() {
         React.createElement(SubscriptionLimitModal),
 
         React.createElement(AppShell, {
-            tab, setTab, isAdmin, canGenerateDocuments, onAIClick: handleAIButtonClick,
+            tab, setTab, isAdmin, onAIClick: handleAIButtonClick,
             profile, setShowMenu: (v: boolean) => setShowHeaderMenu(v), setShowSearch,
             fetchCases: handleGlobalRefresh, casesFilter, loadingCases: casesLoading,
             // ⚡ NEW (2 سبتمبر 2026 — ملحق PWA): تمرير لـDesktopHeader عبر
@@ -862,7 +828,7 @@ function App() {
             // أي حرف اتكتب في البحث)، لأن كل رجوع للتاب كان بيعيد fetch
             // البيانات من الصفر. الحل: التلات تابات دول بس يفضلوا mounted
             // دايمًا ويتخفوا بـCSS (`display:none`) بدل الشرط. باقي
-            // التابات (calendar/fees/reminders/team/documents/legalDocs/
+            // التابات (calendar/fees/reminders/team/documents/
             // admin) اتسابوا **زي ما هي** (unmount عادي) عمدًا — التصميم
             // الأصلي بيعتمد على إنهم مش mounted عشان signals زي
             // sessionsRefreshSignal/dataRefreshSignal (شوف تعليق
@@ -946,32 +912,6 @@ function App() {
                 : React.createElement('div', { className: 'text-center text-slate-500 text-xs pt-20' }, 'غير مصرح لك بهذا القسم')
             ),
             tab === 'documents' && DocsTab,
-            // ⚡ NEW (سجل قرارات تقرير المستندات القانونية، بند 6 — 26
-            // أغسطس 2026): تاب legalDocs بالكامل محكوم بـcanGenerateDocuments
-            // — دفاع فعلي هنا (مش بس إخفاء زرار التنقل) لأن التاب ممكن
-            // يتوصله عن طريق رابط مباشر (PATH_TABS فى useNavigation.ts
-            // بيدعم deep linking بالـURL)، مش بس عن طريق الضغط على زرار
-            // "توليد مستند"/عنصر القائمة. نفس نمط تاب 'fees' فوق بالظبط.
-            tab === 'legalDocs' && (canGenerateDocuments
-                // ⚡ Suspense مطلوب هنا لأن LegalDocumentsPage بقى React.lazy فوق —
-                // نفس فكرة AdminPanel/ArchiveTab بالظبط.
-                ? React.createElement(React.Suspense, {
-                      fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
-                          React.createElement(I.Spin)
-                      )
-                  },
-                      React.createElement(LegalDocumentsPage, {
-                          initialCaseId: legalDocsInitialCaseId,
-                          initialCaseType: legalDocsInitialCaseType,
-                          onInitialCaseConsumed: () => { setLegalDocsInitialCaseId(null); setLegalDocsInitialCaseType(null); },
-                          nav,
-                          // ⚡ NEW (26 أغسطس 2026): نفس sendTelegram الممرر لباقي التابز —
-                          // إشعار تيليجرام عند توليد مستند، زي إضافة قضية/جلسة.
-                          sendTelegram,
-                      })
-                  )
-                : React.createElement('div', { className: 'text-center text-slate-500 text-xs pt-20' }, 'غير مصرح لك بهذا القسم')
-            ),
             tab === 'admin' && (isAdmin
                 // ⚡ FIX (8 أغسطس 2026 — البند 5 من تقرير حالة التنفيذ): clientsWithExtras
                 // بدل clients الخام — useAdminArchive بيدوّر بـ clients.find(id) عشان
@@ -1009,7 +949,7 @@ function App() {
         // (راجع e2e/utils.ts).
         React.createElement('div', { className: 'lg:hidden' },
             React.createElement(CommandDock, {
-                tab, setTab, showMore, setShowMore, isAdmin, canGenerateDocuments, navRef,
+                tab, setTab, showMore, setShowMore, isAdmin, navRef,
                 setShowAI: handleAIButtonClick, setSessionsInitialTab, setRemindersInitialFilter,
             })
         ),
@@ -1026,23 +966,6 @@ function App() {
             setShowSearch, setShowAI, setShowAIComingSoon, setShowCaseModal, setShowNewSessionModal,
             setShowLawyerModal, setShowClientModal, setTab,
             setSelectedCase, setSelectedClient,
-            // ⚡ NEW (خطة توليد المستندات القانونية، المرحلة 3): زرار "توليد
-            // مستند" جوه تبويب docs بالـCaseDetailView — بيحفظ caseId وينقل
-            // التاب لـlegalDocs؛ setTab بينادي navigateTo اللي بيمسح
-            // modalStack تلقائيًا فمفيش داعي نقفل caseDetail يدويًا.
-            // ⚡ NEW (سجل قرارات تقرير المستندات القانونية، بند 6 — 26
-            // أغسطس 2026): can_generate_documents مقفول لغير lawyer/admin
-            // بلا استثناء — لو viewer، onGenerateDocument بيتبعت undefined
-            // فـGenerateDocumentButton جوه DocsSection مايترندرش أصلاً
-            // (شرط `onGenerateDocument &&` الموجود هناك من الأول).
-            onGenerateDocument: canGenerateDocuments ? (caseId: string) => {
-                // أولوية 4: casesWithExtras متاحة هنا فعليًا، فبنحسب نوع
-                // القضية مرة واحدة وقت الدخول بدل ما نمرر القضايا كلها لـ
-                // LegalDocumentsPage.
-                setLegalDocsInitialCaseType(casesWithExtras.find((c) => c.id === caseId)?.type ?? null);
-                setLegalDocsInitialCaseId(caseId);
-                setTab('legalDocs');
-            } : undefined,
             _setDeleteConfirm, _setSelectedClient, _setSelectedCase,
             setCases, setCasesFilter, setCasesPage,
             fetchCases, fetchTodaySessions, fetchUpcomingSessions, fetchMissedSessions,
