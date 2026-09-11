@@ -26,6 +26,12 @@ interface DocsSectionProps {
   setViewingDoc: (doc: CaseDocWithUrl) => void;
   setConfirmDeleteDoc: (v: { id: string; file_name: string | null; storage_path: string | null } | null) => void;
   deletingDocId: string | null;
+  // ⚡ NEW (متابعة خطة تفعيل الصلاحيات الناقصة — بند Backlog قسم 6.5،
+  // 11 سبتمبر 2026): بتتحكم فى ظهور زرار حذف المستند تحت — نفس صلاحية
+  // حذف القضية (can_delete_cases)، مفيش مفتاح مستقل. اختياري عشان
+  // مايكسرش أي استدعاء قديم لـDocsSection من غير الـprop ده — بيتعامل
+  // زي "مفيش صلاحية" (false) فى الحالة دي، أأمن افتراضي.
+  canDeleteDocument?: boolean;
   // ⚡ NEW (خطة توليد المستندات القانونية، المرحلة 3): اختياري عشان
   // ميكسرش أي استدعاء تاني حالي لـDocsSection من غير السياق ده.
   onGenerateDocument?: () => void;
@@ -35,6 +41,7 @@ function DocsSection({
   fileInputRef, handleFileSelect, showDocForm, setShowDocForm, pendingFile, setPendingFile,
   docLabel, setDocLabel, docCategory, setDocCategory, handleUploadDoc, uploadingDoc,
   docs, docSearch, setDocSearch, loadingSessions, setViewingDoc, setConfirmDeleteDoc, deletingDocId,
+  canDeleteDocument = false,
   onGenerateDocument,
 }: DocsSectionProps) {
   return React.createElement('div', {className: "space-y-4 fade-in"},
@@ -242,7 +249,10 @@ function DocsSection({
                                                 className: "w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all text-sm"
                                             }, "↗"),
                                             // حذف
-                                            React.createElement('button', {
+                                            // ⚡ NEW (متابعة خطة تفعيل الصلاحيات الناقصة —
+                                            // بند Backlog قسم 6.5): بيختفي كليًا لمن ليس
+                                            // له can_delete_cases (نفس صلاحية حذف القضية).
+                                            canDeleteDocument && React.createElement('button', {
                                                 'data-testid': 'doc-delete-trigger',
                                                 onClick: () => setConfirmDeleteDoc({ id: doc.id, file_name: doc.file_name, storage_path: doc.storage_path }),
                                                 disabled: deletingDocId === doc.id,
