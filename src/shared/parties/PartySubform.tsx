@@ -66,6 +66,11 @@ export function PartySubform({
     const nationalIdErrorFor = (partyId: string) =>
         validation.errors.find((e) => e.partyId === partyId && e.field === 'national_id')?.message ?? null;
 
+    // 🆕 (طلب "العنوان إجباري لكل الأطراف" — 11 سبتمبر 2026): نفس نمط
+    // nationalIdErrorFor بالظبط، لحقل العنوان.
+    const addressErrorFor = (partyId: string) =>
+        validation.errors.find((e) => e.partyId === partyId && e.field === 'address')?.message ?? null;
+
     // ⚡ NEW (تحديث "تفرقة اسم الطرف الأول عن الخصم" — 1 أغسطس 2026): تحذير
     // غير مانع (warning، مش error) — حاليًا بيظهر بس لاسم خصم ثنائي بالظبط.
     const nameWarningFor = (partyId: string) =>
@@ -84,6 +89,7 @@ export function PartySubform({
             onRemove: () => removeParty(party.id),
             onToggleIsClient: () => toggleIsClient(party.id),
             nationalIdError: nationalIdErrorFor(party.id),
+            addressError: addressErrorFor(party.id),
             nameWarning: nameWarningFor(party.id),
             testIdPrefix: testIdPrefix ? `${testIdPrefix}-${side}-${index}` : undefined,
             extraContent: renderPartyExtra ? renderPartyExtra(party) : undefined,
