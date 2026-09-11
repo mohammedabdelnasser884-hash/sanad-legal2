@@ -35,6 +35,9 @@ interface PartyFieldsProps {
     onRemove: () => void;
     onToggleIsClient: () => void;
     nationalIdError?: string | null;
+    // 🆕 (طلب "العنوان إجباري لكل الأطراف" — 11 سبتمبر 2026): رسالة خطأ
+    // العنوان (لو الحقل فاضي) — نفس نمط nationalIdError بالظبط.
+    addressError?: string | null;
     // ⚡ NEW (تحديث "تفرقة اسم الطرف الأول عن الخصم" — 1 أغسطس 2026):
     // تحذير غير مانع (مش خطأ) بيتعرض تحت حقل الاسم مباشرة — بيُستخدم
     // حاليًا لتنبيه "يفضل اسم الخصم يكون ثلاثي/رباعي" لما يكون ثنائي بالظبط.
@@ -68,7 +71,7 @@ interface PartyFieldsProps {
 const readOnlyInputCls = 'w-full p-3 text-xs rounded-xl border border-white/10 bg-white/5 text-slate-300 placeholder-slate-600 cursor-not-allowed';
 
 export function PartyFields({
-    party, index, side, canRemove, onChange, onRemove, onToggleIsClient, nationalIdError, nameWarning, testIdPrefix, extraContent, readOnly = false, state,
+    party, index, side, canRemove, onChange, onRemove, onToggleIsClient, nationalIdError, addressError, nameWarning, testIdPrefix, extraContent, readOnly = false, state,
 }: PartyFieldsProps) {
     const title = ordinalAr(index + 1);
     const tid = (name: string) => (testIdPrefix ? `${testIdPrefix}-${name}` : undefined);
@@ -139,17 +142,21 @@ export function PartyFields({
         React.createElement('p', { className: 'text-[9px] text-slate-500 -mt-1' }, 'مجرد أمثلة — اكتب أي صفة تناسب هذا الطرف فعليًا'),
         nameWarning && React.createElement('p', { className: 'text-[9px] text-amber-400 -mt-1', 'data-testid': tid('name-warning') }, nameWarning),
 
-        // ── العنوان — بيتعرض كـ"إجباري بصريًا" بس لموكل المكتب، فعليًا
-        // اختياري في الحالتين (الفاليديشن الحقيقي في usePartyFields) ──
-        React.createElement(Inp, {
-            label: party.is_client ? 'عنوان الموكل' : 'عنوان (اختياري)',
-            value: party.address,
-            onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange('address', e.target.value),
-            placeholder: 'العنوان التفصيلي',
-            readOnly,
-            className: readOnly ? readOnlyInputCls : undefined,
-            'data-testid': tid('address'),
-        }),
+        // ── العنوان — إجباري لكل الأطراف دلوقتي (موكل أو خصم، مدعي أو
+        // مدعى عليه) — الفاليديشن الفعلي في casePartiesValidation.ts ──
+        React.createElement('div', null,
+            React.createElement(Inp, {
+                label: party.is_client ? 'عنوان الموكل' : 'عنوان الطرف',
+                value: party.address,
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange('address', e.target.value),
+                placeholder: 'العنوان التفصيلي',
+                required: true,
+                readOnly,
+                className: readOnly ? readOnlyInputCls : undefined,
+                'data-testid': tid('address'),
+            }),
+            addressError && React.createElement('p', { className: 'text-[9px] text-rose-400 mt-1', 'data-testid': tid('address-error') }, addressError)
+        ),
 
         // ── الرقم القومي — إجباري فعليًا لو is_client (14 رقم بالظبط) ──
         React.createElement('div', null,
