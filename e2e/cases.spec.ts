@@ -41,10 +41,13 @@ test('إنشاء قضية جديدة والتأكد من ظهورها في ال�
   await page.getByTestId('new-case-plaintiff-0-name').fill('موكل اختبار E2E');
   await page.getByTestId('new-case-plaintiff-0-capacity').fill('مدعي');
   await page.getByTestId('new-case-plaintiff-0-national-id').fill('12345678901234');
+  // 🆕 (طلب "العنوان إجباري لكل الأطراف" — 11 سبتمبر 2026)
+  await page.getByTestId('new-case-plaintiff-0-address').fill('عنوان تجريبي E2E');
   await page.getByTestId('new-case-plaintiff-subform-save').click();
   await page.getByTestId('party-side-card-defendant').click();
   await page.getByTestId('new-case-defendant-0-name').fill('خصم اختبار E2E');
   await page.getByTestId('new-case-defendant-0-capacity').fill('مدعى عليه');
+  await page.getByTestId('new-case-defendant-0-address').fill('عنوان خصم تجريبي E2E');
   await page.getByTestId('new-case-defendant-subform-save').click();
   await page.getByTestId('new-case-save').click();
 
