@@ -663,7 +663,9 @@ function EditStandaloneModalForm({ session, db, onClose, onSaved, linkedClient =
                     ),
                     React.createElement('div', {className:'lg:col-span-2'}, React.createElement(Inp, { label: 'موضوع الجلسة / عنوان', required: true, value: form.title, onChange: set('title'), placeholder: 'مثال: قضية إيجار', 'data-testid': 'edit-standalone-session-title' })),
                     React.createElement('div', { className: 'grid grid-cols-2 gap-3 lg:col-span-2' },
-                        React.createElement(Inp, { label: 'رقم القضية', required: true, value: form.case_number, onChange: set('case_number'), placeholder: '1234', 'data-testid': 'edit-standalone-session-case-number' }),
+                        // 🔢 FIX (طلب مباشر — 11 سبتمبر 2026): نفس فيكس فورم الإنشاء —
+                        // "رقم الدعوى" أرقام بس.
+                        React.createElement(Inp, { label: 'رقم القضية', required: true, value: form.case_number, onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, case_number: onlyDigits(e.target.value) })), placeholder: '1234', inputMode: 'numeric', 'data-testid': 'edit-standalone-session-case-number' }),
                         // 🐛 FIX (12 أغسطس 2026): كان ناقص maxLength=4 هنا بعكس
                         // فورم الإنشاء وفورمي القضية الاتنين — المستخدم كان يقدر
                         // يكتب سنة أطول من 4 أرقام وهو بيعدّل جلسة موجودة.
