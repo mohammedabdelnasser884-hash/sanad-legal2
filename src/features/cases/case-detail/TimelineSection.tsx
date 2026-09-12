@@ -34,6 +34,13 @@ interface TimelineSectionProps {
   // يفتح `FinalJudgmentModal` (مرحلة 5) على الجلسة اللي اتضغط عليها زرار
   // "🏛️ الحكم النهائي".
   setFinalJudgmentTarget: (s: CaseSessionRow) => void;
+  // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 9، 12 سبتمبر 2026):
+  // بيخفي زرار "🏛️ الحكم النهائي" لو المستخدم مالوش صلاحية can_edit_cases.
+  // "⚡ تحديث" و"✏️ تعديل" اتسابوا زي ما هم (توصية الخطة، قسم 10.3) —
+  // القرار وقت التنفيذ: مش كل تعديل جلسة بيقفل القضية، لكن الحكم النهائي
+  // إجراء نهائي بيغيّر حالة القضية نفسها، فمنطقي يتقيّد بصلاحية تعديل
+  // القضية تحديدًا.
+  canEditCase: boolean;
   deletingSessionId: string | null;
   setConfirmDeleteSession: (v: { id: string; date: string } | null) => void;
 }
@@ -41,7 +48,7 @@ interface TimelineSectionProps {
 function TimelineSection({
   loadingSessions, sessions,
   editingSession, setEditingSession, handleUpdateSession,
-  setSessionUpdateTarget, setFinalJudgmentTarget, deletingSessionId, setConfirmDeleteSession,
+  setSessionUpdateTarget, setFinalJudgmentTarget, canEditCase, deletingSessionId, setConfirmDeleteSession,
 }: TimelineSectionProps) {
   return React.createElement('div', {className: "space-y-4 fade-in"},
                 // 🗑️ FIX (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 1، 12
@@ -136,7 +143,7 @@ function TimelineSection({
                                                         // سبتمبر 2026): زرار "🏛️ الحكم النهائي" — بيظهر بس لو
                                                         // آخر جلسة (i === 0) متعلّمة is_judgment_reserved = true
                                                         // (اتحطت من التوجل في SessionUpdateModal، مرحلة 3).
-                                                        s.is_judgment_reserved === true && React.createElement('button', {
+                                                        s.is_judgment_reserved === true && canEditCase && React.createElement('button', {
                                                             onClick: (e: React.MouseEvent) => { e.stopPropagation(); setFinalJudgmentTarget(s); },
                                                             'data-testid': 'final-judgment-trigger',
                                                             className: "flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black active:scale-90 transition-all",
