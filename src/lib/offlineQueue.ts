@@ -158,6 +158,15 @@ declare global {
       id?: string;
       knownUpdatedAt?: string | null;
       returning?: boolean;
+      // 🆕 FIX (باگ "الحكم النهائي بيتسجل جزئي"، طلب جيمي 12 سبتمبر 2026):
+      // زي `forceQueueForSelfTempId` تحت بالظبط بس بيتحكم فيه الكولر نفسه
+      // (مش مشتق تلقائيًا من شكل الـdata) — لاستخدامه في أي عملية "مزدوجة"
+      // (كتابتين لازم يتحلوا مع بعض كوحدة واحدة، زي handleFinalJudgment:
+      // تحديث الجلسة + تحديث حالة القضية) لما الكتابة الأولى منهم اتقيّدت
+      // أوفلاين فعلاً — بيجبر الكتابة الثانية تتقيّد في نفس الطابور بدل ما
+      // تحاول تنجح أونلاين لوحدها وتسبق الأولى، وده اللي كان بيسبب القضية
+      // تتقفل ("منتهية") فعليًا قبل ما منطوق الحكم نفسه يتسجل فعلاً.
+      forceQueue?: boolean;
     }) => Promise<{
       error: unknown;
       offline?: boolean;
@@ -351,13 +360,14 @@ window.addEventListener('load', () => { __runOfflineSyncIfNeeded(); });
 //    (يغطي حالات نادرة زي رجوع النت من غير ما يطلق حدث 'online' بشكل موثوق)
 setInterval(() => { __runOfflineSyncIfNeeded(); }, 60000);
 
-window.__dbWrite = async function <T extends DbWriteTable>({ type, table, data, id, knownUpdatedAt, returning }: {
+window.__dbWrite = async function <T extends DbWriteTable>({ type, table, data, id, knownUpdatedAt, returning, forceQueue }: {
     type: 'INSERT' | 'UPDATE' | 'DELETE';
     table: T;
     data?: Record<string, unknown>;
     id?: string;
     knownUpdatedAt?: string | null;
     returning?: boolean;
+    forceQueue?: boolean;
 }) {
     // 🆕 المرحلة 3-1: لو العملية معاها `_offlineSelfTempId` (يعني الـ id
     // المستهدف بالـ UPDATE هو نفسه لسه تمبيد — مثال: `handleLinkExistingClient`
@@ -371,7 +381,7 @@ window.__dbWrite = async function <T extends DbWriteTable>({ type, table, data, 
     // الإجباري هنا بيضمن إن العملية تتحل صح وقت المزامنة (نفس الدورة أو
     // اللي بعدها) عن طريق resolveOfflineSelfId فوق.
     const forceQueueForSelfTempId = type === 'UPDATE' && !!data?._offlineSelfTempId;
-    if (navigator.onLine && !forceQueueForSelfTempId) {
+    if (navigator.onLine && !forceQueueForSelfTempId && !forceQueue) {
         try {
             let error = null;
             let insertedRow: Partial<Database['public']['Tables'][T]['Row']> | null = null;
@@ -486,7 +496,7 @@ window.__dbWrite = async function <T extends DbWriteTable>({ type, table, data, 
         // لأننا already أونلاين)، بنحاول مزامنة فورية دلوقتي (best-effort،
         // fire-and-forget) — لو القضية اتزامنت خلاص من دورة سابقة، العملية
         // دي هتتحل وتتنفذ في نفس اللحظة تقريبًا بدل ما تستنى لحد 60 ثانية.
-        if (navigator.onLine && forceQueueForSelfTempId) {
+        if (navigator.onLine && (forceQueueForSelfTempId || forceQueue)) {
             window.__syncOfflineQueue?.();
         } else {
             const count = await window.__getOfflineQueueCount?.() || 0;
