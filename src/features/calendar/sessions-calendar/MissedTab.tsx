@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../../supabaseClient';
+import { fetchMissedSessions } from '../../../shared/lib/dataAccess';
 import { toast } from '../../../shared/lib/notifications';
 import { recordError, recordSuccess, trackQueryOutcome } from '../../../systemHealth';
 import { getCurrentTenantId, I } from '../../../constants';
@@ -77,24 +78,19 @@ function MissedTab({ cases, clients, onOpenCase, onOpenReminders, onOpenStandalo
             return () => guard.cleanup();
         }
 
-        // جلسات فات تاريخها وليس فيها result ولا next_action (لم تُحدَّث)
-        // 🔒 FIX (باگ "تعارض عداد 63/14 — جلسات فائتة قديمة مش ظاهرة" —
-        // 12 سبتمبر 2026): كان فيه .limit(50) هنا *قبل* الفلترة الفعلية
-        // (result/next_action) اللي بتحصل تحت في .then — يعني كنا بنجيب
-        // أقرب 50 جلسة فائتة بالتاريخ بس، وبعدين نفلترهم. لو أغلب الـ50
-        // دول كانوا فعلاً محدَّثين (عندهم قرار)، كانت الجلسات الأقدم
-        // (الأخطر فعليًا، اللي فاتها وقت أطول من غير حد يحرّكها) بتتقطع
-        // من الاستعلام نفسه قبل حتى ما توصل للفلترة — مش بس بتتفلتر غلط.
-        // ده كان بيسبب فرق واضح بين عداد الـbadge فوق (fetchMissedCount
-        // في SessionsCalendar.tsx، مفيهوش limit خالص من الأصل) وعدد
-        // الجلسات المعروضة فعليًا هنا. نفس نمط استعلام reminders تحت
-        // بالظبط (من غير limit) — مفيش داعي لحد أقصى هنا زيه تمامًا.
+        // ⚡ NEW (خطة "إغلاق سلسلة الجلسات"، مرحلة 8 — 12 سبتمبر 2026): بقى
+        // بينادي fetchMissedSessions الموحّدة (dataAccess.ts) بدل الاستعلام
+        // المحلي القديم. التعريف الموحّد بيحل مشكلتين مع بعض:
+        // (1) "تعارض عداد 63/14" — التعريف القديم هنا ("أي جلسة فات
+        //     تاريخها ومفيهاش result/next_action") كان مختلف عن تعريف
+        //     الداشبورد ("آخر جلسة في القضية + مفيش جلسة جاية")، فممكن
+        //     نفس اللحظة تدّي رقمين مختلفين في شاشتين مختلفتين.
+        // (2) القضايا "منتهية" (بعد حكم نهائي — مرحلة 6) بقت مستبعدة من
+        //     العد/العرض هنا زي كل الأماكن التانية.
+        // فحص limit(50) القديم كان اتشال في فيكس سابق (نفس اليوم) — التعريف
+        // الموحّد أصلاً من غير أي limit زي وقتها بالظبط.
         Promise.all([
-            db.from('case_sessions')
-              .select('id,session_date,session_time,session_floor,session_hall,case_id,client_id,description,result,next_action,title,case_number,court,case_type,circuit_number,cases(id,title,court_name,case_type,case_number_official,client_id)')
-              .lt('session_date', todayStr)
-              .order('session_date', { ascending: false })
-              .abortSignal(guard.controller.signal),
+            fetchMissedSessions(db, todayStr, guard.controller.signal),
             db.from('reminders')
               .select('id,title,due_date,notes,done')
               .eq('done', false)
@@ -120,7 +116,7 @@ function MissedTab({ cases, clients, onOpenCase, onOpenReminders, onOpenStandalo
                 }
             } else {
                 recordSuccess('db_calendar_sessions');
-                sess = ((sessRes.data || []) as unknown as CalendarSessionRow[]).filter((s: CalendarSessionRow) => !s.result?.trim() && !s.next_action?.trim());
+                sess = (sessRes.data || []) as unknown as CalendarSessionRow[];
                 saveTypedCache(MISSED_SESSIONS_CACHE_KEY, sess);
             }
             let tsk: TaskFeedItem[];
