@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from '../../../shared/lib/notifications';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
-import { safeUpdate } from '../../../shared/lib/dataAccess';
+import { safeUpdate, recalcNextHearing } from '../../../shared/lib/dataAccess';
 import { copySessionPartiesToNewSession, makeSessionGroupId } from '../hooks/caseSessionLinkingShared';
 import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
 import DatePicker from '@/shared/ui/DatePicker';
@@ -130,6 +130,21 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onNotify, 
             if (!copyResult.ok) {
                 toast('⚠️ تم إنشاء الجلسة القادمة لكن تعذّر نسخ بيانات بعض أطراف الدعوى — راجعها يدويًا', true);
             }
+        }
+
+        // 🔴 FIX الحرج (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 2، 12
+        // سبتمبر 2026): من غير الاستدعاء ده، `cases.next_hearing` كان
+        // بيفضل معلّق على تاريخ الجلسة القديمة (اللي دلوقتي بقت النتيجة
+        // مسجّلة عليها) بدل الجلسة الجديدة القادمة — يعني البحث الشامل
+        // وكارت الجلسة في الداشبورد/التقويم كانوا هيعرضوا بيانات غلط
+        // بمجرد ما زرار "إضافة جلسة" اتشال (كان هو اللي بينادي
+        // recalcNextHearing قبل كده عن طريق useCaseSessions.handleAddSession
+        // — "⚡ تحديث" هنا بقت الطريقة الوحيدة لإنشاء جلسة، وماكانتش بتنادي
+        // الدالة دي خالص). مقصورة على القضايا الحقيقية (caseData.id
+        // موجود) — الجلسة المستقلة (isStandalone) مالهاش صف في جدول
+        // `cases` أصلًا فمفيش next_hearing تحدّثه.
+        if (!isStandalone) {
+            await recalcNextHearing(db, caseData.id);
         }
 
         toast('✅ تم تحديث الجلسة وإنشاء الجلسة القادمة');
