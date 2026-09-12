@@ -85,7 +85,9 @@ interface CaseDetailViewProps {
     // إنه فعلاً محذوف مش بس مش محمّل. راجع useAppData.ts (ensureClientsLoaded).
     onEnsureClientsLoaded?: (ids: (string | null | undefined)[]) => void | Promise<void>;
     onClose: () => void;
-    onUpdate?: (newStatus: string) => void;
+    // 🔧 FIX (باگ "عدّلها شخص آخر" الزائف، 12 سبتمبر 2026) — راجع نفس
+    // التعليق في useCaseSessions.ts.
+    onUpdate?: (patch: { status?: string; updated_at?: string | null }) => void;
     onDelete?: (caseId: string) => void | Promise<void>;
     onEdit?: (caseId: string, form: CaseFormSubmitData) => void | boolean | Promise<void | boolean>;
     onLinkClient?: (caseId: string, clientId: string) => void | Promise<void>;
@@ -327,6 +329,13 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
             db: db,
             onClose: () => setSessionUpdateTarget(null),
             onDone: () => fetchSessions(),
+            // 🆕 FIX (باگ "عدّلها شخص آخر" الزائف، 12 سبتمبر 2026):
+            // SessionUpdateModal بتعمل auto-reopen (تحديث cases.status +
+            // updated_at) لما تعمل "⚡ تحديث" على قضية "منتهية" — onDone
+            // فوق بيحدّث الجلسات بس، مش caseData. من غيرها، أي RPC تالي
+            // بيعتمد على optimistic locking (تسجيل حكم نهائي..) كان بيكتشف
+            // تعارض زائف مع نفس المستخدم نفسه.
+            onCaseUpdated: (patch: { status?: string; updated_at?: string | null }) => onUpdate?.(patch),
             onNotify: onNotify
         }),
 
