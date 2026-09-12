@@ -421,6 +421,10 @@ export interface Database {
           // مش legacy — دول عمودي "المسمى القانوني الجامع" النشطين فعليًا.
           plaintiff_legal_title: string | null
           defendant_legal_title: string | null
+          // 🆕 Phase 21 (خطة إعادة تصميم إغلاق سلسلة الجلسات، 12 سبتمبر
+          // 2026): يتحكم في ظهور زرار "🏛️ الحكم النهائي" — راجع
+          // database/migrations/sql-migrations-phase21/01-judgment-reserved-column.sql
+          is_judgment_reserved: boolean
         }
         Insert: {
           id?: string
@@ -448,6 +452,7 @@ export interface Database {
           session_group_id?: string | null
           plaintiff_legal_title?: string | null
           defendant_legal_title?: string | null
+          is_judgment_reserved?: boolean
         }
         Update: {
           id?: string
@@ -475,6 +480,7 @@ export interface Database {
           session_group_id?: string | null
           plaintiff_legal_title?: string | null
           defendant_legal_title?: string | null
+          is_judgment_reserved?: boolean
         }
         // ⚠️ FIX (14 يوليو 2026): كانت فاضية، وده كان بيمنع supabase-js من
         // استنتاج نوع الـ embed `cases(...)` جوه .select() (بيرجع
