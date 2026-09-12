@@ -326,6 +326,145 @@ export function useCaseSessions(
     refetchAll();
   };
 
+  // 🆕 (خطة إعادة تصميم مودال "النطق بالحكم"، بند 15، 12 سبتمبر 2026):
+  // مسار "حكم تمهيدي/جزئي" — بيعيد استخدام نفس آلية "⚡ تحديث"
+  // (SessionUpdateModal.handleSave): تحديث آخر جلسة (تسجيل المنطوق +
+  // judgment_type='تمهيدي') + إنشاء جلسة جديدة عادية بنفس بيانات الموقع/
+  // المحكمة، بفرق واحد عن SessionUpdateModal: الجلسة الجديدة هنا بتتعمل
+  // بـis_judgment_reserved=false دايمًا (بدل توريث القيمة القديمة اللي
+  // هنا أصلاً true) — عشان القضية تفضل "متداولة" وكأنها محصلش فيها حكم،
+  // زي ما اتفق عليه بالظبط. مفيش تعديل على cases.status هنا (بعكس
+  // handleFinalJudgment فوق).
+  // ⚠️ الدالة دي مقصورة على القضايا الحقيقية بس (FinalJudgmentModal
+  // بيتفتح من CaseDetailView.tsx بس، caseData.id دايمًا موجود) — صفر
+  // منطق isStandalone هنا (بعكس SessionUpdateModal اللي بيغطي الجلسات
+  // المستقلة كمان).
+  const handlePreliminaryJudgment = async (
+    sessionId: string,
+    verdictText: string,
+    nextSessionDate: string
+  ): Promise<{ ok: boolean }> => {
+    const session = sessions.find((s) => s.id === sessionId);
+
+    const sessionUpdateResult = await window.__dbWrite({
+      type: 'UPDATE',
+      table: 'case_sessions',
+      id: sessionId,
+      data: { result: verdictText, judgment_type: 'تمهيدي' },
+      knownUpdatedAt: session?.updated_at || null,
+    });
+    if (sessionUpdateResult.conflict) { toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return { ok: false }; }
+    if (sessionUpdateResult.error && !sessionUpdateResult.offline) { showErrorToast('preliminary_judgment_session', sessionUpdateResult.error, 'فشل تسجيل الحكم التمهيدي على الجلسة', 'حكم تمهيدي'); return { ok: false }; }
+
+    const insertResult = await window.__dbWrite({
+      type: 'INSERT',
+      table: 'case_sessions',
+      returning: true,
+      data: {
+        case_id: caseData.id,
+        session_date: nextSessionDate,
+        session_time: session?.session_time || null,
+        session_floor: session?.session_floor || null,
+        session_hall: session?.session_hall || null,
+        court_level: session?.court_level || null,
+        secretary_hall: session?.secretary_hall || null,
+        secretary_name: session?.secretary_name || null,
+        secretary_mobile: session?.secretary_mobile || null,
+        is_judgment_reserved: false,
+      },
+    });
+    if (insertResult.error && !insertResult.offline) { showErrorToast('preliminary_judgment_next_session', insertResult.error, 'تم تسجيل الحكم التمهيدي، لكن فشل إنشاء الجلسة القادمة — أنشئها يدويًا لاحقًا من "⚡ تحديث"', 'حكم تمهيدي'); return { ok: false }; }
+
+    // 📥 لو أي من الكتابتين اتقيّدت أوفلاين — نفس منطق handleFinalJudgment.
+    if ((sessionUpdateResult.offline && sessionUpdateResult.queued) || (insertResult.offline && insertResult.queued)) {
+      toast('📥 تم حفظ الحكم التمهيدي محليًا — سيُزامن عند عودة الإنترنت');
+      refetchAll();
+      return { ok: true };
+    }
+
+    await recalcNextHearing(caseData.id);
+    toast('⚖️ تم تسجيل الحكم التمهيدي وجدولة الجلسة القادمة');
+
+    logActivity(db, 'حكم تمهيدي', {
+      entity_type: 'session', entity_id: sessionId, details: `${caseData.title || ''} — ${verdictText}`,
+      case_name: caseData.title || null, case_type: caseData.type || null,
+      client_name: client?.full_name || null,
+      userName: profile?.full_name || null,
+    });
+
+    if (onNotify) {
+      let msg = `⚖️ <b>حكم تمهيدي/جزئي</b>\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `⚖️ <b>${escapeTelegramHtml(caseData.title || '—')}</b>\n`;
+      msg += `📋 رقم القيد: ${escapeTelegramHtml(caseData.number || '—')}\n`;
+      msg += `📜 المنطوق: ${escapeTelegramHtml(verdictText)}\n`;
+      msg += `📆 الجلسة القادمة: ${escapeTelegramHtml(nextSessionDate)}\n`;
+      onNotify(msg);
+    }
+
+    refetchAll();
+    return { ok: true };
+  };
+
+  // 🆕 (خطة إعادة تصميم مودال "النطق بالحكم"، بند 16، 12 سبتمبر 2026):
+  // مسار "تأجيل النطق بالحكم" — من غير أي تحديث على الجلسة الحالية
+  // (مفيش منطوق حكم بيتسجل خالص)، بس إنشاء جلسة جديدة بنفس بيانات
+  // الموقع/المحكمة، والجلسة الجديدة تفضل is_judgment_reserved=true
+  // (عشان تفضل "محجوزة للحكم" برضو، وزرار "🏛️" يفضل ظاهر عليها).
+  const handlePostponeJudgment = async (
+    sessionId: string,
+    nextSessionDate: string
+  ): Promise<{ ok: boolean }> => {
+    const session = sessions.find((s) => s.id === sessionId);
+
+    const insertResult = await window.__dbWrite({
+      type: 'INSERT',
+      table: 'case_sessions',
+      returning: true,
+      data: {
+        case_id: caseData.id,
+        session_date: nextSessionDate,
+        session_time: session?.session_time || null,
+        session_floor: session?.session_floor || null,
+        session_hall: session?.session_hall || null,
+        court_level: session?.court_level || null,
+        secretary_hall: session?.secretary_hall || null,
+        secretary_name: session?.secretary_name || null,
+        secretary_mobile: session?.secretary_mobile || null,
+        is_judgment_reserved: true,
+      },
+    });
+    if (insertResult.error && !insertResult.offline) { showErrorToast('postpone_judgment_next_session', insertResult.error, 'فشل تأجيل النطق بالحكم — تعذّر إنشاء الجلسة القادمة', 'تأجيل النطق بالحكم'); return { ok: false }; }
+
+    if (insertResult.offline && insertResult.queued) {
+      toast('📥 تم حفظ تأجيل النطق بالحكم محليًا — سيُزامن عند عودة الإنترنت');
+      refetchAll();
+      return { ok: true };
+    }
+
+    await recalcNextHearing(caseData.id);
+    toast('⏳ تم تأجيل النطق بالحكم للجلسة القادمة');
+
+    logActivity(db, 'تأجيل نطق بالحكم', {
+      entity_type: 'session', entity_id: sessionId, details: caseData.title || null,
+      case_name: caseData.title || null, case_type: caseData.type || null,
+      client_name: client?.full_name || null,
+      userName: profile?.full_name || null,
+    });
+
+    if (onNotify) {
+      let msg = `⏳ <b>تأجيل النطق بالحكم</b>\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `⚖️ <b>${escapeTelegramHtml(caseData.title || '—')}</b>\n`;
+      msg += `📋 رقم القيد: ${escapeTelegramHtml(caseData.number || '—')}\n`;
+      msg += `📆 جلسة النطق بالحكم الجديدة: ${escapeTelegramHtml(nextSessionDate)}\n`;
+      onNotify(msg);
+    }
+
+    refetchAll();
+    return { ok: true };
+  };
+
   return {
     sessions, setSessions,
     editingSession, setEditingSession,
@@ -336,6 +475,7 @@ export function useCaseSessions(
     confirmDeleteJudgment, setConfirmDeleteJudgment,
     deletingJudgment,
     handleUpdateSession, handleDeleteSession, handleFinalJudgment, handleDeleteFinalJudgment,
+    handlePreliminaryJudgment, handlePostponeJudgment,
     recalcNextHearing,
   };
 }
