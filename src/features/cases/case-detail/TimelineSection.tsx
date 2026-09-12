@@ -24,12 +24,6 @@ export interface EditingSessionForm extends SessionForm {
 }
 
 interface TimelineSectionProps {
-  showAddSession: boolean;
-  setShowAddSession: (v: boolean | ((p: boolean) => boolean)) => void;
-  sessionForm: SessionForm;
-  setSessionForm: (v: SessionForm | ((p: SessionForm) => SessionForm)) => void;
-  handleAddSession: () => void | Promise<void>;
-  savingSession: boolean;
   loadingSessions: boolean;
   sessions: CaseSessionRow[];
   editingSession: EditingSessionForm | null;
@@ -41,65 +35,29 @@ interface TimelineSectionProps {
 }
 
 function TimelineSection({
-  showAddSession, setShowAddSession, sessionForm, setSessionForm,
-  handleAddSession, savingSession, loadingSessions, sessions,
+  loadingSessions, sessions,
   editingSession, setEditingSession, handleUpdateSession,
   setSessionUpdateTarget, deletingSessionId, setConfirmDeleteSession,
 }: TimelineSectionProps) {
   return React.createElement('div', {className: "space-y-4 fade-in"},
-                // زر إضافة جلسة
-                React.createElement('button', {
-                    onClick: () => setShowAddSession(!showAddSession),
-                    'data-testid': 'add-session-button',
-                    className: "w-full py-3 border border-dashed border-premium-gold/30 rounded-2xl flex items-center justify-center gap-2 text-premium-gold text-xs font-black hover:bg-premium-gold/5 transition-all active:scale-[0.98]"
-                },
-                    React.createElement(I.Plus),
-                    "إضافة جلسة جديدة"
-                ),
-
-                // فورم إضافة جلسة
-                showAddSession && React.createElement('div', {className: "bg-premium-card border border-premium-gold/20 rounded-2xl p-4 space-y-3 slide-up"},
-                    React.createElement('h4', {className: "text-xs font-black text-premium-gold flex items-center gap-2"},
-                        React.createElement('span', {className: "w-1 h-3 bg-premium-gold rounded-full"}),
-                        "بيانات الجلسة"
-                    ),
-                    // التاريخ + الوقت
-                    React.createElement('div',{className:"grid grid-cols-2 gap-2"},
-                        React.createElement(DatePicker, {label: "تاريخ الجلسة", value: sessionForm.date, onChange: (v: string) => setSessionForm((p: SessionForm) =>({...p,date:v})), required: true, testId: 'session-date-trigger', dayTestId: 'session-date-day'}),
-                        React.createElement('div',null,
-                            React.createElement('label',{className:"block text-[10px] font-bold text-slate-400 mb-1.5"},"وقت الجلسة"),
-                            React.createElement('div',{className:"flex gap-1"},
-                                ['صباحي','مسائي'].map((t: string) =>React.createElement('button',{
-                                    key:t,
-                                    onClick:()=>setSessionForm((p: SessionForm) =>({...p,time_period:t})),
-                                    'data-testid': 'session-time-' + t,
-                                    className:`flex-1 py-2.5 rounded-xl text-[10px] font-black transition-all active:scale-95 ${sessionForm.time_period===t?'bg-premium-gold text-premium-bg':'bg-white/5 border border-white/10 text-slate-400'}`
-                                },t==='صباحي'?'🌅 صباحي':'🌆 مسائي'))
-                            )
-                        )
-                    ),
-                    React.createElement(Inp, {label: "ما جرى في الجلسة", value: sessionForm.description, onChange: (e: React.ChangeEvent<HTMLInputElement>) => setSessionForm((p: SessionForm) =>({...p,description:e.target.value})), placeholder: "ملخص ما دار في الجلسة...", 'data-testid': 'session-description'}),
-                    React.createElement(Inp, {label: "النتيجة / القرار", value: sessionForm.result, onChange: (e: React.ChangeEvent<HTMLInputElement>) => setSessionForm((p: SessionForm) =>({...p,result:e.target.value})), placeholder: "قرار المحكمة أو ما آلت إليه الجلسة..."}),
-                    React.createElement(Inp, {label: "الإجراء القادم", value: sessionForm.next_action, onChange: (e: React.ChangeEvent<HTMLInputElement>) => setSessionForm((p: SessionForm) =>({...p,next_action:e.target.value})), placeholder: "ما المطلوب تنفيذه قبل الجلسة القادمة؟"}),
-                    React.createElement('div', {className: "flex gap-2"},
-                        React.createElement('button', {
-                            onClick: handleAddSession,
-                            disabled: savingSession || !sessionForm.date,
-                            'data-testid': 'save-session-button',
-                            className: "flex-1 py-2.5 bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg rounded-xl text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-95 transition-all"
-                        }, savingSession ? React.createElement(I.Spin) : React.createElement(I.Check), "حفظ الجلسة"),
-                        React.createElement('button', {onClick: () => setShowAddSession(false), className: "px-4 py-2.5 bg-white/5 text-slate-400 rounded-xl text-xs font-bold active:scale-95"}, "إلغاء")
-                    )
-                ),
+                // 🗑️ FIX (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 1، 12
+                // سبتمبر 2026): زرار "إضافة جلسة جديدة" وفورمه اتشالوا نهائي
+                // من هنا — كانوا بيسمحوا بإنشاء جلسة جديدة من غير أي التزام
+                // بتسجيل نتيجة الجلسة اللي قبلها، بعكس "⚡ تحديث الجلسة" اللي
+                // بيجبر التسلسل يفضل متصل. الطريقة الوحيدة دلوقتي لإنشاء جلسة
+                // جديدة هي "⚡ تحديث" (SessionUpdateModal)، ولإقفال السلسلة
+                // نهائيًا هو زرار "🏛️ الحكم النهائي" (مشروط، راجع قسم 4).
 
                 // Timeline
                 loadingSessions
                     ? React.createElement('div', {className: "flex items-center justify-center py-16 gap-2 text-slate-500 text-xs"}, React.createElement(I.Spin), "جاري التحميل...")
                     : sessions.length === 0
+                        // ⚠️ ده عمليًا مش المفروض يحصل بعد إجبارية تاريخ الجلسة
+                        // الأولى وقت تسجيل القضية (NewCaseModal.tsx) — نسيبه
+                        // كـfallback نصي بلا أي زرار فعلي (بند 3.1 من الخطة).
                         ? React.createElement('div', {className: "text-center py-16 space-y-3"},
                             React.createElement('div', {className: "w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center text-3xl mx-auto"}, "🗓"),
                             React.createElement('p', {className: "text-white/60 font-black text-sm"}, "لا توجد جلسات مسجلة"),
-                            React.createElement('p', {className: "text-slate-500 text-xs"}, "اضغط على إضافة جلسة لتسجيل أول جلسة")
                           )
                         : React.createElement('div', {className: "relative"},
                             // الخط الرأسي للـ timeline
