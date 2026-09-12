@@ -239,6 +239,10 @@ function FinalJudgmentModal({ session, caseData, onClose, onConfirm, onConfirmPr
                                     required: true,
                                     testId: 'final-judgment-date-trigger',
                                     dayTestId: 'final-judgment-date-day',
+                                    // 🔧 FIX (تراكب الكاليندر فوق زرار "رجوع"/التأكيد، 12
+                                    // سبتمبر 2026): inline بس هنا جوه مودال "النطق بالحكم" —
+                                    // صفر تأثير على الاستخدامات التسعة التانية لـDatePicker.
+                                    inline: true,
                                 })
                                 // 🔒 (بند 18): تسجيل جديد (نهائي/تمهيدي) — نص
                                 // عرض ثابت مشتق من تاريخ الجلسة نفسها، مش
@@ -277,6 +281,9 @@ function FinalJudgmentModal({ session, caseData, onClose, onConfirm, onConfirmPr
                             required: true,
                             testId: choice === 'preliminary' ? 'preliminary-judgment-next-date-trigger' : 'postpone-judgment-next-date-trigger',
                             dayTestId: choice === 'preliminary' ? 'preliminary-judgment-next-date-day' : 'postpone-judgment-next-date-day',
+                            // 🔧 FIX (تراكب الكاليندر فوق زرار "رجوع"/التأكيد، 12
+                            // سبتمبر 2026): نفس الفيكس فوق — inline بس هنا.
+                            inline: true,
                         }),
 
                         // Buttons
