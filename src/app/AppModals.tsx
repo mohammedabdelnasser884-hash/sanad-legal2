@@ -402,10 +402,24 @@ function AppModals({
             // الداشبورد لحد ما يحصل reload كامل للصفحة (dashboard-tab.spec.ts).
             // دلوقتي بنعمل ريفريش لتلات القوائم لما نقفل شاشة تفاصيل القضية.
             onClose: () => { nav.closeModal('caseDetail'); _setSelectedCase(null); fetchTodaySessions(); fetchUpcomingSessions(); fetchMissedSessions(); },
-            onUpdate: (newStatus: string) => {
-                setSelectedCase((p) => ({ ...p, status: newStatus } as MappedCase));
-                setCases((prev) => prev.map((c) => c.id === selectedCase?.id ? { ...c, status: newStatus } : c));
-                setCasesFilter(newStatus); setCasesPage(0); fetchCases(0, newStatus);
+            // 🔧 FIX (باگ "عدّلها شخص آخر" الزائف بعد سلسلة عمليات جلسات على
+            // نفس القضية، 12 سبتمبر 2026): onUpdate كانت بتاخد status بس —
+            // selectedCase.updated_at كان بيفضل قديم بعد أي عملية جلسة
+            // (recalcNextHearing بتغيّره فعليًا في كل مرة)، فأي RPC تالي
+            // بيعتمد على optimistic locking (تسجيل حكم نهائي/إلغاء حكم) كان
+            // بيكتشف تعارض مع نفس المستخدم نفسه. دلوقتي بتاخد patch كامل
+            // (status و/أو updated_at) وتحدّث الاتنين لو موجودين.
+            onUpdate: (patch: { status?: string; updated_at?: string | null }) => {
+                setSelectedCase((p) => p ? ({
+                    ...p,
+                    ...(patch.status !== undefined ? { status: patch.status } : {}),
+                    ...(patch.updated_at !== undefined ? { updated_at: patch.updated_at } : {}),
+                } as MappedCase) : p);
+                if (patch.status !== undefined) {
+                    const newStatus = patch.status;
+                    setCases((prev) => prev.map((c) => c.id === selectedCase?.id ? { ...c, status: newStatus } : c));
+                    setCasesFilter(newStatus); setCasesPage(0); fetchCases(0, newStatus);
+                }
             },
             onDelete: handleDeleteCase, onEdit: handleUpdateCase, onLinkClient: handleLinkClient, onLinkClientForParty: handleLinkClientForParty, onUnlinkClient: handleUnlinkClient, onUnlinkClientForParty: handleUnlinkClientForParty, onCreateAndLinkClient: handleCreateAndLinkClient,
             // ⚡ NEW (مرحلة 13.1): زرار "إنشاء موكل" لكل طرف عليه ⭐ في تفاصيل القضية.
