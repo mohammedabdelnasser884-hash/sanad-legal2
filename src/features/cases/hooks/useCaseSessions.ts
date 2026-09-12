@@ -30,6 +30,11 @@ export function useCaseSessions(
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [sessionUpdateTarget, setSessionUpdateTarget] = useState<CaseSessionRow | null>(null);
   const [confirmDeleteSession, setConfirmDeleteSession] = useState<{ id: string; date: string } | null>(null);
+  // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 4، 12 سبتمبر 2026):
+  // الجلسة اللي المستخدم ضاغط عليها زرار "🏛️ الحكم النهائي" — بيفتح
+  // `FinalJudgmentModal` (مرحلة 5) عليها. نفس نمط `sessionUpdateTarget`
+  // بالظبط.
+  const [finalJudgmentTarget, setFinalJudgmentTarget] = useState<CaseSessionRow | null>(null);
 
   // ── FIX (2.3): إعادة حساب next_hearing بشكل صحيح ──
   // ⚠️ قبل الإصلاح ده، next_hearing كان بيتحط عليه تاريخ أي جلسة تتضاف
@@ -175,6 +180,7 @@ export function useCaseSessions(
     editingSession, setEditingSession,
     deletingSessionId, setDeletingSessionId,
     sessionUpdateTarget, setSessionUpdateTarget,
+    finalJudgmentTarget, setFinalJudgmentTarget,
     confirmDeleteSession, setConfirmDeleteSession,
     handleUpdateSession, handleDeleteSession,
     recalcNextHearing,
