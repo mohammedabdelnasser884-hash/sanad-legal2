@@ -38,8 +38,8 @@ const MISSED_SESSIONS_CACHE_KEY = 'sanad_cached_missed_sessions_v1';
 const MISSED_TASKS_CACHE_KEY = 'sanad_cached_missed_tasks_v1';
 // ⚡ NEW (فيكس "الجلسات مش موجودة نهائي" — 9 أغسطس 2026): نفس فكرة الكاش
 // في CalendarTab.tsx/MonthListTab.tsx — هنا مفتاحين مستقلين (جلسات فائتة /
-// مهام فائتة) لأن المصدرين مختلفين، ونطاق التاريخ مش محدود بشهر (limit 50
-// آخر جلسات فائتة)، فالكاش هنا بيحفظ آخر نتيجة ناجحة زي ما هي بدل تقسيمها
+// مهام فائتة) لأن المصدرين مختلفين، ونطاق التاريخ مش محدود بشهر (بلا حد
+// أقصى على عدد الجلسات الفائتة)، فالكاش هنا بيحفظ آخر نتيجة ناجحة زي ما هي بدل تقسيمها
 // بالشهر.
 
 interface MissedTabProps {
@@ -78,12 +78,22 @@ function MissedTab({ cases, clients, onOpenCase, onOpenReminders, onOpenStandalo
         }
 
         // جلسات فات تاريخها وليس فيها result ولا next_action (لم تُحدَّث)
+        // 🔒 FIX (باگ "تعارض عداد 63/14 — جلسات فائتة قديمة مش ظاهرة" —
+        // 12 سبتمبر 2026): كان فيه .limit(50) هنا *قبل* الفلترة الفعلية
+        // (result/next_action) اللي بتحصل تحت في .then — يعني كنا بنجيب
+        // أقرب 50 جلسة فائتة بالتاريخ بس، وبعدين نفلترهم. لو أغلب الـ50
+        // دول كانوا فعلاً محدَّثين (عندهم قرار)، كانت الجلسات الأقدم
+        // (الأخطر فعليًا، اللي فاتها وقت أطول من غير حد يحرّكها) بتتقطع
+        // من الاستعلام نفسه قبل حتى ما توصل للفلترة — مش بس بتتفلتر غلط.
+        // ده كان بيسبب فرق واضح بين عداد الـbadge فوق (fetchMissedCount
+        // في SessionsCalendar.tsx، مفيهوش limit خالص من الأصل) وعدد
+        // الجلسات المعروضة فعليًا هنا. نفس نمط استعلام reminders تحت
+        // بالظبط (من غير limit) — مفيش داعي لحد أقصى هنا زيه تمامًا.
         Promise.all([
             db.from('case_sessions')
               .select('id,session_date,session_time,session_floor,session_hall,case_id,client_id,description,result,next_action,title,case_number,court,case_type,circuit_number,cases(id,title,court_name,case_type,case_number_official,client_id)')
               .lt('session_date', todayStr)
               .order('session_date', { ascending: false })
-              .limit(50)
               .abortSignal(guard.controller.signal),
             db.from('reminders')
               .select('id,title,due_date,notes,done')
