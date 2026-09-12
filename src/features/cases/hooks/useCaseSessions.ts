@@ -49,6 +49,11 @@ export function useCaseSessions(
   // بيستهدف إلغاء الحكم (مش حذف الجلسة نفسها).
   const [confirmDeleteJudgment, setConfirmDeleteJudgment] = useState<{ id: string; date: string } | null>(null);
   const [deletingJudgment, setDeletingJudgment] = useState(false);
+  // 🆕 (طلب "إلغاء حجز النطق بالحكم قبل تسجيل أي حكم"، 12 سبتمبر 2026):
+  // نفس نمط deletingSessionId (id بدل boolean عام) — عشان لو في أكتر من
+  // زرار على الشاشة (نظريًا مش متوقع هنا لأنه بيظهر بس على آخر جلسة، لكن
+  // بيفضل النمط متسق مع باقي الملف).
+  const [cancelingReservationId, setCancelingReservationId] = useState<string | null>(null);
 
   // ── FIX (2.3): إعادة حساب next_hearing بشكل صحيح ──
   // ⚠️ قبل الإصلاح ده، next_hearing كان بيتحط عليه تاريخ أي جلسة تتضاف
@@ -367,6 +372,53 @@ export function useCaseSessions(
     refetchAll();
   };
 
+  // 🆕 (طلب "إلغاء حجز النطق بالحكم قبل تسجيل أي حكم"، 12 سبتمبر 2026):
+  // سيناريو مختلف تمامًا عن handleDeleteFinalJudgment فوق: هنا الجلسة
+  // "محجوزة للحكم" (is_judgment_reserved === true) بس لسه محصلش أي حكم
+  // فعلي (نهائي/تمهيدي) اتسجّل عليها — القضية أصلاً لسه "متداولة"، ومحدش
+  // غيّر cases.status. الحجز ده ممكن يكون اتحط غلط (مثلاً toggle في
+  // SessionUpdateModal اتفعّل بالغلط)، أو المستخدم غيّر رأيه وعايز الجلسة
+  // ترجع عادية بدل ما يضطر يمر بمسار "🏛️ النطق بالحكم" (نهائي/تمهيدي/
+  // تأجيل) وكلهم بيفترضوا إنه فعلاً عايز يسجّل حكم من نوع ما.
+  // **الفرق الجوهري عن handleDeleteFinalJudgment:** كتابة واحدة بس على
+  // الجلسة (تصفير is_judgment_reserved)، من غير أي لمس لـcases.status —
+  // لأنه أصلاً محتاجش يترجّع لحاجة، القضية متأثرتش من الأول. بمجرد ما
+  // الفلاج يرجع false، شروط إظهار زراير ✏️/🗑️/⚡ في TimelineSection.tsx
+  // (s.is_judgment_reserved !== true) بتتفعّل لوحدها من غير أي كود إضافي.
+  const handleCancelJudgmentReservation = async (sessionId: string) => {
+    setCancelingReservationId(sessionId);
+    const session = sessions.find((s) => s.id === sessionId);
+
+    const result = await window.__dbWrite({
+      type: 'UPDATE',
+      table: 'case_sessions',
+      id: sessionId,
+      data: { is_judgment_reserved: false },
+      knownUpdatedAt: session?.updated_at || null,
+    });
+    setCancelingReservationId(null);
+
+    if (result.conflict) { toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
+    if (result.error && !result.offline) { toast('❌ فشل إلغاء حجز النطق بالحكم، حاول مرة أخرى', true); return; }
+
+    if (result.offline && result.queued) {
+      toast('📥 تم حفظ إلغاء الحجز محليًا — سيُزامن عند عودة الإنترنت');
+      refetchAll();
+      return;
+    }
+
+    toast('↩️ تم إلغاء حجز النطق بالحكم');
+
+    logActivity(db, 'إلغاء حجز النطق بالحكم', {
+      entity_type: 'session', entity_id: sessionId, details: caseData.title || null,
+      case_name: caseData.title || null, case_type: caseData.type || null,
+      client_name: client?.full_name || null,
+      userName: profile?.full_name || null,
+    });
+
+    refetchAll();
+  };
+
   // 🆕 (خطة إعادة تصميم مودال "النطق بالحكم"، بند 15، 12 سبتمبر 2026):
   // مسار "حكم تمهيدي/جزئي" — بيعيد استخدام نفس آلية "⚡ تحديث"
   // (SessionUpdateModal.handleSave): تحديث آخر جلسة (تسجيل المنطوق +
@@ -515,7 +567,9 @@ export function useCaseSessions(
     confirmDeleteSession, setConfirmDeleteSession,
     confirmDeleteJudgment, setConfirmDeleteJudgment,
     deletingJudgment,
+    cancelingReservationId,
     handleUpdateSession, handleDeleteSession, handleFinalJudgment, handleDeleteFinalJudgment,
+    handleCancelJudgmentReservation,
     handlePreliminaryJudgment, handlePostponeJudgment,
     recalcNextHearing,
   };
