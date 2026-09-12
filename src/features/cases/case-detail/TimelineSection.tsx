@@ -145,7 +145,7 @@ function TimelineSection({
                     'data-testid': 'final-judgment-trigger',
                     className: "w-full flex items-center justify-center gap-1.5 py-3.5 rounded-2xl text-xs font-black active:scale-[0.98] transition-all slide-up",
                     style: {background:'rgba(16,185,129,0.12)', color:'#10b981', border:'1px solid rgba(16,185,129,0.35)'}
-                }, "🏛️ الحكم النهائي"),
+                }, "🏛️ النطق بالحكم"),
                 // 🗑️ FIX (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 1، 12
                 // سبتمبر 2026): زرار "إضافة جلسة جديدة" وفورمه اتشالوا نهائي
                 // من هنا — كانوا بيسمحوا بإنشاء جلسة جديدة من غير أي التزام
