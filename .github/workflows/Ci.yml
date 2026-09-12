@@ -26,3 +26,6 @@ jobs:
 
       - name: Build (lint + type-check + vite build)
         run: npm run build
+
+      - name: Build without minify (debug CSS warning)
+        run: npx vite build --minify false
