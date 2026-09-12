@@ -687,6 +687,7 @@ ${PDF_FONT_LINK}
     editingSession: sessionsHook.editingSession, setEditingSession: sessionsHook.setEditingSession,
     deletingSessionId: sessionsHook.deletingSessionId, setDeletingSessionId: sessionsHook.setDeletingSessionId,
     sessionUpdateTarget: sessionsHook.sessionUpdateTarget, setSessionUpdateTarget: sessionsHook.setSessionUpdateTarget,
+    finalJudgmentTarget: sessionsHook.finalJudgmentTarget, setFinalJudgmentTarget: sessionsHook.setFinalJudgmentTarget,
     confirmDeleteSession: sessionsHook.confirmDeleteSession, setConfirmDeleteSession: sessionsHook.setConfirmDeleteSession,
     handleUpdateSession: sessionsHook.handleUpdateSession,
     handleDeleteSession: sessionsHook.handleDeleteSession,
