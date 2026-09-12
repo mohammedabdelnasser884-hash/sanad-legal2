@@ -15,6 +15,11 @@ interface FinalJudgmentModalProps {
     // نفسه لوحده بس لو ok !== false (يعني نجاح فعلي أو تقييد أوفلاين —
     // الاتنين بيتعاملوا كنجاح من ناحية إغلاق المودال، الفرق بس في الـtoast).
     onConfirm: (judgmentDate: string, verdictText: string) => Promise<{ ok: boolean } | void>;
+    // 🆕 (طلب "تعديل/حذف الحكم النهائي"، 12 سبتمبر 2026): لما القضية أصلاً
+    // "منتهية"، نفس المودال والـonConfirm (handleFinalJudgment) بيتستخدموا
+    // للتعديل — بيكتبوا فوق نفس الجلسة تاني، مفيش داعي لمنطق/جدول جديد.
+    // الفرق بس نصّي (عنوان/تحذيرات/زرار التأكيد).
+    isEditMode?: boolean;
 }
 
 /**
@@ -29,9 +34,9 @@ interface FinalJudgmentModalProps {
  *    الفعلي — القضية هتتحول لـ"منتهية" ومفيش رجوع تلقائي غير عن طريق
  *    "⚡ تحديث" على جلسة جديدة (سيناريو إعادة الفتح، مرحلة 3).
  */
-function FinalJudgmentModal({ session, caseData, onClose, onConfirm }: FinalJudgmentModalProps) {
+function FinalJudgmentModal({ session, caseData, onClose, onConfirm, isEditMode }: FinalJudgmentModalProps) {
     const [judgmentDate, setJudgmentDate] = useState(session.session_date || '');
-    const [verdictText, setVerdictText] = useState('');
+    const [verdictText, setVerdictText] = useState(session.result || '');
     const [step, setStep] = useState<'form' | 'confirm'>('form');
     const [saving, setSaving] = useState(false);
     const modalPresentation = useModalPresentation();
@@ -75,7 +80,7 @@ function FinalJudgmentModal({ session, caseData, onClose, onConfirm }: FinalJudg
                                     React.createElement(I.Scale)
                                 ),
                                 React.createElement('div', null,
-                                    React.createElement('h3', { className: "text-sm font-black text-emerald-400" }, "🏛️ الحكم النهائي"),
+                                    React.createElement('h3', { className: "text-sm font-black text-emerald-400" }, isEditMode ? "✏️ تعديل الحكم النهائي" : "🏛️ الحكم النهائي"),
                                     React.createElement('p', { className: "text-[10px] text-slate-500 mt-0.5" }, caseData.title || '—')
                                 )
                             ),
@@ -89,7 +94,9 @@ function FinalJudgmentModal({ session, caseData, onClose, onConfirm }: FinalJudg
 
                         // تحذير مختصر
                         React.createElement('div', { className: "bg-emerald-500/8 border border-emerald-500/15 rounded-2xl p-3 text-[10px] text-slate-400 leading-relaxed" },
-                            "تسجيل الحكم النهائي هيغلق القضية تلقائيًا. لو حصل طعن/استئناف، سجّله كقضية جديدة منفصلة. لو احتجت بس تكمل جلسات على نفس القضية دي لأي سبب تاني، هترجع \"نشطة\" تلقائيًا أول ما تسجّل عليها جلسة جديدة."
+                            isEditMode
+                                ? "هتعدّل تاريخ الحكم و/أو منطوقه على نفس الجلسة — القضية هتفضل \"منتهية\" زي ما هي."
+                                : "تسجيل الحكم النهائي هيغلق القضية تلقائيًا. لو حصل طعن/استئناف، سجّله كقضية جديدة منفصلة. لو احتجت بس تكمل جلسات على نفس القضية دي لأي سبب تاني، هترجع \"نشطة\" تلقائيًا أول ما تسجّل عليها جلسة جديدة."
                         ),
 
                         // تاريخ الحكم
@@ -138,8 +145,8 @@ function FinalJudgmentModal({ session, caseData, onClose, onConfirm }: FinalJudg
                         React.createElement('div', { className: "flex items-start gap-3" },
                             React.createElement('div', { className: "w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center text-2xl shrink-0" }, "⚖️"),
                             React.createElement('div', null,
-                                React.createElement('h3', { className: "text-sm font-black text-white" }, "تأكيد الحكم النهائي وإغلاق القضية"),
-                                React.createElement('p', { className: "text-[10px] text-emerald-400 font-bold mt-0.5" }, "هذا الإجراء سيُنهي القضية — راجع البيانات قبل التأكيد")
+                                React.createElement('h3', { className: "text-sm font-black text-white" }, isEditMode ? "تأكيد تعديل الحكم النهائي" : "تأكيد الحكم النهائي وإغلاق القضية"),
+                                React.createElement('p', { className: "text-[10px] text-emerald-400 font-bold mt-0.5" }, isEditMode ? "راجع البيانات الجديدة قبل التأكيد" : "هذا الإجراء سيُنهي القضية — راجع البيانات قبل التأكيد")
                             )
                         ),
 
@@ -155,7 +162,9 @@ function FinalJudgmentModal({ session, caseData, onClose, onConfirm }: FinalJudg
                         ),
 
                         React.createElement('div', { className: "bg-rose-500/8 border border-rose-500/15 rounded-2xl p-3 text-[10px] text-slate-400 leading-relaxed" },
-                            "بتأكيدك صدور حكم نهائي في الدعوى سيتم نقل الدعوى لقسم القضايا المنتهية، وفي حالة وجود طعن يمكنك تسجيله كقضية جديدة منفصلة."
+                            isEditMode
+                                ? "بتأكيدك هيتحدّث تاريخ الحكم ومنطوقه على نفس الجلسة — القضية هتفضل \"منتهية\" زي ما هي."
+                                : "بتأكيدك صدور حكم نهائي في الدعوى سيتم نقل الدعوى لقسم القضايا المنتهية، وفي حالة وجود طعن يمكنك تسجيله كقضية جديدة منفصلة."
                         ),
 
                         React.createElement('div', { className: "flex gap-2 pt-1" },
@@ -166,7 +175,7 @@ function FinalJudgmentModal({ session, caseData, onClose, onConfirm }: FinalJudg
                                 className: "flex-1 py-3 bg-gradient-to-tr from-emerald-500 to-emerald-300 text-premium-bg rounded-2xl text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-all disabled:opacity-50"
                             },
                                 saving ? React.createElement(I.Spin) : React.createElement(I.Check),
-                                saving ? "جاري التسجيل..." : "تأكيد الحكم وإغلاق القضية"
+                                saving ? "جاري الحفظ..." : (isEditMode ? "تأكيد التعديل" : "تأكيد الحكم وإغلاق القضية")
                             ),
                             React.createElement('button', {
                                 onClick: () => setStep('form'),
