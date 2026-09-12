@@ -368,6 +368,103 @@ describe('useCaseSessions — handleFinalJudgment (onUpdate sync)', () => {
   });
 });
 
+// 🆕 (طلب "إلغاء حجز النطق بالحكم قبل تسجيل أي حكم"، 12 سبتمبر 2026):
+// عملية مختلفة تمامًا عن handleDeleteFinalJudgment تحت — كتابة واحدة بس
+// على الجلسة (is_judgment_reserved: false)، من غير أي لمس لـcases.status
+// (مفيش حكم اتسجّل أصلاً، فمفيش حالة قضية تترجّع).
+describe('useCaseSessions — handleCancelJudgmentReservation', () => {
+  it('نجاح → __dbWrite UPDATE واحد بس (is_judgment_reserved:false) بـknownUpdatedAt الصحيح، توست نجاح، تسجيل نشاط، وrefetchAll — من غير أي كتابة على جدول cases', async () => {
+    dbWriteMock().mockResolvedValue({ error: null });
+    const { result, refetchAll } = renderSessionsHook();
+    act(() => { result.current.setSessions([{ id: 'sess-1', updated_at: '2026-07-01T00:00:00.000Z' } as never]); });
+
+    await act(async () => {
+      await result.current.handleCancelJudgmentReservation('sess-1');
+    });
+
+    expect(dbWriteMock()).toHaveBeenCalledWith({
+      type: 'UPDATE', table: 'case_sessions', id: 'sess-1',
+      data: { is_judgment_reserved: false },
+      knownUpdatedAt: '2026-07-01T00:00:00.000Z',
+    });
+    expect(dbWriteMock()).toHaveBeenCalledTimes(1);
+    expect(mockDb.updateSpy).not.toHaveBeenCalledWith('cases', expect.anything());
+    expect(toast).toHaveBeenCalledWith('↩️ تم إلغاء حجز النطق بالحكم');
+    expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'إلغاء حجز النطق بالحكم', expect.objectContaining({ entity_type: 'session', entity_id: 'sess-1' }));
+    expect(refetchAll).toHaveBeenCalled();
+  });
+
+  it('الجلسة مش موجودة في الـstate المحلي → __dbWrite بيتنادى بـknownUpdatedAt: null', async () => {
+    dbWriteMock().mockResolvedValue({ error: null });
+    const { result } = renderSessionsHook();
+
+    await act(async () => {
+      await result.current.handleCancelJudgmentReservation('sess-not-in-state');
+    });
+
+    expect(dbWriteMock()).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'UPDATE', table: 'case_sessions', id: 'sess-not-in-state', knownUpdatedAt: null,
+    }));
+  });
+
+  it('تعارض (conflict) → توست تعارض واضح، من غير تسجيل نشاط ولا refetchAll', async () => {
+    dbWriteMock().mockResolvedValue({ error: { message: 'conflict' }, conflict: true, offline: false });
+    const { result, refetchAll } = renderSessionsHook();
+
+    await act(async () => {
+      await result.current.handleCancelJudgmentReservation('sess-1');
+    });
+
+    expect(toast).toHaveBeenCalledWith('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true);
+    expect(logActivity).not.toHaveBeenCalled();
+    expect(refetchAll).not.toHaveBeenCalled();
+  });
+
+  it('فشل حقيقي (error بلا offline) → توست فشل بس، من غير تسجيل نشاط ولا refetchAll', async () => {
+    dbWriteMock().mockResolvedValue({ error: { message: 'update failed' } });
+    const { result, refetchAll } = renderSessionsHook();
+
+    await act(async () => {
+      await result.current.handleCancelJudgmentReservation('sess-1');
+    });
+
+    expect(toast).toHaveBeenCalledWith('❌ فشل إلغاء حجز النطق بالحكم، حاول مرة أخرى', true);
+    expect(logActivity).not.toHaveBeenCalled();
+    expect(refetchAll).not.toHaveBeenCalled();
+  });
+
+  it('أوفلاين ومتقيّدة → توست "الإلغاء محفوظ محليًا"، من غير تسجيل نشاط، مع refetchAll', async () => {
+    dbWriteMock().mockResolvedValue({ error: null, offline: true, queued: true });
+    const { result, refetchAll } = renderSessionsHook();
+
+    await act(async () => {
+      await result.current.handleCancelJudgmentReservation('sess-1');
+    });
+
+    expect(toast).toHaveBeenCalledWith('📥 تم حفظ إلغاء الحجز محليًا — سيُزامن عند عودة الإنترنت');
+    expect(logActivity).not.toHaveBeenCalled();
+    expect(refetchAll).toHaveBeenCalled();
+  });
+
+  it('cancelingReservationId بيتحط على id الجلسة وقت التنفيذ ويرجع null بعدها', async () => {
+    let resolveWrite: (v: { error: null }) => void;
+    dbWriteMock().mockReturnValue(new Promise((resolve) => { resolveWrite = resolve; }));
+    const { result } = renderSessionsHook();
+
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.handleCancelJudgmentReservation('sess-1') as Promise<void>;
+    });
+    expect(result.current.cancelingReservationId).toBe('sess-1');
+
+    await act(async () => {
+      resolveWrite({ error: null });
+      await pending;
+    });
+    expect(result.current.cancelingReservationId).toBeNull();
+  });
+});
+
 describe('useCaseSessions — handleDeleteFinalJudgment (onUpdate sync)', () => {
   it('نجاح → onUpdate بينادى بـ "نشطة" عشان القضية ترجع لقسم متداولة فورًا', async () => {
     dbWriteMock().mockResolvedValue({ error: null });
