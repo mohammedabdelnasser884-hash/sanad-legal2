@@ -425,6 +425,10 @@ export interface Database {
           // 2026): يتحكم في ظهور زرار "🏛️ الحكم النهائي" — راجع
           // database/migrations/sql-migrations-phase21/01-judgment-reserved-column.sql
           is_judgment_reserved: boolean
+          // 🆕 Phase 22 (بند 17، إعادة تصميم مودال "النطق بالحكم"، 12
+          // سبتمبر 2026): نوع الحكم المسجَّل — 'نهائي' | 'تمهيدي' | null.
+          // راجع database/migrations/sql-migrations-phase22/01-judgment-type-column.sql
+          judgment_type: string | null
         }
         Insert: {
           id?: string
@@ -453,6 +457,7 @@ export interface Database {
           plaintiff_legal_title?: string | null
           defendant_legal_title?: string | null
           is_judgment_reserved?: boolean
+          judgment_type?: string | null
         }
         Update: {
           id?: string
@@ -481,6 +486,7 @@ export interface Database {
           plaintiff_legal_title?: string | null
           defendant_legal_title?: string | null
           is_judgment_reserved?: boolean
+          judgment_type?: string | null
         }
         // ⚠️ FIX (14 يوليو 2026): كانت فاضية، وده كان بيمنع supabase-js من
         // استنتاج نوع الـ embed `cases(...)` جوه .select() (بيرجع
