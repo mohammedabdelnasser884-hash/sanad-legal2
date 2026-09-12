@@ -43,14 +43,68 @@ interface TimelineSectionProps {
   canEditCase: boolean;
   deletingSessionId: string | null;
   setConfirmDeleteSession: (v: { id: string; date: string } | null) => void;
+  // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 7، 12 سبتمبر 2026):
+  // status القضية — عشان نحدد نعرض كارت "✅ حكم نهائي" فوق التايم لاين
+  // ولا لأ. مبعوتة كـprop منفصلة (مش caseData كامل) عشان الملف يفضل
+  // معتمد بس على الأعمدة اللي فعلاً بيستخدمها، زي باقي الملف.
+  caseStatus: string | null;
 }
 
 function TimelineSection({
   loadingSessions, sessions,
   editingSession, setEditingSession, handleUpdateSession,
   setSessionUpdateTarget, setFinalJudgmentTarget, canEditCase, deletingSessionId, setConfirmDeleteSession,
+  caseStatus,
 }: TimelineSectionProps) {
+  // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 7، 12 سبتمبر 2026):
+  // كارت "✅ حكم نهائي" — بيظهر بس لو آخر جلسة (i===0) هي نفسها اللي
+  // اتسجّل عليها الحكم فعليًا عن طريق FinalJudgmentModal (مرحلة 5/6).
+  // مفيش عمود منفصل بيميّز "جلسة حكم" عن "جلسة عادية اتحدّث فيها result"،
+  // فبنستخدم نفس العلامة الموجودة بالفعل: is_judgment_reserved بيفضل
+  // true على الجلسة دي حتى بعد ما handleFinalJudgment يسجّل الحكم عليها
+  // (مش بيصفّرها — راجع useCaseSessions.ts) — فالشرط الدقيق: آخر جلسة +
+  // is_judgment_reserved === true + القضية status === 'منتهية'. كده منفرّق
+  // عن قضية اتقفلت يدويًا من EditCaseModal من غير ما تعدي على الفلو ده.
+  const lastSession = sessions[0];
+  const showJudgmentCard = !!lastSession && lastSession.is_judgment_reserved === true && caseStatus === 'منتهية';
+
+  // قرار نصّي (بعد سؤال جيمي، 12 سبتمبر 2026): كارت منفصل بعرض القسم
+  // كله فوق آخر جلسة، ومنطوق الحكم مختصر سطرين افتراضيًا (line-clamp-2)
+  // مع زرار "عرض الكل" بيظهر بس لو فعلاً النص أطول من سطرين (بنتأكد
+  // فعليًا بقياس scrollHeight/clientHeight بدل تخمين عدد حروف).
+  const judgmentTextRef = React.useRef<HTMLParagraphElement | null>(null);
+  const [judgmentExpanded, setJudgmentExpanded] = React.useState(false);
+  const [judgmentOverflows, setJudgmentOverflows] = React.useState(false);
+  React.useLayoutEffect(() => {
+    if (!showJudgmentCard || judgmentExpanded) return;
+    const el = judgmentTextRef.current;
+    if (el) setJudgmentOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [showJudgmentCard, judgmentExpanded, lastSession?.id, lastSession?.result]);
+
   return React.createElement('div', {className: "space-y-4 fade-in"},
+                // 🆕 كارت "✅ حكم نهائي" — فوق التايم لاين كله، بعرض القسم
+                // (مش جوه صف الـtimeline اللي فيه عمود النقطة/الخط، عشان
+                // يبان "منفصل" و"بعرض القسم كلة" زي ما اتفقنا).
+                showJudgmentCard && React.createElement('div', {
+                    className: "bg-emerald-500/5 border border-emerald-500/25 rounded-2xl p-4 slide-up",
+                    'data-testid': 'final-judgment-card',
+                  },
+                  React.createElement('div', {className: "flex items-center justify-between mb-2"},
+                    React.createElement('span', {className: "text-[10px] px-2.5 py-1 bg-emerald-500/15 text-emerald-400 rounded-full font-black"}, "✅ حكم نهائي"),
+                    React.createElement('span', {className: "text-[10px] text-slate-400 font-bold"}, lastSession.session_date)
+                  ),
+                  React.createElement('p', {className: "text-[9px] font-black text-emerald-400/80 mb-1"}, "منطوق الحكم"),
+                  React.createElement('p', {
+                    ref: judgmentTextRef,
+                    className: `text-xs text-slate-100 font-black leading-relaxed ${judgmentExpanded ? '' : 'line-clamp-2'}`,
+                    'data-testid': 'final-judgment-verdict-text-display',
+                  }, lastSession.result),
+                  judgmentOverflows && React.createElement('button', {
+                    onClick: () => setJudgmentExpanded((v) => !v),
+                    'data-testid': 'final-judgment-verdict-toggle',
+                    className: "mt-1.5 text-[10px] font-black text-emerald-400 underline underline-offset-2 active:scale-95 transition-all",
+                  }, judgmentExpanded ? "إخفاء" : "عرض الكل")
+                ),
                 // 🗑️ FIX (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 1، 12
                 // سبتمبر 2026): زرار "إضافة جلسة جديدة" وفورمه اتشالوا نهائي
                 // من هنا — كانوا بيسمحوا بإنشاء جلسة جديدة من غير أي التزام
