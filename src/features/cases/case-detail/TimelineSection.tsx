@@ -97,9 +97,30 @@ function TimelineSection({
                 // (مش جوه صف الـtimeline اللي فيه عمود النقطة/الخط، عشان
                 // يبان "منفصل" و"بعرض القسم كلة" زي ما اتفقنا).
                 showJudgmentCard && React.createElement('div', {
-                    className: "bg-emerald-500/5 border border-emerald-500/25 rounded-2xl p-4 slide-up text-center",
+                    className: "relative bg-emerald-500/5 border border-emerald-500/25 rounded-2xl p-4 slide-up text-center",
                     'data-testid': 'final-judgment-card',
                   },
+                  // 🆕 (تعديل تخطيطي، 12 سبتمبر 2026): زراري تعديل/حذف بقوا
+                  // أيقونة فقط (بدل نص+عرض كامل) ومثبّتين في أعلى الكارت على
+                  // الشمال (position: absolute)، بدل ما كانوا صف كامل العرض
+                  // تحت نص المنطوق. مقيّدين بـcanEditCase زي ما كانوا بالظبط،
+                  // ونفس الـdata-testid عشان أي اختبار حالي يفضل شغال.
+                  canEditCase && React.createElement('div', { className: "absolute top-3 left-3 flex gap-1.5" },
+                    React.createElement('button', {
+                      onClick: () => setFinalJudgmentTarget(lastSession),
+                      'data-testid': 'final-judgment-edit-trigger',
+                      title: 'تعديل الحكم النهائي',
+                      className: "w-7 h-7 rounded-lg flex items-center justify-center active:scale-90 transition-all",
+                      style: {background:'rgba(212,175,55,0.15)', color:'#D4AF37', border:'1px solid rgba(212,175,55,0.3)'}
+                    }, React.createElement(I.Edit, {className: "w-3.5 h-3.5"})),
+                    React.createElement('button', {
+                      onClick: () => setConfirmDeleteJudgment({ id: lastSession.id, date: lastSession.session_date || '—' }),
+                      'data-testid': 'final-judgment-delete-trigger',
+                      title: 'حذف الحكم النهائي',
+                      className: "w-7 h-7 rounded-lg flex items-center justify-center active:scale-90 transition-all",
+                      style: {background:'rgba(244,63,94,0.1)', color:'#fb7185', border:'1px solid rgba(244,63,94,0.25)'}
+                    }, React.createElement(I.Trash, {className: "w-3.5 h-3.5"}))
+                  ),
                   React.createElement('span', {className: "inline-block px-3 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-sm font-black mb-2"},
                     "✅ صدر حكم نهائي بجلسة " + lastSession.session_date
                   ),
@@ -113,27 +134,7 @@ function TimelineSection({
                     onClick: () => setJudgmentExpanded((v) => !v),
                     'data-testid': 'final-judgment-verdict-toggle',
                     className: "mt-1.5 text-[10px] font-black text-emerald-400 underline underline-offset-2 active:scale-95 transition-all",
-                  }, judgmentExpanded ? "إخفاء" : "عرض الكل"),
-                  // 🆕 (طلب "تعديل/حذف الحكم النهائي"، 12 سبتمبر 2026): زراري
-                  // تعديل/حذف على نفس الحكم — مقيّدين بـcanEditCase (نفس
-                  // صلاحية تسجيل الحكم أصلاً). "تعديل" بيفتح نفس
-                  // FinalJudgmentModal (بيتعرف تلقائيًا إنه Edit من
-                  // caseStatus === 'منتهية' في CaseDetailView)، و"حذف"
-                  // بيفتح مودال تأكيد إلغاء الحكم (يرجّع القضية "متداولة").
-                  canEditCase && React.createElement('div', { className: "flex gap-2 mt-3" },
-                    React.createElement('button', {
-                      onClick: () => setFinalJudgmentTarget(lastSession),
-                      'data-testid': 'final-judgment-edit-trigger',
-                      className: "flex-1 py-2 rounded-xl text-[10px] font-black active:scale-[0.98] transition-all",
-                      style: {background:'rgba(212,175,55,0.15)', color:'#D4AF37', border:'1px solid rgba(212,175,55,0.3)'}
-                    }, "✏️ تعديل"),
-                    React.createElement('button', {
-                      onClick: () => setConfirmDeleteJudgment({ id: lastSession.id, date: lastSession.session_date || '—' }),
-                      'data-testid': 'final-judgment-delete-trigger',
-                      className: "flex-1 py-2 rounded-xl text-[10px] font-black active:scale-[0.98] transition-all",
-                      style: {background:'rgba(244,63,94,0.1)', color:'#fb7185', border:'1px solid rgba(244,63,94,0.25)'}
-                    }, "🗑 حذف")
-                  )
+                  }, judgmentExpanded ? "إخفاء" : "عرض الكل")
                 ),
                 // 🆕 زرار "🏛️ الحكم النهائي" — منفصل وبعرض القسم كامل، فوق
                 // كارت آخر جلسة (راجع تعليق showJudgmentTrigger فوق).
