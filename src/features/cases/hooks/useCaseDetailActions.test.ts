@@ -7,7 +7,7 @@ import type { MappedCase } from '../../../hooks/useAppData';
 // Mock db (supabaseClient) — بيغطي بالظبط سلاسل الاستدعاءات المباشرة
 // الموجودة فعليًا في useCaseDetailActions.ts (اتأكدت منها بقراءة الكود،
 // مفيش تخمين):
-//   - db.from('case_sessions').select('*').eq('case_id',x).order('session_date',{ascending:false})  [fetchSessions]
+//   - db.from('case_sessions').select('*').eq('case_id',x).order('session_date',{ascending:false}).order('created_at',{ascending:false})  [fetchSessions — معيار ترتيب ثانٍ اتضاف كفيكس بند 26]
 //   - db.from('case_notes').select('*').eq('case_id',x).order('created_at',{ascending:false})        [fetchSessions]
 //   - db.from('case_documents').select('*').eq('case_id',x).order('created_at',{ascending:false})    [fetchSessions]
 // 🆕 المرحلة 6 (تكملة ثانية، 21 يوليو): إضافة/حذف/تعديل الملاحظة
