@@ -219,7 +219,8 @@ function TimelineSection({
                             React.createElement('div', {className: "absolute right-[27px] top-4 bottom-4 w-px bg-gradient-to-b from-premium-gold/40 via-white/10 to-transparent"}),
                             React.createElement('div', {className: "space-y-4"},
                                 sessions.map((s: CaseSessionRow, i: number) =>
-                                    React.createElement('div', {key: s.id, className: "flex gap-4 items-start relative"},
+                                    React.createElement(React.Fragment, {key: s.id},
+                                    React.createElement('div', {className: "flex gap-4 items-start relative"},
                                         // نقطة الـ timeline
                                         React.createElement('div', {className: "shrink-0 w-14 flex flex-col items-center gap-1 relative z-10"},
                                             React.createElement('div', {className: `w-7 h-7 rounded-full border-2 flex items-center justify-center text-[10px] font-black ${i === 0 ? 'border-premium-gold bg-premium-gold/20 text-premium-gold' : 'border-white/15 bg-premium-bg text-slate-500'}`},
@@ -328,44 +329,15 @@ function TimelineSection({
                                                 React.createElement('p', {className: "text-xs text-slate-200 leading-relaxed"}, s.description)
                                             ),
                                             // ما جرى في الجلسة
-                                            // 🔁 (طلب "كارت حكم تمهيدي بنفس شكل كارت الحكم النهائي"، 12
-                                            // سبتمبر 2026): البادچ الصغير القديم "⚖️ حكم تمهيدي" اتشال
-                                            // بالكامل، ومكانه بقى كارت كامل الحجم بنفس تصميم/بيانات كارت
-                                            // "✅ حكم نهائي" فوق (بادچ + "منطوق الحكم" + النص + عرض الكل)،
-                                            // بس بلون أزرق (sky) بدل الأخضر عشان يتفرّق بصريًا عن الحكم
-                                            // النهائي، ومن غير أزرار تعديل/حذف (مش مطلوبة هنا). الفرق
-                                            // الجوهري عن كارت الحكم النهائي: ده مش مثبت فوق الـTimeline
-                                            // كله — بياخد مكانه الطبيعي جوه تسلسل الجلسات، فأي جلسة جديدة
-                                            // بعده (بما فيها الجلسة اللي اتعملت وقت الحكم التمهيدي نفسه)
-                                            // بتظهر فوقه بالترتيب الزمني العادي — لأن القضية هنا لسه
-                                            // "متداولة" ومفتوحة لإضافة جلسات، بعكس الحكم النهائي.
-                                            s.result && (s.judgment_type === 'تمهيدي'
-                                                ? React.createElement('div', {
-                                                    className: "bg-sky-500/5 border border-sky-500/25 rounded-2xl p-4 mb-2 text-center",
-                                                    'data-testid': 'preliminary-judgment-card',
-                                                  },
-                                                    React.createElement('span', {className: "inline-block px-3 py-1.5 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400 text-sm font-black mb-2"},
-                                                      "⚖️ صدر حكم تمهيدي بجلسة " + (s.session_date || '—')
-                                                    ),
-                                                    React.createElement('p', {className: "text-[10px] font-black text-sky-400/80 mb-1"}, "منطوق الحكم"),
-                                                    React.createElement('p', {
-                                                        ref: (el: HTMLParagraphElement | null): void => {
-                                                            if (el) prelimVerdictRefs.current.set(s.id, el);
-                                                            else prelimVerdictRefs.current.delete(s.id);
-                                                        },
-                                                        className: `text-sm text-slate-100 font-black leading-relaxed ${prelimExpanded[s.id] ? '' : 'line-clamp-2'}`,
-                                                        'data-testid': 'preliminary-judgment-verdict-text-display',
-                                                    }, s.result),
-                                                    prelimOverflows[s.id] && React.createElement('button', {
-                                                        onClick: () => setPrelimExpanded((p) => ({...p, [s.id]: !p[s.id]})),
-                                                        'data-testid': 'preliminary-judgment-verdict-toggle',
-                                                        className: "mt-1.5 text-[10px] font-black text-sky-400 underline underline-offset-2 active:scale-95 transition-all",
-                                                    }, prelimExpanded[s.id] ? "إخفاء" : "عرض الكل")
-                                                )
-                                                : React.createElement('div', {className: "bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-3 mb-2"},
-                                                    React.createElement('p', {className: "text-[9px] font-black text-emerald-400 mb-1"}, "📌 النتيجة"),
-                                                    React.createElement('p', {className: "text-[11px] text-slate-200 font-bold leading-relaxed"}, s.result)
-                                                )
+                                            // 🔁 (طلب "كارت حكم تمهيدي مستقل بره كارت الجلسة"، 12 سبتمبر
+                                            // 2026): كارت الحكم التمهيدي بقى عنصر مستقل بره كارت الجلسة
+                                            // خالص (راجع الفراگمنت تحت في سطر الـmap) — هنا جوه الكارت
+                                            // بنعرض بس "📌 النتيجة" العادية، ولو الجلسة عليها حكم تمهيدي
+                                            // (judgment_type === 'تمهيدي') مبنعرض حاجة هنا خالص عشان
+                                            // منكررش المنطوق مرتين.
+                                            s.result && s.judgment_type !== 'تمهيدي' && React.createElement('div', {className: "bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-3 mb-2"},
+                                                React.createElement('p', {className: "text-[9px] font-black text-emerald-400 mb-1"}, "📌 النتيجة"),
+                                                React.createElement('p', {className: "text-[11px] text-slate-200 font-bold leading-relaxed"}, s.result)
                                             ),
                                             // الإجراء القادم
                                             s.next_action && React.createElement('div', {className: "bg-amber-500/5 border border-amber-500/15 rounded-xl p-3 mb-2"},
@@ -393,6 +365,39 @@ function TimelineSection({
                                                 style: {background:'rgba(212,175,55,0.15)', color:'#D4AF37', border:'1px solid rgba(212,175,55,0.3)'}
                                             }, "⚡ تحديث")
                                           )
+                                    ),
+                                    // 🆕 (طلب "كارت حكم تمهيدي مستقل بعرض الصفحة"، 12 سبتمبر 2026):
+                                    // كارت "⚖️ حكم تمهيدي" بقى عنصر مستقل تمامًا بره صف الجلسة (بره
+                                    // عمود نقطة التايم لاين)، بعرض القسم كامل — نفس تصميم/بيانات كارت
+                                    // "✅ حكم نهائي" فوق (بادچ + "منطوق الحكم" + النص + عرض الكل)، بس
+                                    // بلون أزرق (sky) بدل الأخضر، ومن غير أزرار تعديل/حذف. الفرق
+                                    // الجوهري عن كارت الحكم النهائي: ده *مش* مثبت فوق الـTimeline كله —
+                                    // بيترسم كـsibling مباشرة تحت صف الجلسة اللي صدر فيها الحكم بالظبط
+                                    // (s)، فبياخد مكانه الطبيعي في التسلسل الزمني: أي جلسة أحدث (بما
+                                    // فيها الجلسة اللي اتعملت وقت الحكم التمهيدي نفسه) بتفضل فوقه، لأن
+                                    // القضية هنا لسه "متداولة" ومفتوحة لإضافة جلسات.
+                                    s.result && s.judgment_type === 'تمهيدي' && React.createElement('div', {
+                                        className: "bg-sky-500/5 border border-sky-500/25 rounded-2xl p-4 mb-2 text-center",
+                                        'data-testid': 'preliminary-judgment-card',
+                                      },
+                                        React.createElement('span', {className: "inline-block px-3 py-1.5 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400 text-sm font-black mb-2"},
+                                          "⚖️ صدر حكم تمهيدي بجلسة " + (s.session_date || '—')
+                                        ),
+                                        React.createElement('p', {className: "text-[10px] font-black text-sky-400/80 mb-1"}, "منطوق الحكم"),
+                                        React.createElement('p', {
+                                            ref: (el: HTMLParagraphElement | null): void => {
+                                                if (el) prelimVerdictRefs.current.set(s.id, el);
+                                                else prelimVerdictRefs.current.delete(s.id);
+                                            },
+                                            className: `text-sm text-slate-100 font-black leading-relaxed ${prelimExpanded[s.id] ? '' : 'line-clamp-2'}`,
+                                            'data-testid': 'preliminary-judgment-verdict-text-display',
+                                        }, s.result),
+                                        prelimOverflows[s.id] && React.createElement('button', {
+                                            onClick: () => setPrelimExpanded((p) => ({...p, [s.id]: !p[s.id]})),
+                                            'data-testid': 'preliminary-judgment-verdict-toggle',
+                                            className: "mt-1.5 text-[10px] font-black text-sky-400 underline underline-offset-2 active:scale-95 transition-all",
+                                        }, prelimExpanded[s.id] ? "إخفاء" : "عرض الكل")
+                                    )
                                     )
                                 )
                             )
