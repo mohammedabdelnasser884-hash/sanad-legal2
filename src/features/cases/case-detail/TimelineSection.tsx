@@ -231,12 +231,24 @@ function TimelineSection({
                                                     )
                                                 ),
                                                 React.createElement('div', {className: "flex items-center gap-1.5"},
-                                                    // الجلسة الأخيرة: badge بس هنا — زرار "⚡ تحديث" بقى تحت
-                                                    // الكارت بعرض كامل، وزرار "🏛️ الحكم النهائي" بقى منفصل فوق
-                                                    // الكارت كله (راجع showJudgmentTrigger فوق).
+                                                    // 🔧 FIX (طلب جيمي، 12 سبتمبر 2026): آخر جلسة كانت من غير زرار
+                                                    // تعديل/حذف خالص — الوحيد المتاح ليها كان "⚡ تحديث" اللي بيسجّل
+                                                    // "ما تم" وبيعمل جلسة جديدة تالية، مش بيعدّل بيانات الجلسة نفسها
+                                                    // (تاريخ/طابق/قاعة/وصف)، ومفيهوش حذف خالص. دلوقتي بقت آخر جلسة
+                                                    // تاخد نفس زراري تعديل/حذف الجلسات القديمة بالظبط.
+                                                    // ⚠️ استثناء واحد مقصود: لو آخر جلسة "محجوزة للحكم"
+                                                    // (is_judgment_reserved === true) — سواء لسه معلّقة أو الحكم
+                                                    // اتسجّل عليها فعلاً — بنسيب زراري التعديل/الحذف الخاصين
+                                                    // بالحكم نفسه (فوق، جوه كارت "✅ حكم نهائي" أو زرار "🏛️ النطق
+                                                    // بالحكم") هما نقطة الدخول الوحيدة. حذف الجلسة دي مباشرة بزرار
+                                                    // الحذف العادي (handleDeleteSession) كان هيمسحها كاملة من غير
+                                                    // ما يرجّع cases.status لـ"نشطة" — نفس فئة الباگ اللي فضّلناه
+                                                    // بالظبط في onUpdate بتاع handleFinalJudgment (الطلب اللي
+                                                    // قبل ده). إلغاء/تعديل الحكم لازم يعدّي من مساره المخصص
+                                                    // (setConfirmDeleteJudgment/setFinalJudgmentTarget) عشان
+                                                    // يحدّث حالة القضية صح.
                                                     i === 0 && React.createElement('span', {className: "text-[9px] px-2 py-0.5 bg-premium-gold/10 text-premium-gold rounded-full font-bold"}, "آخر جلسة"),
-                                                    // الجلسات القديمة: زر تعديل + حذف
-                                                    i !== 0 && React.createElement(React.Fragment, null,
+                                                    s.is_judgment_reserved !== true && React.createElement(React.Fragment, null,
                                                         React.createElement('button', {
                                                             onClick: (e: React.MouseEvent) => { e.stopPropagation(); setEditingSession({id:s.id, date:s.session_date||'', time_period:s.session_time||'صباحي', location_floor:s.session_floor||'', location_hall:s.session_hall||'', description:s.description||'', result:s.result||'', next_action:s.next_action||''}); },
                                                             'data-testid': 'session-edit-trigger',
