@@ -716,7 +716,7 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
         React.createElement('div', {className: "flex-1 overflow-y-auto no-scrollbar px-4 py-4 pb-28"},
 
             // ═══ Timeline الجلسات ═══
-            activeSection === 'timeline' && React.createElement(TimelineSection, { loadingSessions, sessions, editingSession, setEditingSession, handleUpdateSession, setSessionUpdateTarget, setFinalJudgmentTarget, canEditCase, deletingSessionId, setConfirmDeleteSession }), // end sessions outer div
+            activeSection === 'timeline' && React.createElement(TimelineSection, { loadingSessions, sessions, editingSession, setEditingSession, handleUpdateSession, setSessionUpdateTarget, setFinalJudgmentTarget, canEditCase, deletingSessionId, setConfirmDeleteSession, caseStatus: caseData.status }), // end sessions outer div
 
             // ═══ الملاحظات ═══
             activeSection === 'notes' && React.createElement(NotesSection, {
