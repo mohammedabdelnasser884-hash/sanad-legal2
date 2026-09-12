@@ -327,7 +327,7 @@ describe('useCaseSessions — handleFinalJudgment', () => {
       p_known_case_updated_at: '2026-07-16T10:00:00.000Z',
     });
     expect(returned).toEqual({ ok: true });
-    expect(onUpdate).toHaveBeenCalledWith('منتهية');
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: 'منتهية' }));
     expect(toast).toHaveBeenCalledWith('✅ تم تسجيل الحكم النهائي وإغلاق القضية');
     expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'حكم نهائي', expect.objectContaining({ entity_type: 'case', entity_id: 'case-1' }));
     expect(refetchAll).toHaveBeenCalled();
@@ -652,7 +652,7 @@ describe('useCaseSessions — handleDeleteFinalJudgment', () => {
       p_known_session_updated_at: '2026-07-01T00:00:00.000Z',
       p_known_case_updated_at: '2026-07-16T10:00:00.000Z',
     });
-    expect(onUpdate).toHaveBeenCalledWith('نشطة');
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: 'نشطة' }));
     expect(result.current.deletingJudgment).toBe(false);
     expect(toast).toHaveBeenCalledWith('↩️ تم إلغاء الحكم النهائي، والقضية رجعت للقضايا المتداولة');
     expect(refetchAll).toHaveBeenCalled();
