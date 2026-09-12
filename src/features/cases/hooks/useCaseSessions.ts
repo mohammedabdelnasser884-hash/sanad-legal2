@@ -202,63 +202,53 @@ export function useCaseSessions(
   // 3. recalcNextHearing — هترجع next_hearing = null تلقائيًا (مفيش جلسة
   //    قادمة بعد إقفال آخر جلسة، من غير أي حالة خاصة مطلوبة هنا).
   // 4. Toast نجاح + إشعار تيليجرام + سجل نشاط.
-  // **دعم الأوفلاين (بند 10.4)**: كتابتي التحديث عبر `window.__dbWrite`
-  // بدل الكتابة المباشرة، بنفس المنطق المطبّق في SessionUpdateModal
-  // (مرحلة 3) — لو أي منهم اتقيّدت أوفلاين، بنوقف بعدها فورًا (بدون
-  // recalcNextHearing/تيليجرام، هتتنفذ آثارها وقت المزامنة الفعلية).
+  // ⚠️ (فيكس atomicity، phase23): التحديثين (1+2) بقوا RPC ذرّية واحدة
+  // (`record_final_judgment`) بدل كتابتين منفصلتين — راجع التعليق داخل
+  // الدالة تحت. **الأوفلاين ممنوع بالكامل** لنفس سبب record_fee_payment
+  // (RPC، مش عملية جدول واحد يقدر __dbWrite يقيّدها).
   const handleFinalJudgment = async (sessionId: string, judgmentDate: string, verdictText: string): Promise<{ ok: boolean }> => {
     const session = sessions.find((s) => s.id === sessionId);
 
-    const sessionUpdateResult = await window.__dbWrite({
-      type: 'UPDATE',
-      table: 'case_sessions',
-      id: sessionId,
-      data: {
-        result: verdictText,
-        ...(judgmentDate && judgmentDate !== session?.session_date ? { session_date: judgmentDate } : {}),
-      },
-      knownUpdatedAt: session?.updated_at || null,
-    });
-    if (sessionUpdateResult.conflict) { toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return { ok: false }; }
-    if (sessionUpdateResult.error && !sessionUpdateResult.offline) { showErrorToast('final_judgment_session', sessionUpdateResult.error, 'فشل تسجيل الحكم النهائي على الجلسة', 'الحكم النهائي'); return { ok: false }; }
+    // 🔧 FIX (باگ atomicity — طلب جيمي، 12 سبتمبر 2026): تسجيل الحكم على
+    // الجلسة + إغلاق القضية كانوا كتابتين منفصلتين عبر الشبكة (__dbWrite
+    // مرتين). لو الكتابة التانية (cases.status) فشلت فشل حقيقي (خطأ DB
+    // فعلي راجع من Supabase — مش استثناء اتلقط وقيّد أوفلاين) بعد ما
+    // الأولى نجحت وخلصت، مكانش فيه أي rollback: الجلسة تفضل عليها منطوق
+    // حكم والقضية تفضل "متداولة" — قضية معلّقة فعليًا في الداتابيز.
+    // دلوقتي العمليتين بقوا جوه RPC واحدة (record_final_judgment) بتتنفذ
+    // في transaction حقيقية — إما الاتنين ينجحوا مع بعض أو يترجعوا مع
+    // بعض تلقائيًا (نفس نمط record_fee_payment/handleAddPayment بالظبط).
+    // ⚠️ قرار عمل مصاحب (نفس سبب فرض أونلاين على تسجيل دفعة أتعاب — راجع
+    // التعليق في src/lib/offlineQueue.ts سطر ٢٥-٣٣): __dbWrite/طابور
+    // الأوفلاين بيدعمون بس INSERT/UPDATE/DELETE على جدول واحد، مش نداء
+    // RPC متعدد الجداول. الحكم النهائي بقى ممنوع بالكامل أوفلاين (رسالة
+    // صريحة) بدل ما نبني نسخة أوفلاين معقدة وترجعنا لمشكلة الـpartial-save
+    // اللي الفيكس ده أصلاً بيقفلها.
+    if (!navigator.onLine) {
+      toast('⚠️ تسجيل الحكم النهائي يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+      return { ok: false };
+    }
 
-    // 🔧 FIX (باگ "الحكم بيتسجل جزئي — القضية تتقفل بس المنطوق مايتسجلش"،
-    // طلب جيمي 12 سبتمبر 2026): لو تسجيل الحكم على الجلسة فوق اتقيّد
-    // أوفلاين (glitch شبكة لحظي رغم إن الجهاز أونلاين فعليًا — __dbWrite
-    // بيلقطه في catch ويحفظه في الطابور بصمت)، لازم تحديث حالة القضية
-    // يتقيّد في **نفس الطابور** بدل ما يتسابق ينجح أونلاين لوحده — وإلا
-    // القضية تتقفل ("منتهية") فورًا فعليًا في الداتابيز، والمنطوق نفسه
-    // يفضل معلّق لحد دورة مزامنة لاحقة (لغاية دقيقة أو حدث online) — يعني
-    // لو حصل ريفريش قبلها، القضية تبان منتهية من غير حكم مسجل عليها خالص.
-    const caseUpdateResult = await window.__dbWrite({
-      type: 'UPDATE',
-      table: 'cases',
-      id: caseData.id,
-      data: { status: 'منتهية' },
-      knownUpdatedAt: caseData.updated_at || null,
-      forceQueue: !!(sessionUpdateResult.offline && sessionUpdateResult.queued),
+    const { error } = await db.rpc('record_final_judgment', {
+      p_session_id: sessionId,
+      p_case_id: caseData.id,
+      p_verdict_text: verdictText,
+      p_judgment_date: judgmentDate || null,
+      p_known_session_updated_at: session?.updated_at || null,
+      p_known_case_updated_at: caseData.updated_at || null,
     });
-    if (caseUpdateResult.error && !caseUpdateResult.offline) {
-      // 🔧 FIX: كان الكود قبل كده بيعرض التوست ده وبعدين **يكمل تنفيذ**
-      // لحد ما يوصل لتوست النجاح تحت ويرجّع {ok:true} — يعني المستخدم كان
-      // بيشوف رسالة فشل حقيقية (تحديث حالة القضية اتعطل فعلاً) متبوعة
-      // برسالة نجاح كاملة كاذبة، والمودال يقفل وكأن كل حاجة تمام. دلوقتي
-      // بترجع {ok:false} فورًا زي فشل الجلسة بالظبط.
-      showErrorToast('final_judgment_case', caseUpdateResult.error, 'تم تسجيل الحكم على الجلسة، لكن تعذّر تحديث حالة القضية إلى "منتهية" — أعد المحاولة', 'الحكم النهائي');
+    if (error) {
+      if (error.message === 'conflict:session' || error.message === 'conflict:case') {
+        toast('⚠️ هذه الجلسة أو القضية عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true);
+        return { ok: false };
+      }
+      showErrorToast('final_judgment', error, 'فشل تسجيل الحكم النهائي', 'الحكم النهائي');
       return { ok: false };
     }
     // 🔧 FIX: نفس نمط handleChangeStatus — بنبلّغ الشاشة الأب فورًا إن
-    // حالة القضية بقت "منتهية" (سواء اتحدّثت أونلاين دلوقتي أو اتقيّدت
-    // أوفلاين هتتحدّث بعدين مع الجلسة سوا)، عشان القضية تتنقل لقسم
-    // "منتهية" في الحال من غير خروج/ريفريش يدوي.
+    // حالة القضية بقت "منتهية"، عشان القضية تتنقل لقسم "منتهية" في الحال
+    // من غير خروج/ريفريش يدوي.
     onUpdate?.('منتهية');
-
-    // 📥 لو أي من الكتابتين اتقيّدت أوفلاين — نفس منطق SessionUpdateModal.
-    if ((sessionUpdateResult.offline && sessionUpdateResult.queued) || (caseUpdateResult.offline && caseUpdateResult.queued)) {
-      toast('📥 تم حفظ الحكم النهائي محليًا — سيُزامن عند عودة الإنترنت');
-      refetchAll();
-      return { ok: true };
-    }
 
     await recalcNextHearing(caseData.id);
     toast('✅ تم تسجيل الحكم النهائي وإغلاق القضية');
@@ -299,51 +289,44 @@ export function useCaseSessions(
   // 3. recalcNextHearing — بيتحسب طبيعي من الجلسات الموجودة فعليًا (نفس
   //    آخر جلسة مسجّلة، زي ما اتطلب — الدالة المشتركة أصلاً بتحسب من كل
   //    الجلسات، مفيش داعي لمنطق خاص إضافي هنا).
-  // **دعم الأوفلاين:** نفس نمط handleFinalJudgment بالظبط.
+  // ⚠️ (فيكس atomicity، phase23): نفس نمط handleFinalJudgment — RPC ذرّية
+  // واحدة (`undo_final_judgment`)، والأوفلاين ممنوع بالكامل لنفس السبب.
   const handleDeleteFinalJudgment = async (sessionId: string) => {
     setDeletingJudgment(true);
     const session = sessions.find((s) => s.id === sessionId);
 
-    const sessionUpdateResult = await window.__dbWrite({
-      type: 'UPDATE',
-      table: 'case_sessions',
-      id: sessionId,
-      data: { result: null, is_judgment_reserved: false },
-      knownUpdatedAt: session?.updated_at || null,
-    });
-    if (sessionUpdateResult.conflict) { setDeletingJudgment(false); toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
-    if (sessionUpdateResult.error && !sessionUpdateResult.offline) { setDeletingJudgment(false); showErrorToast('undo_final_judgment_session', sessionUpdateResult.error, 'فشل إلغاء الحكم النهائي على الجلسة', 'إلغاء الحكم النهائي'); return; }
-
-    // 🔧 FIX (نفس باگ handleFinalJudgment بالظبط، طلب جيمي 12 سبتمبر
-    // 2026): لو تصفير الحكم على الجلسة اتقيّد أوفلاين، تحديث حالة القضية
-    // يتقيّد معاه في نفس الطابور — بدل ما القضية ترجع "نشطة" فعليًا قبل
-    // ما إلغاء الحكم نفسه يتنفذ.
-    const caseUpdateResult = await window.__dbWrite({
-      type: 'UPDATE',
-      table: 'cases',
-      id: caseData.id,
-      data: { status: 'نشطة' },
-      knownUpdatedAt: caseData.updated_at || null,
-      forceQueue: !!(sessionUpdateResult.offline && sessionUpdateResult.queued),
-    });
-    if (caseUpdateResult.error && !caseUpdateResult.offline) {
-      // 🔧 FIX: زي handleFinalJudgment — رجوع فوري بدل ما نكمل لتوست
-      // نجاح كاذب تحت.
+    // 🔧 FIX (نفس باگ atomicity في handleFinalJudgment بالظبط، طلب جيمي
+    // 12 سبتمبر 2026): كانت كتابتين منفصلتين (تصفير الحكم على الجلسة، ثم
+    // رجوع cases.status لـ"نشطة") من غير أي rollback لو التانية فشلت فشل
+    // حقيقي بعد نجاح الأولى — كانت تنتج قضية "منتهية" من غير أي حكم مسجّل
+    // على آخر جلستها. دلوقتي RPC واحدة (undo_final_judgment) بنفس منطق
+    // record_final_judgment — راجع التعليق هناك للتفصيل الكامل.
+    if (!navigator.onLine) {
       setDeletingJudgment(false);
-      showErrorToast('undo_final_judgment_case', caseUpdateResult.error, 'تم إلغاء الحكم على الجلسة، لكن تعذّر إرجاع حالة القضية إلى "نشطة" — أعد المحاولة', 'إلغاء الحكم النهائي');
+      toast('⚠️ إلغاء الحكم النهائي يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
       return;
     }
-    // 🔧 FIX: نفس السبب فوق — القضية رجعت "نشطة"، فلازم الشاشة الأب
-    // تعرف فورًا عشان القضية ترجع لقسم "متداولة" في الحال.
+
+    const { error } = await db.rpc('undo_final_judgment', {
+      p_session_id: sessionId,
+      p_case_id: caseData.id,
+      p_known_session_updated_at: session?.updated_at || null,
+      p_known_case_updated_at: caseData.updated_at || null,
+    });
+    if (error) {
+      setDeletingJudgment(false);
+      if (error.message === 'conflict:session' || error.message === 'conflict:case') {
+        toast('⚠️ هذه الجلسة أو القضية عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true);
+        return;
+      }
+      showErrorToast('undo_final_judgment', error, 'فشل إلغاء الحكم النهائي', 'إلغاء الحكم النهائي');
+      return;
+    }
+    // 🔧 FIX: القضية رجعت "نشطة"، فلازم الشاشة الأب تعرف فورًا عشان
+    // القضية ترجع لقسم "متداولة" في الحال.
     onUpdate?.('نشطة');
 
     setDeletingJudgment(false);
-
-    if ((sessionUpdateResult.offline && sessionUpdateResult.queued) || (caseUpdateResult.offline && caseUpdateResult.queued)) {
-      toast('📥 تم حفظ إلغاء الحكم النهائي محليًا — سيُزامن عند عودة الإنترنت');
-      refetchAll();
-      return;
-    }
 
     await recalcNextHearing(caseData.id);
     toast('↩️ تم إلغاء الحكم النهائي، والقضية رجعت للقضايا المتداولة');
