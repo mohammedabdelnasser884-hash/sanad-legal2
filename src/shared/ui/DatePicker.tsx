@@ -10,9 +10,14 @@ interface DatePickerProps {
     testId?: string;
     dayTestId?: string;
     clearTestId?: string;
+    // 🆕 (فيكس مودال "النطق بالحكم"، 12 سبتمبر 2026): لما true، الكاليندر
+    // بيترسم جوه تدفق الصفحة الطبيعي (بعرض كامل) بدل ما يكون عايم
+    // (position: absolute). الافتراضي false — صفر تأثير على أي مكان تاني
+    // بيستخدم DatePicker من غير الخاصية دي.
+    inline?: boolean;
 }
 
-function DatePicker({label, value, onChange, required = false, testId, dayTestId, clearTestId}: DatePickerProps){
+function DatePicker({label, value, onChange, required = false, testId, dayTestId, clearTestId, inline = false}: DatePickerProps){
     const [open, setOpen]   = useState(false);
     const ref               = useRef<HTMLDivElement>(null);
     const parsed = value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(value+"T00:00:00") : null;
@@ -43,7 +48,7 @@ function DatePicker({label, value, onChange, required = false, testId, dayTestId
             React.createElement("span", {className: display?"text-white":"text-slate-600"}, display || "اختر تاريخاً"),
             React.createElement("span", {className:"text-premium-gold text-sm"}, "📅")
         ),
-        open && React.createElement("div", {className:"absolute z-[200] top-full mt-2 right-0 bg-premium-card border border-white/10 rounded-2xl shadow-2xl p-4 w-72", style:{fontFamily:"Cairo,sans-serif"}},
+        open && React.createElement("div", {className: inline ? "static mt-2 w-full bg-premium-card border border-white/10 rounded-2xl shadow-2xl p-4" : "absolute z-[200] top-full mt-2 right-0 bg-premium-card border border-white/10 rounded-2xl shadow-2xl p-4 w-72", style:{fontFamily:"Cairo,sans-serif"}},
             React.createElement("div", {className:"flex items-center justify-between mb-3"},
                 React.createElement("button",{type:"button",onClick:nextMonth,'data-testid':'date-picker-next-month',className:"w-7 h-7 rounded-lg bg-white/5 text-white flex items-center justify-center text-sm hover:bg-white/10"},"›"),
                 React.createElement("span",{className:"text-xs font-black text-white"},MONTHS_AR[viewMonth]+" "+viewYear),
