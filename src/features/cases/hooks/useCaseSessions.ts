@@ -415,6 +415,16 @@ export function useCaseSessions(
   // بيتفتح من CaseDetailView.tsx بس، caseData.id دايمًا موجود) — صفر
   // منطق isStandalone هنا (بعكس SessionUpdateModal اللي بيغطي الجلسات
   // المستقلة كمان).
+  // ⚠️ (فيكس atomicity، phase24): نفس فئة الباگ اللي كانت في
+  // handleFinalJudgment (phase23) — كانت كتابتين منفصلتين عبر الشبكة
+  // (UPDATE على الجلسة الحالية + INSERT للجلسة القادمة) من غير أي
+  // transaction تجمعهم. خطورتها كانت أقل بكتير (مفيش لمس لـcases.status،
+  // وأسوأ حالة = جلسة قادمة ناقصة مش بيانات تالفة، والكود القديم كان
+  // بيبلّغ بتوست دقيق) — لكن اتقفلت برضو للاتساق مع handleFinalJudgment.
+  // دلوقتي العمليتين بقوا جوه RPC واحدة (record_preliminary_judgment)
+  // بتتنفذ في transaction حقيقية — راجع التعليق داخل ملف الـRPC للتفصيل
+  // الكامل. **الأوفلاين ممنوع بالكامل** لنفس سبب handleFinalJudgment
+  // (RPC، مش عملية جدول واحد يقدر __dbWrite يقيّدها).
   const handlePreliminaryJudgment = async (
     sessionId: string,
     verdictText: string,
@@ -422,40 +432,25 @@ export function useCaseSessions(
   ): Promise<{ ok: boolean }> => {
     const session = sessions.find((s) => s.id === sessionId);
 
-    const sessionUpdateResult = await window.__dbWrite({
-      type: 'UPDATE',
-      table: 'case_sessions',
-      id: sessionId,
-      data: { result: verdictText, judgment_type: 'تمهيدي' },
-      knownUpdatedAt: session?.updated_at || null,
-    });
-    if (sessionUpdateResult.conflict) { toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return { ok: false }; }
-    if (sessionUpdateResult.error && !sessionUpdateResult.offline) { showErrorToast('preliminary_judgment_session', sessionUpdateResult.error, 'فشل تسجيل الحكم التمهيدي على الجلسة', 'حكم تمهيدي'); return { ok: false }; }
+    if (!navigator.onLine) {
+      toast('⚠️ تسجيل الحكم التمهيدي يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+      return { ok: false };
+    }
 
-    const insertResult = await window.__dbWrite({
-      type: 'INSERT',
-      table: 'case_sessions',
-      returning: true,
-      data: {
-        case_id: caseData.id,
-        session_date: nextSessionDate,
-        session_time: session?.session_time || null,
-        session_floor: session?.session_floor || null,
-        session_hall: session?.session_hall || null,
-        court_level: session?.court_level || null,
-        secretary_hall: session?.secretary_hall || null,
-        secretary_name: session?.secretary_name || null,
-        secretary_mobile: session?.secretary_mobile || null,
-        is_judgment_reserved: false,
-      },
+    const { error } = await db.rpc('record_preliminary_judgment', {
+      p_session_id: sessionId,
+      p_case_id: caseData.id,
+      p_verdict_text: verdictText,
+      p_next_session_date: nextSessionDate,
+      p_known_session_updated_at: session?.updated_at || null,
     });
-    if (insertResult.error && !insertResult.offline) { showErrorToast('preliminary_judgment_next_session', insertResult.error, 'تم تسجيل الحكم التمهيدي، لكن فشل إنشاء الجلسة القادمة — أنشئها يدويًا لاحقًا من "⚡ تحديث"', 'حكم تمهيدي'); return { ok: false }; }
-
-    // 📥 لو أي من الكتابتين اتقيّدت أوفلاين — نفس منطق handleFinalJudgment.
-    if ((sessionUpdateResult.offline && sessionUpdateResult.queued) || (insertResult.offline && insertResult.queued)) {
-      toast('📥 تم حفظ الحكم التمهيدي محليًا — سيُزامن عند عودة الإنترنت');
-      refetchAll();
-      return { ok: true };
+    if (error) {
+      if (error.message === 'conflict:session') {
+        toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true);
+        return { ok: false };
+      }
+      showErrorToast('preliminary_judgment', error, 'فشل تسجيل الحكم التمهيدي', 'حكم تمهيدي');
+      return { ok: false };
     }
 
     await recalcNextHearing(caseData.id);
