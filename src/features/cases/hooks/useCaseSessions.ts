@@ -217,22 +217,36 @@ export function useCaseSessions(
     if (sessionUpdateResult.conflict) { toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return { ok: false }; }
     if (sessionUpdateResult.error && !sessionUpdateResult.offline) { showErrorToast('final_judgment_session', sessionUpdateResult.error, 'فشل تسجيل الحكم النهائي على الجلسة', 'الحكم النهائي'); return { ok: false }; }
 
+    // 🔧 FIX (باگ "الحكم بيتسجل جزئي — القضية تتقفل بس المنطوق مايتسجلش"،
+    // طلب جيمي 12 سبتمبر 2026): لو تسجيل الحكم على الجلسة فوق اتقيّد
+    // أوفلاين (glitch شبكة لحظي رغم إن الجهاز أونلاين فعليًا — __dbWrite
+    // بيلقطه في catch ويحفظه في الطابور بصمت)، لازم تحديث حالة القضية
+    // يتقيّد في **نفس الطابور** بدل ما يتسابق ينجح أونلاين لوحده — وإلا
+    // القضية تتقفل ("منتهية") فورًا فعليًا في الداتابيز، والمنطوق نفسه
+    // يفضل معلّق لحد دورة مزامنة لاحقة (لغاية دقيقة أو حدث online) — يعني
+    // لو حصل ريفريش قبلها، القضية تبان منتهية من غير حكم مسجل عليها خالص.
     const caseUpdateResult = await window.__dbWrite({
       type: 'UPDATE',
       table: 'cases',
       id: caseData.id,
       data: { status: 'منتهية' },
       knownUpdatedAt: caseData.updated_at || null,
+      forceQueue: !!(sessionUpdateResult.offline && sessionUpdateResult.queued),
     });
     if (caseUpdateResult.error && !caseUpdateResult.offline) {
-      showErrorToast('final_judgment_case', caseUpdateResult.error, 'تم تسجيل الحكم على الجلسة، لكن تعذّر تحديث حالة القضية إلى "منتهية" — غيّرها يدويًا', 'الحكم النهائي');
-    } else {
-      // 🔧 FIX: نفس نمط handleChangeStatus — بنبلّغ الشاشة الأب فورًا إن
-      // حالة القضية بقت "منتهية" (سواء اتحدّثت أونلاين دلوقتي أو اتقيّدت
-      // أوفلاين هتتحدّث بعدين)، عشان القضية تتنقل لقسم "منتهية" في الحال
-      // من غير خروج/ريفريش يدوي.
-      onUpdate?.('منتهية');
+      // 🔧 FIX: كان الكود قبل كده بيعرض التوست ده وبعدين **يكمل تنفيذ**
+      // لحد ما يوصل لتوست النجاح تحت ويرجّع {ok:true} — يعني المستخدم كان
+      // بيشوف رسالة فشل حقيقية (تحديث حالة القضية اتعطل فعلاً) متبوعة
+      // برسالة نجاح كاملة كاذبة، والمودال يقفل وكأن كل حاجة تمام. دلوقتي
+      // بترجع {ok:false} فورًا زي فشل الجلسة بالظبط.
+      showErrorToast('final_judgment_case', caseUpdateResult.error, 'تم تسجيل الحكم على الجلسة، لكن تعذّر تحديث حالة القضية إلى "منتهية" — أعد المحاولة', 'الحكم النهائي');
+      return { ok: false };
     }
+    // 🔧 FIX: نفس نمط handleChangeStatus — بنبلّغ الشاشة الأب فورًا إن
+    // حالة القضية بقت "منتهية" (سواء اتحدّثت أونلاين دلوقتي أو اتقيّدت
+    // أوفلاين هتتحدّث بعدين مع الجلسة سوا)، عشان القضية تتنقل لقسم
+    // "منتهية" في الحال من غير خروج/ريفريش يدوي.
+    onUpdate?.('منتهية');
 
     // 📥 لو أي من الكتابتين اتقيّدت أوفلاين — نفس منطق SessionUpdateModal.
     if ((sessionUpdateResult.offline && sessionUpdateResult.queued) || (caseUpdateResult.offline && caseUpdateResult.queued)) {
@@ -295,20 +309,28 @@ export function useCaseSessions(
     if (sessionUpdateResult.conflict) { setDeletingJudgment(false); toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
     if (sessionUpdateResult.error && !sessionUpdateResult.offline) { setDeletingJudgment(false); showErrorToast('undo_final_judgment_session', sessionUpdateResult.error, 'فشل إلغاء الحكم النهائي على الجلسة', 'إلغاء الحكم النهائي'); return; }
 
+    // 🔧 FIX (نفس باگ handleFinalJudgment بالظبط، طلب جيمي 12 سبتمبر
+    // 2026): لو تصفير الحكم على الجلسة اتقيّد أوفلاين، تحديث حالة القضية
+    // يتقيّد معاه في نفس الطابور — بدل ما القضية ترجع "نشطة" فعليًا قبل
+    // ما إلغاء الحكم نفسه يتنفذ.
     const caseUpdateResult = await window.__dbWrite({
       type: 'UPDATE',
       table: 'cases',
       id: caseData.id,
       data: { status: 'نشطة' },
       knownUpdatedAt: caseData.updated_at || null,
+      forceQueue: !!(sessionUpdateResult.offline && sessionUpdateResult.queued),
     });
     if (caseUpdateResult.error && !caseUpdateResult.offline) {
-      showErrorToast('undo_final_judgment_case', caseUpdateResult.error, 'تم إلغاء الحكم على الجلسة، لكن تعذّر إرجاع حالة القضية إلى "نشطة" — غيّرها يدويًا', 'إلغاء الحكم النهائي');
-    } else {
-      // 🔧 FIX: نفس السبب فوق — القضية رجعت "نشطة"، فلازم الشاشة الأب
-      // تعرف فورًا عشان القضية ترجع لقسم "متداولة" في الحال.
-      onUpdate?.('نشطة');
+      // 🔧 FIX: زي handleFinalJudgment — رجوع فوري بدل ما نكمل لتوست
+      // نجاح كاذب تحت.
+      setDeletingJudgment(false);
+      showErrorToast('undo_final_judgment_case', caseUpdateResult.error, 'تم إلغاء الحكم على الجلسة، لكن تعذّر إرجاع حالة القضية إلى "نشطة" — أعد المحاولة', 'إلغاء الحكم النهائي');
+      return;
     }
+    // 🔧 FIX: نفس السبب فوق — القضية رجعت "نشطة"، فلازم الشاشة الأب
+    // تعرف فورًا عشان القضية ترجع لقسم "متداولة" في الحال.
+    onUpdate?.('نشطة');
 
     setDeletingJudgment(false);
 
