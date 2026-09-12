@@ -298,7 +298,7 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onNotify, 
                     className: `w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border transition-all active:scale-[0.99] ${judgmentReserved ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/5 border-white/10'}`
                 },
                     React.createElement('span', { className: `text-[10px] font-black ${judgmentReserved ? 'text-emerald-400' : 'text-slate-400'}` },
-                        "🏛️ هذه الجلسة محجوزة للحكم"
+                        "🏛️ جلسة النطق بالحكم"
                     ),
                     React.createElement('span', {
                         className: `w-9 h-5 rounded-full relative transition-colors ${judgmentReserved ? 'bg-emerald-500' : 'bg-white/15'}`
