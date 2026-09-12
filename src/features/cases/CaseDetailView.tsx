@@ -204,6 +204,7 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
       handleExportPdf, handleAddNote, handleDeleteNote,
       handleUpdateNote, handleDeleteSession, handleUpdateSession,
       handleFinalJudgment, handleDeleteFinalJudgment,
+      handlePreliminaryJudgment, handlePostponeJudgment,
     } = actions;
 
     // ⚡ FIX (تقرير التحقّق — النقطة 4 + الإصلاح 2): الهيدر السريع + مودال
@@ -334,6 +335,13 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
             onClose: () => setFinalJudgmentTarget(null),
             onConfirm: (judgmentDate: string, verdictText: string) =>
                 handleFinalJudgment(finalJudgmentTarget.id, judgmentDate, verdictText),
+            // 🆕 (بند 15، خطة إعادة تصميم مودال "النطق بالحكم"): مسار "حكم
+            // تمهيدي/جزئي".
+            onConfirmPreliminary: (verdictText: string, nextSessionDate: string) =>
+                handlePreliminaryJudgment(finalJudgmentTarget.id, verdictText, nextSessionDate),
+            // 🆕 (بند 16): مسار "تأجيل النطق بالحكم".
+            onConfirmPostpone: (nextSessionDate: string) =>
+                handlePostponeJudgment(finalJudgmentTarget.id, nextSessionDate),
             // 🆕 (طلب "تعديل/حذف الحكم النهائي"، 12 سبتمبر 2026): لو القضية
             // أصلاً "منتهية"، معناه فتحنا المودال من زرار "✏️ تعديل" على
             // الكارت الأخضر (مش زرار "🏛️ الحكم النهائي" اللي أصلاً مستخبي
