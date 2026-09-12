@@ -8,6 +8,10 @@ import { db } from '../../supabaseClient';
 import { I, COUNTRY_CONFIGS, loadOfficeSetting } from '../../constants';
 import EditCaseModal from './EditCaseModal';
 import SessionUpdateModal from '@/features/calendar/sessions-calendar/SessionUpdateModal';
+// 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 5، 12 سبتمبر 2026):
+// مودال "🏛️ الحكم النهائي" — بيتفتح من زرار TimelineSection المشروط
+// (is_judgment_reserved === true على آخر جلسة).
+import FinalJudgmentModal from './case-detail/FinalJudgmentModal';
 import DeleteConfirmModal from '@/shared/modals/DeleteConfirmModal';
 import SessionsCalendar from '@/features/calendar/sessions-calendar/SessionsCalendar';
 import NotesSection from './case-detail/NotesSection';
@@ -197,6 +201,7 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
       fetchSessions, handleFileSelect, handleUploadDoc, handleDeleteDoc,
       handleExportPdf, handleAddNote, handleDeleteNote,
       handleUpdateNote, handleDeleteSession, handleUpdateSession,
+      handleFinalJudgment,
     } = actions;
 
     // ⚡ FIX (تقرير التحقّق — النقطة 4 + الإصلاح 2): الهيدر السريع + مودال
@@ -318,6 +323,15 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
             onClose: () => setSessionUpdateTarget(null),
             onDone: () => fetchSessions(),
             onNotify: onNotify
+        }),
+
+        // ── FinalJudgmentModal (مرحلة 5) ──
+        finalJudgmentTarget && React.createElement(FinalJudgmentModal, {
+            session: finalJudgmentTarget,
+            caseData: caseData,
+            onClose: () => setFinalJudgmentTarget(null),
+            onConfirm: (judgmentDate: string, verdictText: string) =>
+                handleFinalJudgment(finalJudgmentTarget.id, judgmentDate, verdictText),
         }),
 
         // ── عرض المستند ──
