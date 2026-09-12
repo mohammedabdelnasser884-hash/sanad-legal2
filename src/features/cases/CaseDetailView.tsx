@@ -178,7 +178,6 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
       // ⚡ NEW (مرحلة 8): أطراف القضية الكاملة (case_parties) — بتتمرر
       // لـ InfoSection عشان تعرض القايمة كاملة بدل عمودي plaintiff/defendant.
       caseParties,
-      showAddSession, setShowAddSession,
       editingNoteId, setEditingNoteId, editingNoteText, setEditingNoteText,
       editingSession, setEditingSession,
       deletingSessionId, setDeletingSessionId,
@@ -188,14 +187,14 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
       uploadingDoc, docCategory, setDocCategory, docLabel, setDocLabel,
       showDocForm, setShowDocForm, pendingFile, setPendingFile,
       deletingDocId, setDeletingDocId, fileInputRef,
-      savingSession, savingNote,
-      sessionForm, setSessionForm, noteText, setNoteText,
+      savingNote,
+      noteText, setNoteText,
       exportingPdf, showWhatsApp, setShowWhatsApp, officeWhatsAppName,
       confirmDeleteSession, setConfirmDeleteSession,
       confirmDeleteNote, setConfirmDeleteNote,
       confirmDeleteDoc, setConfirmDeleteDoc,
       fetchSessions, handleFileSelect, handleUploadDoc, handleDeleteDoc,
-      handleExportPdf, handleAddSession, handleAddNote, handleDeleteNote,
+      handleExportPdf, handleAddNote, handleDeleteNote,
       handleUpdateNote, handleDeleteSession, handleUpdateSession,
     } = actions;
 
@@ -702,7 +701,7 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
         React.createElement('div', {className: "flex-1 overflow-y-auto no-scrollbar px-4 py-4 pb-28"},
 
             // ═══ Timeline الجلسات ═══
-            activeSection === 'timeline' && React.createElement(TimelineSection, { showAddSession, setShowAddSession, sessionForm, setSessionForm, handleAddSession, savingSession, loadingSessions, sessions, editingSession, setEditingSession, handleUpdateSession, setSessionUpdateTarget, deletingSessionId, setConfirmDeleteSession }), // end sessions outer div
+            activeSection === 'timeline' && React.createElement(TimelineSection, { loadingSessions, sessions, editingSession, setEditingSession, handleUpdateSession, setSessionUpdateTarget, deletingSessionId, setConfirmDeleteSession }), // end sessions outer div
 
             // ═══ الملاحظات ═══
             activeSection === 'notes' && React.createElement(NotesSection, {
