@@ -349,7 +349,7 @@ function TimelineSection({
                                                     ),
                                                     React.createElement('p', {className: "text-[10px] font-black text-sky-400/80 mb-1"}, "منطوق الحكم"),
                                                     React.createElement('p', {
-                                                        ref: (el: HTMLParagraphElement | null) => {
+                                                        ref: (el: HTMLParagraphElement | null): void => {
                                                             if (el) prelimVerdictRefs.current.set(s.id, el);
                                                             else prelimVerdictRefs.current.delete(s.id);
                                                         },
