@@ -175,6 +175,82 @@ export function useCaseSessions(
     refetchAll();
   };
 
+  // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 6، 12 سبتمبر 2026):
+  // منطق "🏛️ الحكم النهائي" — عملية واحدة تشمل:
+  // 1. تحديث آخر جلسة (result = منطوق الحكم، session_date = تاريخ الحكم
+  //    لو اختلف عن تاريخ الجلسة الأصلي).
+  // 2. تحديث cases.status = 'منتهية'.
+  // 3. recalcNextHearing — هترجع next_hearing = null تلقائيًا (مفيش جلسة
+  //    قادمة بعد إقفال آخر جلسة، من غير أي حالة خاصة مطلوبة هنا).
+  // 4. Toast نجاح + إشعار تيليجرام + سجل نشاط.
+  // **دعم الأوفلاين (بند 10.4)**: كتابتي التحديث عبر `window.__dbWrite`
+  // بدل الكتابة المباشرة، بنفس المنطق المطبّق في SessionUpdateModal
+  // (مرحلة 3) — لو أي منهم اتقيّدت أوفلاين، بنوقف بعدها فورًا (بدون
+  // recalcNextHearing/تيليجرام، هتتنفذ آثارها وقت المزامنة الفعلية).
+  const handleFinalJudgment = async (sessionId: string, judgmentDate: string, verdictText: string): Promise<{ ok: boolean }> => {
+    const session = sessions.find((s) => s.id === sessionId);
+
+    const sessionUpdateResult = await window.__dbWrite({
+      type: 'UPDATE',
+      table: 'case_sessions',
+      id: sessionId,
+      data: {
+        result: verdictText,
+        ...(judgmentDate && judgmentDate !== session?.session_date ? { session_date: judgmentDate } : {}),
+      },
+      knownUpdatedAt: session?.updated_at || null,
+    });
+    if (sessionUpdateResult.conflict) { toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return { ok: false }; }
+    if (sessionUpdateResult.error && !sessionUpdateResult.offline) { showErrorToast('final_judgment_session', sessionUpdateResult.error, 'فشل تسجيل الحكم النهائي على الجلسة', 'الحكم النهائي'); return { ok: false }; }
+
+    const caseUpdateResult = await window.__dbWrite({
+      type: 'UPDATE',
+      table: 'cases',
+      id: caseData.id,
+      data: { status: 'منتهية' },
+      knownUpdatedAt: caseData.updated_at || null,
+    });
+    if (caseUpdateResult.error && !caseUpdateResult.offline) {
+      showErrorToast('final_judgment_case', caseUpdateResult.error, 'تم تسجيل الحكم على الجلسة، لكن تعذّر تحديث حالة القضية إلى "منتهية" — غيّرها يدويًا', 'الحكم النهائي');
+    }
+
+    // 📥 لو أي من الكتابتين اتقيّدت أوفلاين — نفس منطق SessionUpdateModal.
+    if ((sessionUpdateResult.offline && sessionUpdateResult.queued) || (caseUpdateResult.offline && caseUpdateResult.queued)) {
+      toast('📥 تم حفظ الحكم النهائي محليًا — سيُزامن عند عودة الإنترنت');
+      refetchAll();
+      return { ok: true };
+    }
+
+    await recalcNextHearing(caseData.id);
+    toast('✅ تم تسجيل الحكم النهائي وإغلاق القضية');
+
+    logActivity(db, 'حكم نهائي', {
+      entity_type: 'case', entity_id: caseData.id, details: `${caseData.title} — ${verdictText}`,
+      case_name: caseData.title || null, case_type: caseData.type || null,
+      client_name: client?.full_name || null,
+      userName: profile?.full_name || null,
+      changes: buildFieldDiff(
+        { status: caseData.status },
+        { status: 'منتهية' },
+        { status: { label: 'الحالة' } }
+      ),
+    });
+
+    if (onNotify) {
+      let msg = `🏛️ <b>حكم نهائي</b>\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `⚖️ <b>${escapeTelegramHtml(caseData.title || '—')}</b>\n`;
+      msg += `📋 رقم القيد: ${escapeTelegramHtml(caseData.number || '—')}\n`;
+      msg += `🏛 المحكمة: ${escapeTelegramHtml(caseData.court || '—')}\n`;
+      msg += `📆 تاريخ الحكم: ${escapeTelegramHtml(judgmentDate)}\n`;
+      msg += `📜 المنطوق: ${escapeTelegramHtml(verdictText)}\n`;
+      onNotify(msg);
+    }
+
+    refetchAll();
+    return { ok: true };
+  };
+
   return {
     sessions, setSessions,
     editingSession, setEditingSession,
@@ -182,7 +258,7 @@ export function useCaseSessions(
     sessionUpdateTarget, setSessionUpdateTarget,
     finalJudgmentTarget, setFinalJudgmentTarget,
     confirmDeleteSession, setConfirmDeleteSession,
-    handleUpdateSession, handleDeleteSession,
+    handleUpdateSession, handleDeleteSession, handleFinalJudgment,
     recalcNextHearing,
   };
 }
