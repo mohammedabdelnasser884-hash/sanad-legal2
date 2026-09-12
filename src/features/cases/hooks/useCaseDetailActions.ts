@@ -226,7 +226,15 @@ export function useCaseDetailActions(
       return;
     }
     try {
-      const { data, error: sessErr } = await db.from('case_sessions').select('*').eq('case_id', caseData.id).order('session_date', { ascending: false }).abortSignal(guard.controller.signal);
+      // ⚠️ FIX (بند 26، اكتُشف بالاختبار اليدوي — المرحلة 10، 12 سبتمبر
+      // 2026): ORDER BY session_date لوحده من غير معيار ثانٍ كان بيخلي
+      // ترتيب الجلسات المتطابقة في التاريخ غير حتمي — يعني "آخر جلسة"
+      // (sessions[0] في TimelineSection.tsx) ممكن تطلع مختلفة بين تحميلة
+      // وتانية لو فيه أكتر من جلسة بنفس session_date، وده كان بيدي إحساس
+      // إن جلسة "محجوزة للحكم" جديدة اتسجلت كـ"عادية" (لأن العرض كان
+      // بيلقط جلسة تانية بالغلط). created_at كمعيار ثانٍ يخلي الترتيب
+      // حتمي دايمًا (الأحدث إنشاءً هو الفعلي الأحدث عند تطابق التاريخ).
+      const { data, error: sessErr } = await db.from('case_sessions').select('*').eq('case_id', caseData.id).order('session_date', { ascending: false }).order('created_at', { ascending: false }).abortSignal(guard.controller.signal);
       if (sessErr) throw sessErr;
       setSessions(data || []);
       const { data: nd } = await db.from('case_notes').select('*').eq('case_id', caseData.id).order('created_at', { ascending: false }).abortSignal(guard.controller.signal);
