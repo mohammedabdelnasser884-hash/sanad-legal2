@@ -187,6 +187,8 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
       deletingSessionId, setDeletingSessionId,
       sessionUpdateTarget, setSessionUpdateTarget,
       finalJudgmentTarget, setFinalJudgmentTarget,
+      confirmDeleteJudgment, setConfirmDeleteJudgment,
+      deletingJudgment,
       deletingNoteId, setDeletingNoteId,
       showAddNote, setShowAddNote,
       uploadingDoc, docCategory, setDocCategory, docLabel, setDocLabel,
@@ -201,7 +203,7 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
       fetchSessions, handleFileSelect, handleUploadDoc, handleDeleteDoc,
       handleExportPdf, handleAddNote, handleDeleteNote,
       handleUpdateNote, handleDeleteSession, handleUpdateSession,
-      handleFinalJudgment,
+      handleFinalJudgment, handleDeleteFinalJudgment,
     } = actions;
 
     // ⚡ FIX (تقرير التحقّق — النقطة 4 + الإصلاح 2): الهيدر السريع + مودال
@@ -332,6 +334,12 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
             onClose: () => setFinalJudgmentTarget(null),
             onConfirm: (judgmentDate: string, verdictText: string) =>
                 handleFinalJudgment(finalJudgmentTarget.id, judgmentDate, verdictText),
+            // 🆕 (طلب "تعديل/حذف الحكم النهائي"، 12 سبتمبر 2026): لو القضية
+            // أصلاً "منتهية"، معناه فتحنا المودال من زرار "✏️ تعديل" على
+            // الكارت الأخضر (مش زرار "🏛️ الحكم النهائي" اللي أصلاً مستخبي
+            // بعد ما القضية تتقفل — راجع showJudgmentTrigger في
+            // TimelineSection.tsx)، فده وضع تعديل.
+            isEditMode: caseData.status === 'منتهية',
         }),
 
         // ── عرض المستند ──
@@ -716,7 +724,7 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
         React.createElement('div', {className: "flex-1 overflow-y-auto no-scrollbar px-4 py-4 pb-28"},
 
             // ═══ Timeline الجلسات ═══
-            activeSection === 'timeline' && React.createElement(TimelineSection, { loadingSessions, sessions, editingSession, setEditingSession, handleUpdateSession, setSessionUpdateTarget, setFinalJudgmentTarget, canEditCase, deletingSessionId, setConfirmDeleteSession, caseStatus: caseData.status }), // end sessions outer div
+            activeSection === 'timeline' && React.createElement(TimelineSection, { loadingSessions, sessions, editingSession, setEditingSession, handleUpdateSession, setSessionUpdateTarget, setFinalJudgmentTarget, setConfirmDeleteJudgment, canEditCase, deletingSessionId, setConfirmDeleteSession, caseStatus: caseData.status }), // end sessions outer div
 
             // ═══ الملاحظات ═══
             activeSection === 'notes' && React.createElement(NotesSection, {
@@ -826,6 +834,39 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
                         onClick: () => setConfirmDeleteSession(null),
                         'data-testid': 'confirm-delete-session-cancel',
                         className: "flex-1 py-3 bg-white/5 text-slate-300 rounded-xl text-xs font-black active:scale-95 transition-all"
+                    }, "إلغاء")
+                )
+            )
+        ),
+
+        // ── مودال تأكيد إلغاء الحكم النهائي ──
+        // 🆕 (طلب "تعديل/حذف الحكم النهائي"، 12 سبتمبر 2026): بيرجّع
+        // القضية "متداولة" (نشطة) ويشيل الحكم من الجلسة — نفس شكل مودال
+        // تأكيد حذف الجلسة فوق بالظبط، لون مختلف (أخضر بدل الأحمر، عشان
+        // ده "إلغاء" مش "حذف" جلسة).
+        confirmDeleteJudgment && React.createElement('div', {className: "fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"},
+            React.createElement('div', {className: "bg-premium-card border border-emerald-500/20 rounded-3xl p-6 w-full max-w-sm slide-up shadow-2xl"},
+                React.createElement('div', {className: "w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-2xl mx-auto mb-4"}, "↩️"),
+                React.createElement('h3', {className: "text-sm font-black text-white text-center mb-2"}, "إلغاء الحكم النهائي"),
+                React.createElement('p', {className: "text-xs text-slate-400 text-center mb-5 leading-relaxed"},
+                    "هل أنت متأكد من إلغاء الحكم النهائي بجلسة " + (confirmDeleteJudgment.date || '—') + "؟\nالقضية هترجع \"متداولة\"، ولن يمكن التراجع عن هذا الإجراء."
+                ),
+                React.createElement('div', {className: "flex gap-3"},
+                    React.createElement('button', {
+                        onClick: async () => {
+                            const id = confirmDeleteJudgment.id;
+                            setConfirmDeleteJudgment(null);
+                            await handleDeleteFinalJudgment(id);
+                        },
+                        disabled: deletingJudgment,
+                        'data-testid': 'confirm-delete-judgment-yes',
+                        className: "flex-1 py-3 bg-emerald-500 text-premium-bg rounded-xl text-xs font-black active:scale-95 transition-all disabled:opacity-50"
+                    }, "نعم، ألغِ الحكم"),
+                    React.createElement('button', {
+                        onClick: () => setConfirmDeleteJudgment(null),
+                        disabled: deletingJudgment,
+                        'data-testid': 'confirm-delete-judgment-cancel',
+                        className: "flex-1 py-3 bg-white/5 text-slate-300 rounded-xl text-xs font-black active:scale-95 transition-all disabled:opacity-50"
                     }, "إلغاء")
                 )
             )
