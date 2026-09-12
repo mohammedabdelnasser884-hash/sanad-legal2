@@ -267,8 +267,22 @@ function TimelineSection({
                                                 React.createElement('p', {className: "text-xs text-slate-200 leading-relaxed"}, s.description)
                                             ),
                                             // ما جرى في الجلسة
-                                            s.result && React.createElement('div', {className: "bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-3 mb-2"},
-                                                React.createElement('p', {className: "text-[9px] font-black text-emerald-400 mb-1"}, "📌 النتيجة"),
+                                            // 🆕 (بند 17، إعادة تصميم مودال "النطق بالحكم"، 12 سبتمبر 2026):
+                                            // لو الجلسة دي اتسجّل عليها حكم تمهيدي فعليًا (judgment_type ===
+                                            // 'تمهيدي' — عمود جديد، مستقل عن is_judgment_reserved اللي بيتحكم
+                                            // بس في ظهور زرار "🏛️")، بادچ مميز "⚖️ حكم تمهيدي" بدل "📌 النتيجة"
+                                            // العادية — عشان يبان واضح إن ده مش مجرد "ما تم" عابر، ده حكم فعلي
+                                            // اتسجّل على القضية وهي لسه "متداولة".
+                                            s.result && React.createElement('div', {
+                                                className: s.judgment_type === 'تمهيدي'
+                                                    ? "bg-sky-500/8 border border-sky-500/20 rounded-xl p-3 mb-2"
+                                                    : "bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-3 mb-2"
+                                            },
+                                                React.createElement('p', {
+                                                    className: s.judgment_type === 'تمهيدي'
+                                                        ? "text-[9px] font-black text-sky-400 mb-1"
+                                                        : "text-[9px] font-black text-emerald-400 mb-1"
+                                                }, s.judgment_type === 'تمهيدي' ? "⚖️ حكم تمهيدي" : "📌 النتيجة"),
                                                 React.createElement('p', {className: "text-[11px] text-slate-200 font-bold leading-relaxed"}, s.result)
                                             ),
                                             // الإجراء القادم
