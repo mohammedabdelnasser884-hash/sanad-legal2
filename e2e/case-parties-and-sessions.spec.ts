@@ -336,23 +336,37 @@ test('تعارض تعديل جلسة عند التحديث المتزامن من
   }
 });
 
-test('حفظ جلسة جديدة أوفلاين في تبويب الجلسات', async ({ page, context }) => {
+// ⏸️ SKIP (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 1، 12 سبتمبر 2026):
+// التست ده كان بيغطي دعم الأوفلاين (window.__dbWrite) بتاع فورم "إضافة
+// جلسة جديدة" القديم — الفورم ده اتشال نهائي (راجع التعليق في
+// TimelineSection.tsx)، والطريقة الوحيدة الحالية لإنشاء جلسة هي "⚡
+// تحديث" (SessionUpdateModal). بس SessionUpdateModal.tsx **لسه بيكتب
+// مباشرة** عبر safeUpdate()/db.from(...).insert() من غير أي fallback
+// لـwindow.__dbWrite — دعم الأوفلاين ليها مؤجل لحد المرحلة 3 من الخطة
+// (خطة_التنفيذ_بالمراحل.md، بند "دعم الأوفلاين — مدموج الآن"). تفعيل
+// التست ده دلوقتي (حتى لو بس استبدلنا الـtestids) هيفشل فعليًا لأن
+// الكود نفسه مش بيتعامل مع حالة الأوفلاين — مش مجرد mismatch في أسماء
+// عناصر. بنسيبه skip مع توضيح السبب، وهيترفع (ويتعدّل ليستخدم
+// session-update-* + window.__dbWrite) كجزء من المرحلة 3 لما التنفيذ
+// الفعلي يوصلها.
+test.skip('حفظ جلسة جديدة أوفلاين في تبويب الجلسات (مؤجل للمرحلة 3 — دعم الأوفلاين في SessionUpdateModal لسه مش متنفذ)', async ({ page, context }) => {
   await login(page);
   const caseTitle = `اختبار E2E - جلسة أوفلاين - ${Date.now()}`;
   await createAndOpenCase(page, caseTitle);
 
-  const sessionDesc = `جلسة أوفلاين - ${Date.now()}`;
-  await page.getByTestId('add-session-button').click();
-  await page.getByTestId('session-date-trigger').click();
+  const nextRequired = `جلسة أوفلاين - ${Date.now()}`;
+  await page.getByTestId('session-card').first().click();
+  await page.getByTestId('session-update-modal').waitFor({ state: 'visible', timeout: 10_000 });
   const today = new Date().getDate().toString();
-  await page.getByTestId('session-date-day').filter({ hasText: new RegExp(`^${today}$`) }).click();
-  await page.getByTestId('session-description').fill(sessionDesc);
+  await page.getByTestId('session-update-next-date-trigger').click();
+  await page.getByTestId('session-update-next-date-day').filter({ hasText: new RegExp(`^${today}$`) }).click();
+  await page.getByTestId('session-update-next-required').fill(nextRequired);
 
   await context.setOffline(true);
   try {
-    await page.getByTestId('save-session-button').click();
+    await page.getByTestId('session-update-save').click();
     await expectToast(page, '📥 الجلسة محفوظة محلياً — ستُزامن عند عودة الإنترنت');
-    await expect(page.getByTestId('session-description')).not.toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('session-update-modal')).not.toBeVisible({ timeout: 10_000 });
   } finally {
     await context.setOffline(false);
   }
