@@ -51,7 +51,12 @@ interface SessionUpdateModalProps {
 function SessionUpdateModal({ session, caseData, db, onClose, onDone, onCaseUpdated, onNotify, linkedClient }: SessionUpdateModalProps) {
     const [whatHappened, setWhatHappened] = useState(session.result || '');
     const [nextDate, setNextDate] = useState('');
-    const [nextRequired, setNextRequired] = useState(session.next_action || '');
+    // 🔧 FIX (تكرار نفس نص "الإجراء القادم" تلقائيًا، 12 سبتمبر 2026): كان
+    // بيتعمّر من session.next_action (الجلسة الحالية اللي بتتقفل) — بما إن
+    // القيمة دي بتتسجّل كـ next_action *للجلسة الجديدة*، كانت بتتورث نفس
+    // الجملة من جلسة لجلسة تلقائيًا (لازم تُمسح يدويًا كل مرة). دلوقتي بيبدأ
+    // فاضي دايمًا؛ لسه ممكن تتاخد بالضبط لو المستخدم كتبها بنفسه.
+    const [nextRequired, setNextRequired] = useState('');
     const [saving, setSaving] = useState(false);
     // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 3، 12 سبتمبر 2026):
     // توجل "محجوزة للحكم" — الـPre-check (قسم 4 من الخطة): لو الجلسة
