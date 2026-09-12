@@ -684,14 +684,10 @@ ${PDF_FONT_LINK}
   return {
     // جلسات (من useCaseSessions)
     sessions: sessionsHook.sessions, setSessions: sessionsHook.setSessions,
-    showAddSession: sessionsHook.showAddSession, setShowAddSession: sessionsHook.setShowAddSession,
     editingSession: sessionsHook.editingSession, setEditingSession: sessionsHook.setEditingSession,
     deletingSessionId: sessionsHook.deletingSessionId, setDeletingSessionId: sessionsHook.setDeletingSessionId,
     sessionUpdateTarget: sessionsHook.sessionUpdateTarget, setSessionUpdateTarget: sessionsHook.setSessionUpdateTarget,
-    savingSession: sessionsHook.savingSession,
-    sessionForm: sessionsHook.sessionForm, setSessionForm: sessionsHook.setSessionForm,
     confirmDeleteSession: sessionsHook.confirmDeleteSession, setConfirmDeleteSession: sessionsHook.setConfirmDeleteSession,
-    handleAddSession: sessionsHook.handleAddSession,
     handleUpdateSession: sessionsHook.handleUpdateSession,
     handleDeleteSession: sessionsHook.handleDeleteSession,
 
