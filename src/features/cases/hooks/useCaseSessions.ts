@@ -35,6 +35,11 @@ export function useCaseSessions(
   // `FinalJudgmentModal` (مرحلة 5) عليها. نفس نمط `sessionUpdateTarget`
   // بالظبط.
   const [finalJudgmentTarget, setFinalJudgmentTarget] = useState<CaseSessionRow | null>(null);
+  // 🆕 (طلب "تعديل/حذف الحكم النهائي"، 12 سبتمبر 2026): تأكيد حذف/إلغاء
+  // الحكم النهائي — نفس شكل confirmDeleteSession فوق ({id, date}), بس
+  // بيستهدف إلغاء الحكم (مش حذف الجلسة نفسها).
+  const [confirmDeleteJudgment, setConfirmDeleteJudgment] = useState<{ id: string; date: string } | null>(null);
+  const [deletingJudgment, setDeletingJudgment] = useState(false);
 
   // ── FIX (2.3): إعادة حساب next_hearing بشكل صحيح ──
   // ⚠️ قبل الإصلاح ده، next_hearing كان بيتحط عليه تاريخ أي جلسة تتضاف
@@ -251,6 +256,76 @@ export function useCaseSessions(
     return { ok: true };
   };
 
+  // 🆕 (طلب "تعديل/حذف الحكم النهائي"، 12 سبتمبر 2026): إلغاء الحكم
+  // النهائي المسجّل على آخر جلسة — عكس handleFinalJudgment بالظبط:
+  // 1. تصفير result + is_judgment_reserved على نفس الجلسة (الحكم بيتشال
+  //    خالص، مش مجرد إخفاء — لو المستخدم عايز يسجّل حكم تاني بعدين، لازم
+  //    يفعّل التوجل من جديد من SessionUpdateModal).
+  // 2. رجوع cases.status لـ"نشطة" (قسم "متداولة" في CasesTab.tsx).
+  // 3. recalcNextHearing — بيتحسب طبيعي من الجلسات الموجودة فعليًا (نفس
+  //    آخر جلسة مسجّلة، زي ما اتطلب — الدالة المشتركة أصلاً بتحسب من كل
+  //    الجلسات، مفيش داعي لمنطق خاص إضافي هنا).
+  // **دعم الأوفلاين:** نفس نمط handleFinalJudgment بالظبط.
+  const handleDeleteFinalJudgment = async (sessionId: string) => {
+    setDeletingJudgment(true);
+    const session = sessions.find((s) => s.id === sessionId);
+
+    const sessionUpdateResult = await window.__dbWrite({
+      type: 'UPDATE',
+      table: 'case_sessions',
+      id: sessionId,
+      data: { result: null, is_judgment_reserved: false },
+      knownUpdatedAt: session?.updated_at || null,
+    });
+    if (sessionUpdateResult.conflict) { setDeletingJudgment(false); toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
+    if (sessionUpdateResult.error && !sessionUpdateResult.offline) { setDeletingJudgment(false); showErrorToast('undo_final_judgment_session', sessionUpdateResult.error, 'فشل إلغاء الحكم النهائي على الجلسة', 'إلغاء الحكم النهائي'); return; }
+
+    const caseUpdateResult = await window.__dbWrite({
+      type: 'UPDATE',
+      table: 'cases',
+      id: caseData.id,
+      data: { status: 'نشطة' },
+      knownUpdatedAt: caseData.updated_at || null,
+    });
+    if (caseUpdateResult.error && !caseUpdateResult.offline) {
+      showErrorToast('undo_final_judgment_case', caseUpdateResult.error, 'تم إلغاء الحكم على الجلسة، لكن تعذّر إرجاع حالة القضية إلى "نشطة" — غيّرها يدويًا', 'إلغاء الحكم النهائي');
+    }
+
+    setDeletingJudgment(false);
+
+    if ((sessionUpdateResult.offline && sessionUpdateResult.queued) || (caseUpdateResult.offline && caseUpdateResult.queued)) {
+      toast('📥 تم حفظ إلغاء الحكم النهائي محليًا — سيُزامن عند عودة الإنترنت');
+      refetchAll();
+      return;
+    }
+
+    await recalcNextHearing(caseData.id);
+    toast('↩️ تم إلغاء الحكم النهائي، والقضية رجعت للقضايا المتداولة');
+
+    logActivity(db, 'إلغاء حكم نهائي', {
+      entity_type: 'case', entity_id: caseData.id, details: caseData.title || null,
+      case_name: caseData.title || null, case_type: caseData.type || null,
+      client_name: client?.full_name || null,
+      userName: profile?.full_name || null,
+      changes: buildFieldDiff(
+        { status: caseData.status },
+        { status: 'نشطة' },
+        { status: { label: 'الحالة' } }
+      ),
+    });
+
+    if (onNotify) {
+      let msg = `↩️ <b>إلغاء حكم نهائي</b>\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `⚖️ <b>${escapeTelegramHtml(caseData.title || '—')}</b>\n`;
+      msg += `📋 رقم القيد: ${escapeTelegramHtml(caseData.number || '—')}\n`;
+      msg += `القضية رجعت "متداولة".\n`;
+      onNotify(msg);
+    }
+
+    refetchAll();
+  };
+
   return {
     sessions, setSessions,
     editingSession, setEditingSession,
@@ -258,7 +333,9 @@ export function useCaseSessions(
     sessionUpdateTarget, setSessionUpdateTarget,
     finalJudgmentTarget, setFinalJudgmentTarget,
     confirmDeleteSession, setConfirmDeleteSession,
-    handleUpdateSession, handleDeleteSession, handleFinalJudgment,
+    confirmDeleteJudgment, setConfirmDeleteJudgment,
+    deletingJudgment,
+    handleUpdateSession, handleDeleteSession, handleFinalJudgment, handleDeleteFinalJudgment,
     recalcNextHearing,
   };
 }
