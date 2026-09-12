@@ -136,8 +136,9 @@ function makeCase(overrides: Partial<MappedCase> = {}): MappedCase {
 
 function renderSessionsHook(caseData: MappedCase = makeCase(), onNotify: ((m: string) => void) | undefined = vi.fn()) {
   const refetchAll = vi.fn();
-  const view = renderHook(() => useCaseSessions(caseData, client, profile, onNotify, refetchAll));
-  return { ...view, refetchAll };
+  const onUpdate = vi.fn();
+  const view = renderHook(() => useCaseSessions(caseData, client, profile, onNotify, refetchAll, onUpdate));
+  return { ...view, refetchAll, onUpdate };
 }
 
 beforeEach(() => {
@@ -276,5 +277,75 @@ describe('useCaseSessions — handleUpdateSession', () => {
     expect(onNotify).toHaveBeenCalledTimes(1);
     expect(onNotify.mock.calls[0][0] as string).toContain('تم تعديل جلسة');
     expect(refetchAll).toHaveBeenCalled();
+  });
+});
+
+// 🔧 FIX (طلب جيمي، 12 سبتمبر 2026): handleFinalJudgment/handleDeleteFinalJudgment
+// كانوا بيحدّثوا cases.status في الداتابيز من غير ما ينادوا onUpdate — القضية
+// كانت بتفضل شكلها القديم (منتهية/متداولة) في شاشة الأب لحد خروج وريفريش يدوي.
+describe('useCaseSessions — handleFinalJudgment (onUpdate sync)', () => {
+  it('نجاح → onUpdate بينادى بـ "منتهية" عشان الشاشة الأب تتحدّث فورًا', async () => {
+    dbWriteMock().mockResolvedValue({ error: null });
+    const { result, onUpdate } = renderSessionsHook();
+    act(() => { result.current.setSessions([{ id: 'sess-1', updated_at: '2026-07-01T00:00:00.000Z' } as never]); });
+
+    await act(async () => {
+      await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
+    });
+
+    expect(onUpdate).toHaveBeenCalledWith('منتهية');
+  });
+
+  it('اتقيّدت أوفلاين (case update) → onUpdate برضو بينادى بـ "منتهية" (هتتزامن بعدين)', async () => {
+    dbWriteMock()
+      .mockResolvedValueOnce({ error: null }) // session update
+      .mockResolvedValueOnce({ error: null, offline: true, queued: true }); // case update
+    const { result, onUpdate } = renderSessionsHook();
+
+    await act(async () => {
+      await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
+    });
+
+    expect(onUpdate).toHaveBeenCalledWith('منتهية');
+  });
+
+  it('فشل حقيقي في تحديث حالة القضية (بلا offline) → onUpdate ما بينادوش خالص', async () => {
+    dbWriteMock()
+      .mockResolvedValueOnce({ error: null }) // session update succeeds
+      .mockResolvedValueOnce({ error: { message: 'update failed' }, offline: false }); // case update fails
+    const { result, onUpdate } = renderSessionsHook();
+
+    await act(async () => {
+      await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
+    });
+
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('useCaseSessions — handleDeleteFinalJudgment (onUpdate sync)', () => {
+  it('نجاح → onUpdate بينادى بـ "نشطة" عشان القضية ترجع لقسم متداولة فورًا', async () => {
+    dbWriteMock().mockResolvedValue({ error: null });
+    const { result, onUpdate } = renderSessionsHook();
+    act(() => { result.current.setSessions([{ id: 'sess-1', updated_at: '2026-07-01T00:00:00.000Z' } as never]); });
+
+    await act(async () => {
+      await result.current.handleDeleteFinalJudgment('sess-1');
+    });
+
+    expect(onUpdate).toHaveBeenCalledWith('نشطة');
+  });
+
+  it('فشل حقيقي في تحديث حالة القضية (بلا offline) → onUpdate ما بينادوش خالص', async () => {
+    dbWriteMock()
+      .mockResolvedValueOnce({ error: null }) // session update succeeds
+      .mockResolvedValueOnce({ error: { message: 'update failed' }, offline: false }); // case update fails
+    const { result, onUpdate } = renderSessionsHook();
+
+    await act(async () => {
+      await result.current.handleDeleteFinalJudgment('sess-1');
+    });
+
+    expect(onUpdate).not.toHaveBeenCalled();
   });
 });
