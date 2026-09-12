@@ -695,6 +695,8 @@ ${PDF_FONT_LINK}
     handleDeleteSession: sessionsHook.handleDeleteSession,
     handleFinalJudgment: sessionsHook.handleFinalJudgment,
     handleDeleteFinalJudgment: sessionsHook.handleDeleteFinalJudgment,
+    handlePreliminaryJudgment: sessionsHook.handlePreliminaryJudgment,
+    handlePostponeJudgment: sessionsHook.handlePostponeJudgment,
 
     // مستندات (من useCaseDocuments)
     docs: docsHook.docs, setDocs: docsHook.setDocs,
