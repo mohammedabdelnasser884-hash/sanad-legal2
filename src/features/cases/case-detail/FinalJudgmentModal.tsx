@@ -258,9 +258,15 @@ function FinalJudgmentModal({ session, caseData, onClose, onConfirm, onConfirmPr
                         ),
 
                         // منطوق الحكم — بيظهر لمساري نهائي وتمهيدي بس
+                        // 🔒 (طلب "منطوق الحكم إجباري زي التاريخ"، 12 سبتمبر
+                        // 2026): كان إجباري بالفعل فعليًا (زرار "متابعة" مقفول
+                        // من غير نص — canProceedFinal/canProceedPreliminary
+                        // تحت)، بس من غير أي علامة بصرية. أضفنا نجمة حمرا زي
+                        // علامة التاريخ بالظبط، صفر تغيير على منطق التفعيل.
                         choice !== 'postpone' && React.createElement('div', { className: "space-y-1.5" },
                             React.createElement('label', { className: "block text-[10px] font-black text-slate-400" },
-                                "📜 منطوق الحكم"
+                                "📜 منطوق الحكم",
+                                React.createElement('span', { className: "text-rose-400 mr-1" }, "*")
                             ),
                             React.createElement('textarea', {
                                 value: verdictText,
