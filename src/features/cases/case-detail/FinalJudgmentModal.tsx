@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import DatePicker from '@/shared/ui/DatePicker';
 import { I } from '../../../constants';
-import { useModalPresentation } from '../../../shared/hooks/useModalPresentation';
 import type { CaseSessionRow } from '../../../types';
 import type { MappedCase } from '../../../hooks/useAppData';
 
@@ -66,7 +65,13 @@ function FinalJudgmentModal({ session, caseData, onClose, onConfirm, onConfirmPr
     const [verdictText, setVerdictText] = useState(session.result || '');
     const [nextSessionDate, setNextSessionDate] = useState('');
     const [saving, setSaving] = useState(false);
-    const modalPresentation = useModalPresentation();
+    // 🔧 FIX (طلب جيمي، 12 سبتمبر 2026): المودال ده تحديدًا كان بيتبع
+    // useModalPresentation العام (Bottom Sheet على الموبايل، مركزي على
+    // الديسكتوب بس) — طلب إنه يفضل مركزي في نص الشاشة دايمًا، حتى على
+    // الموبايل. بنستخدم قيم ثابتة (نفس قيم الديسكتوب في useModalPresentation:
+    // items-center + rounded-3xl بحدود كاملة + fade-in بدل slide-up) في
+    // الـclassName تحت مباشرة، من غير الاعتماد على الـhook العام أصلاً —
+    // صفر تأثير على أي مودال تاني بيستخدمه.
 
     const canProceedFinal = !!judgmentDate && verdictText.trim().length > 0;
     const canProceedPreliminary = verdictText.trim().length > 0 && !!nextSessionDate;
@@ -112,12 +117,12 @@ function FinalJudgmentModal({ session, caseData, onClose, onConfirm, onConfirmPr
 
     return createPortal(
         React.createElement('div', {
-            className: `fixed inset-0 z-[70] flex ${modalPresentation.overlayAlignClassName} justify-center`,
+            className: "fixed inset-0 z-[70] flex items-center justify-center",
             style: { background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' },
             onClick: (e: React.MouseEvent<HTMLDivElement>) => { if (e.target === e.currentTarget && !saving) onClose(); }
         },
             React.createElement('div', {
-                className: `w-full max-w-lg bg-premium-bg border border-emerald-500/25 ${modalPresentation.isDesktop ? 'rounded-3xl' : 'rounded-t-3xl'} p-5 space-y-4 ${modalPresentation.panelAnimationClassName}`,
+                className: "w-full max-w-lg bg-premium-bg border border-emerald-500/25 rounded-3xl p-5 space-y-4 fade-in",
                 style: { maxHeight: '90vh', overflowY: 'auto' },
                 'data-testid': 'final-judgment-modal',
             },
