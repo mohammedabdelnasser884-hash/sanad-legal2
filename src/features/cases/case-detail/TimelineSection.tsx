@@ -68,6 +68,13 @@ function TimelineSection({
   const lastSession = sessions[0];
   const showJudgmentCard = !!lastSession && lastSession.is_judgment_reserved === true && caseStatus === 'منتهية';
 
+  // 🆕 (تعديل تخطيطي، 12 سبتمبر 2026): زرار "🏛️ الحكم النهائي" بقى منفصل
+  // وبعرض القسم كامل، فوق كارت آخر جلسة مباشرة — بدل ما كان جوه هيدر
+  // الكارت. بيظهر بس لو الجلسة محجوزة للحكم + عندك صلاحية تعديل القضية،
+  // وطالما الحكم لسه ماتسجّلش فعليًا (caseStatus !== 'منتهية') — لو
+  // اتسجّل، الكارت الأخضر (showJudgmentCard) فوق هو اللي بيظهر بدل الزرار.
+  const showJudgmentTrigger = !!lastSession && lastSession.is_judgment_reserved === true && canEditCase && caseStatus !== 'منتهية';
+
   // قرار نصّي (بعد سؤال جيمي، 12 سبتمبر 2026): كارت منفصل بعرض القسم
   // كله فوق آخر جلسة، ومنطوق الحكم مختصر سطرين افتراضيًا (line-clamp-2)
   // مع زرار "عرض الكل" بيظهر بس لو فعلاً النص أطول من سطرين (بنتأكد
@@ -105,6 +112,14 @@ function TimelineSection({
                     className: "mt-1.5 text-[10px] font-black text-emerald-400 underline underline-offset-2 active:scale-95 transition-all",
                   }, judgmentExpanded ? "إخفاء" : "عرض الكل")
                 ),
+                // 🆕 زرار "🏛️ الحكم النهائي" — منفصل وبعرض القسم كامل، فوق
+                // كارت آخر جلسة (راجع تعليق showJudgmentTrigger فوق).
+                showJudgmentTrigger && React.createElement('button', {
+                    onClick: () => setFinalJudgmentTarget(lastSession),
+                    'data-testid': 'final-judgment-trigger',
+                    className: "w-full flex items-center justify-center gap-1.5 py-3.5 rounded-2xl text-xs font-black active:scale-[0.98] transition-all slide-up",
+                    style: {background:'rgba(16,185,129,0.12)', color:'#10b981', border:'1px solid rgba(16,185,129,0.35)'}
+                }, "🏛️ الحكم النهائي"),
                 // 🗑️ FIX (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 1، 12
                 // سبتمبر 2026): زرار "إضافة جلسة جديدة" وفورمه اتشالوا نهائي
                 // من هنا — كانوا بيسمحوا بإنشاء جلسة جديدة من غير أي التزام
@@ -190,25 +205,10 @@ function TimelineSection({
                                                     )
                                                 ),
                                                 React.createElement('div', {className: "flex items-center gap-1.5"},
-                                                    // الجلسة الأخيرة: badge + زر تحديث + زر الحكم النهائي (مشروط)
-                                                    i === 0 && React.createElement(React.Fragment, null,
-                                                        React.createElement('span', {className: "text-[9px] px-2 py-0.5 bg-premium-gold/10 text-premium-gold rounded-full font-bold"}, "آخر جلسة"),
-                                                        // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 4، 12
-                                                        // سبتمبر 2026): زرار "🏛️ الحكم النهائي" — بيظهر بس لو
-                                                        // آخر جلسة (i === 0) متعلّمة is_judgment_reserved = true
-                                                        // (اتحطت من التوجل في SessionUpdateModal، مرحلة 3).
-                                                        s.is_judgment_reserved === true && canEditCase && React.createElement('button', {
-                                                            onClick: (e: React.MouseEvent) => { e.stopPropagation(); setFinalJudgmentTarget(s); },
-                                                            'data-testid': 'final-judgment-trigger',
-                                                            className: "flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black active:scale-90 transition-all",
-                                                            style: {background:'rgba(16,185,129,0.15)', color:'#10b981', border:'1px solid rgba(16,185,129,0.35)'}
-                                                        }, "🏛️ الحكم النهائي"),
-                                                        React.createElement('button', {
-                                                            onClick: (e: React.MouseEvent) => { e.stopPropagation(); setSessionUpdateTarget(s); },
-                                                            className: "flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black active:scale-90 transition-all",
-                                                            style: {background:'rgba(212,175,55,0.15)', color:'#D4AF37', border:'1px solid rgba(212,175,55,0.3)'}
-                                                        }, "⚡ تحديث")
-                                                    ),
+                                                    // الجلسة الأخيرة: badge بس هنا — زرار "⚡ تحديث" بقى تحت
+                                                    // الكارت بعرض كامل، وزرار "🏛️ الحكم النهائي" بقى منفصل فوق
+                                                    // الكارت كله (راجع showJudgmentTrigger فوق).
+                                                    i === 0 && React.createElement('span', {className: "text-[9px] px-2 py-0.5 bg-premium-gold/10 text-premium-gold rounded-full font-bold"}, "آخر جلسة"),
                                                     // الجلسات القديمة: زر تعديل + حذف
                                                     i !== 0 && React.createElement(React.Fragment, null,
                                                         React.createElement('button', {
@@ -246,10 +246,18 @@ function TimelineSection({
                                                 React.createElement('p', {className: "text-[11px] text-slate-200 font-bold leading-relaxed"}, s.result)
                                             ),
                                             // الإجراء القادم
-                                            s.next_action && React.createElement('div', {className: "bg-amber-500/5 border border-amber-500/15 rounded-xl p-3"},
+                                            s.next_action && React.createElement('div', {className: "bg-amber-500/5 border border-amber-500/15 rounded-xl p-3 mb-2"},
                                                 React.createElement('p', {className: "text-[9px] font-black text-amber-400 mb-1"}, "⚡ الإجراء القادم"),
                                                 React.createElement('p', {className: "text-[11px] text-slate-200 font-bold leading-relaxed"}, s.next_action)
-                                            )
+                                            ),
+                                            // 🆕 زرار "⚡ تحديث" — بقى تحت الكارت بعرض كامل بدل ما كان
+                                            // زرار صغير جوه الهيدر (تعديل تخطيطي، 12 سبتمبر 2026).
+                                            i === 0 && React.createElement('button', {
+                                                onClick: (e: React.MouseEvent) => { e.stopPropagation(); setSessionUpdateTarget(s); },
+                                                'data-testid': 'session-update-trigger',
+                                                className: "w-full py-2.5 rounded-xl text-[10px] font-black active:scale-[0.98] transition-all",
+                                                style: {background:'rgba(212,175,55,0.15)', color:'#D4AF37', border:'1px solid rgba(212,175,55,0.3)'}
+                                            }, "⚡ تحديث")
                                           )
                                     )
                                 )
