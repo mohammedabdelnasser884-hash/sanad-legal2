@@ -4,6 +4,7 @@ import MonthListTab from './MonthListTab';
 import CalendarTab, { type CalendarSessionRow } from './CalendarTab';
 import MissedTab from './MissedTab';
 import { db } from '../../../supabaseClient';
+import { fetchMissedSessions } from '../../../shared/lib/dataAccess';
 import { I } from '../../../constants';
 import type { MappedCase, MappedClient } from '../../../hooks/useAppData';
 import type { CaseSessionRow } from '../../../types';
@@ -46,13 +47,6 @@ interface SessionsCalendarProps {
     profile?: PermissionBearing | null;
 }
 
-// شكل صف case_sessions اللي بيترجع من استعلامي fetchMissedCount هنا
-// (نفس الأعمدة المطلوبة فعليًا في كل .select() بالظبط)
-interface MissedSessionRow {
-    id: string;
-    result: string | null;
-    next_action: string | null;
-}
 interface OverdueReminderRow {
     id: string;
     done: boolean;
@@ -87,20 +81,23 @@ function SessionsCalendar({ cases, clients, onOpenCase, onOpenReminders, onClien
     }, [externalRefreshSignal]);
 
     // جلب عدد الفائتة لعرضه على الـ badge
+    // ⚡ NEW (خطة "إغلاق سلسلة الجلسات"، مرحلة 8 — 12 سبتمبر 2026): بقى
+    // بينادي fetchMissedSessions الموحّدة (dataAccess.ts) بدل تعريفه
+    // المحلي القديم ("أي جلسة فات تاريخها ومفيهاش result/next_action" —
+    // من غير اعتبار لو القضية عندها جلسة جاية أو لو هي أصلاً "منتهية")،
+    // عشان الرقم هنا يطابق بالظبط عدد الكروت الظاهرة في MissedTab.tsx —
+    // ده سبب "تعارض عداد 63/14" (12 سبتمبر 2026).
     const fetchMissedCount = useCallback(async () => {
         const todayStr = toDateStr(new Date());
-        const [sessCnt, taskCnt] = await Promise.all([
-            db.from('case_sessions')
-              .select('id,result,next_action')
-              .lt('session_date', todayStr)
-              .then(({ data }) => ((data || []) as unknown as MissedSessionRow[]).filter((s) => !s.result?.trim() && !s.next_action?.trim()).length),
+        const [sessRes, taskCnt] = await Promise.all([
+            fetchMissedSessions(db, todayStr),
             db.from('reminders')
               .select('id,done')
               .eq('done', false)
               .lt('due_date', todayStr)
               .then(({ data }) => ((data || []) as unknown as OverdueReminderRow[]).length)
         ]);
-        setMissedCount(sessCnt + taskCnt);
+        setMissedCount((sessRes.data || []).length + taskCnt);
     }, []);
 
     useEffect(() => {
