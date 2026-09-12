@@ -19,6 +19,13 @@ interface SessionUpdateModalProps {
     db: SupabaseClient<Database>;
     onClose: () => void;
     onDone?: () => void;
+    // 🆕 FIX (باگ "عدّلها شخص آخر" الزائف، 12 سبتمبر 2026): onDone بيحدّث
+    // الجلسات بس. سيناريو "إعادة الفتح" تحت (لما القضية "منتهية" ونعمل
+    // "⚡ تحديث") بيكتب على cases.status + updated_at مباشرة — من غير
+    // onCaseUpdated، الشاشة الأب (caseData) تفضل شايلة status/updated_at
+    // قديمين، وأي RPC تالي بيعتمد عليهم (تسجيل حكم نهائي..) بيكتشف تعارض
+    // زائف مع نفس المستخدم نفسه.
+    onCaseUpdated?: (patch: { status?: string; updated_at?: string | null }) => void;
     onNotify?: (msg: string) => void;
     // ⚡ NEW (خطة توحيد مصدر بيانات الموكل، مرحلة 5): الموكل الحي المرتبط
     // بالجلسة المستقلة (session.client_id) — لو موجود، بيتاخد منه
@@ -41,7 +48,7 @@ interface SessionUpdateModalProps {
  * 2. يُنشئ جلسة جديدة بالتاريخ والمطلوب الجديد
  * 3. الجلسة القديمة تفضل موجودة بدون زر تحديث (عشان مش آخر جلسة دلوقتي)
  */
-function SessionUpdateModal({ session, caseData, db, onClose, onDone, onNotify, linkedClient }: SessionUpdateModalProps) {
+function SessionUpdateModal({ session, caseData, db, onClose, onDone, onCaseUpdated, onNotify, linkedClient }: SessionUpdateModalProps) {
     const [whatHappened, setWhatHappened] = useState(session.result || '');
     const [nextDate, setNextDate] = useState('');
     const [nextRequired, setNextRequired] = useState(session.next_action || '');
@@ -182,7 +189,8 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onNotify, 
             // كانوا هيعرضوا بيانات غلط بمجرد ما زرار "إضافة جلسة" اتشال.
             // مقصورة على القضايا الحقيقية (caseData.id موجود) — الجلسة
             // المستقلة (isStandalone) مالهاش صف في جدول `cases` أصلًا.
-            await recalcNextHearing(db, caseData.id);
+            const newCaseUpdatedAt = await recalcNextHearing(db, caseData.id);
+            onCaseUpdated?.({ updated_at: newCaseUpdatedAt });
 
             // 🆕 (مرحلة 3، سيناريو "إعادة الفتح"، قسم 4.6 من الخطة): لو
             // القضية كانت متقفلة ("منتهية") — عادةً بعد حكم نهائي سابق —
@@ -198,10 +206,21 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onNotify, 
                     table: 'cases',
                     id: caseData.id,
                     data: { status: 'نشطة' },
-                    knownUpdatedAt: caseData.updated_at || null,
+                    // 🔧 FIX (باگ الـstaleness، 12 سبتمبر 2026): كانت بتستخدم
+                    // caseData.updated_at (ممكن يبقى قديم لو recalcNextHearing
+                    // فوق غيّره لتوّه) — دلوقتي بنستخدم newCaseUpdatedAt الطازة
+                    // نفسها بدل ما نخاطر بتعارض زائف مع الكتابة اللي إحنا
+                    // نفسنا عملناها من ثانية.
+                    knownUpdatedAt: newCaseUpdatedAt || caseData.updated_at || null,
                 });
                 if (reopenResult.error || reopenResult.conflict) {
                     toast('⚠️ تم تحديث الجلسة، لكن تعذّر إعادة فتح القضية تلقائيًا — غيّر حالتها يدويًا من القضية', true);
+                } else {
+                    // 🆕 FIX: نبلّغ الشاشة الأب فورًا إن القضية رجعت "نشطة"
+                    // بـupdated_at الجديد (من __dbWrite نفسها)، عشان أي عملية
+                    // تالية (زي تسجيل حكم نهائي بعدها على طول) متكتشفش تعارض
+                    // زائف مع الكتابة دي.
+                    onCaseUpdated?.({ status: 'نشطة', updated_at: (reopenResult.data as { updated_at?: string } | null)?.updated_at ?? null });
                 }
             }
         }
