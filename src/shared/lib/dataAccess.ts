@@ -47,7 +47,12 @@ export async function safeUpdate<T extends SafeUpdateTable>(
     id: string | number,
     data: Database['public']['Tables'][T]['Update'],
     knownUpdatedAt: string | null
-): Promise<{ success: boolean; conflict: boolean; error: PostgrestError | null }> {
+    // 🔧 FIX (نفس باگ الـstaleness اللي في recalcNextHearing فوق — 12
+    // سبتمبر 2026): بترجع updated_at الجديد كمان (حقل إضافي، صفر تغيير
+    // لأي كولر قديم بيعتمد على success/conflict/error بس) عشان أي حد
+    // شايل caseData محلي (زي handleChangeStatus) يقدر ينشره ويمنع تعارض
+    // زائف مع نفسه في الكتابة اللي بعدها.
+): Promise<{ success: boolean; conflict: boolean; error: PostgrestError | null; updatedAt?: string | null }> {
 
     // table بقى الآن Generic مقيّد بـ SafeUpdateTable (union حقيقي من أسماء
     // الجداول)، و data بقى مطابق لنوع Update الحقيقي بتاع الجدول المحدد —
@@ -67,8 +72,8 @@ export async function safeUpdate<T extends SafeUpdateTable>(
 
     // لو مفيش updated_at محفوظ — نعمل UPDATE عادي بدون check (للبيانات القديمة)
     if (!knownUpdatedAt) {
-        const { error } = await dbFrom().update(data as unknown as Database['public']['Tables']['cases']['Update']).eq('id', id as string);
-        return { success: !error, conflict: false, error };
+        const { data: updated, error } = await dbFrom().update(data as unknown as Database['public']['Tables']['cases']['Update']).eq('id', id as string).select('updated_at').single();
+        return { success: !error, conflict: false, error, updatedAt: updated?.updated_at ?? null };
     }
 
     // 1. اتحقق إن updated_at مش اتغير من لما جبت السجل
@@ -92,8 +97,8 @@ export async function safeUpdate<T extends SafeUpdateTable>(
     }
 
     // 3. آمن — نكتب
-    const { error } = await dbFrom().update(data as unknown as Database['public']['Tables']['cases']['Update']).eq('id', id as string);
-    return { success: !error, conflict: false, error };
+    const { data: updated, error } = await dbFrom().update(data as unknown as Database['public']['Tables']['cases']['Update']).eq('id', id as string).select('updated_at').single();
+    return { success: !error, conflict: false, error, updatedAt: updated?.updated_at ?? null };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -298,7 +303,16 @@ export async function logActivity(
 //  بتجيب كل جلسات القضية، وتحسب أقرب تاريخ فعلي >= اليوم، وتحدّث
 //  next_hearing بيه (أو null لو مفيش جلسات قادمة خالص).
 // ══════════════════════════════════════════════════════════════
-export async function recalcNextHearing(db: SupabaseClient<Database>, caseId: string): Promise<void> {
+// 🔧 FIX (باگ "عدّلها شخص آخر" الزائف بعد سلسلة عمليات على نفس القضية،
+// 12 سبتمبر 2026): recalcNextHearing كانت بتحدّث cases.updated_at (عن
+// طريق next_hearing) من غير ما ترجع القيمة الجديدة لأي حد — أي كائن
+// caseData محلي (زي selectedCase في AppModals.tsx) كان بيفضل شايل
+// updated_at قديم بعد كل عملية جلسة (إضافة/تعديل/حذف/حكم)، فأي كتابة
+// تالية بتعتمد على optimistic locking على مستوى القضية (تسجيل حكم/إلغاء
+// حكم/إعادة فتح تلقائي) كانت بتكتشف "تعارض" مع نفس المستخدم نفسه. دلوقتي
+// بترجع updated_at الجديد عشان الكولر يعيد نشره لأي state محلي شايل
+// caseData (راجع onUpdate الجديد في useCaseSessions.ts/AppModals.tsx).
+export async function recalcNextHearing(db: SupabaseClient<Database>, caseId: string): Promise<string | null> {
     const { data: allSessions } = await db
         .from('case_sessions')
         .select('session_date')
@@ -309,7 +323,8 @@ export async function recalcNextHearing(db: SupabaseClient<Database>, caseId: st
         if (!s.session_date || s.session_date < todayStr) return;
         if (!nearest || s.session_date < nearest) nearest = s.session_date;
     });
-    await db.from('cases').update({ next_hearing: nearest }).eq('id', caseId);
+    const { data } = await db.from('cases').update({ next_hearing: nearest }).eq('id', caseId).select('updated_at').single();
+    return data?.updated_at ?? null;
 }
 
 // ══════════════════════════════════════════════════════════════
