@@ -93,7 +93,7 @@ export function useCaseDetailActions(
   const refetchAllRef = useRef<() => Promise<void>>(async () => {});
   const refetchAll = useCallback(() => refetchAllRef.current(), []);
 
-  const sessionsHook = useCaseSessions(caseData, client, profile, onNotify, refetchAll);
+  const sessionsHook = useCaseSessions(caseData, client, profile, onNotify, refetchAll, onUpdate);
   const docsHook = useCaseDocuments(caseData, client, profile, refetchAll);
   const { sessions, setSessions } = sessionsHook;
   const { docs, setDocs } = docsHook;
