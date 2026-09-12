@@ -478,39 +478,45 @@ export function useCaseSessions(
   };
 
   // 🆕 (خطة إعادة تصميم مودال "النطق بالحكم"، بند 16، 12 سبتمبر 2026):
-  // مسار "تأجيل النطق بالحكم" — من غير أي تحديث على الجلسة الحالية
-  // (مفيش منطوق حكم بيتسجل خالص)، بس إنشاء جلسة جديدة بنفس بيانات
-  // الموقع/المحكمة، والجلسة الجديدة تفضل is_judgment_reserved=true
-  // (عشان تفضل "محجوزة للحكم" برضو، وزرار "🏛️" يفضل ظاهر عليها).
+  // مسار "تأجيل النطق بالحكم" — من غير أي منطوق حكم بيتسجل، بس إنشاء
+  // جلسة جديدة بنفس بيانات الموقع/المحكمة، والجلسة الجديدة تفضل
+  // is_judgment_reserved=true (عشان تفضل "محجوزة للحكم"، وزرار "🏛️"
+  // يفضل ظاهر عليها).
+  // ⚠️ فيكس atomicity + باگ حقيقي (بند 26، اكتُشف بالاختبار اليدوي —
+  // المرحلة 10، اختبار 5، 12 سبتمبر 2026): كانت بتعمل INSERT واحد بس
+  // عبر __dbWrite من غير ما تلمس الجلسة القديمة خالص — فالجلسة القديمة
+  // كانت بتفضل is_judgment_reserved=true للأبد، حتى بعد ما تبقى مش آخر
+  // جلسة (باگ حقيقي، مش بس atomicity). نفس نمط record_preliminary_judgment
+  // (phase24) بالظبط دلوقتي: RPC ذرّية واحدة (record_judgment_postponement)
+  // بتصفّر is_judgment_reserved على الجلسة القديمة + تعمل INSERT الجديدة
+  // في transaction واحدة — راجع
+  // database/migrations/sql-migrations-phase26/01-postpone-judgment-atomic-rpc.sql.
+  // نفس قرار phase23/24: ممنوع بالكامل أوفلاين (RPC متعدد لا يدعمه طابور
+  // __dbWrite أصلاً).
   const handlePostponeJudgment = async (
     sessionId: string,
     nextSessionDate: string
   ): Promise<{ ok: boolean }> => {
     const session = sessions.find((s) => s.id === sessionId);
 
-    const insertResult = await window.__dbWrite({
-      type: 'INSERT',
-      table: 'case_sessions',
-      returning: true,
-      data: {
-        case_id: caseData.id,
-        session_date: nextSessionDate,
-        session_time: session?.session_time || null,
-        session_floor: session?.session_floor || null,
-        session_hall: session?.session_hall || null,
-        court_level: session?.court_level || null,
-        secretary_hall: session?.secretary_hall || null,
-        secretary_name: session?.secretary_name || null,
-        secretary_mobile: session?.secretary_mobile || null,
-        is_judgment_reserved: true,
-      },
-    });
-    if (insertResult.error && !insertResult.offline) { showErrorToast('postpone_judgment_next_session', insertResult.error, 'فشل تأجيل النطق بالحكم — تعذّر إنشاء الجلسة القادمة', 'تأجيل النطق بالحكم'); return { ok: false }; }
+    if (!navigator.onLine) {
+      toast('⚠️ تأجيل النطق بالحكم يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+      return { ok: false };
+    }
 
-    if (insertResult.offline && insertResult.queued) {
-      toast('📥 تم حفظ تأجيل النطق بالحكم محليًا — سيُزامن عند عودة الإنترنت');
-      refetchAll();
-      return { ok: true };
+    const { error } = await db.rpc('record_judgment_postponement', {
+      p_session_id: sessionId,
+      p_case_id: caseData.id,
+      p_next_session_date: nextSessionDate,
+      p_known_session_updated_at: session?.updated_at || null,
+    });
+    if (error) {
+      if (error.message === 'conflict:session') {
+        toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true);
+        return { ok: false };
+      }
+      showErrorToast('postpone_judgment_next_session', error, 'فشل تأجيل النطق بالحكم', 'تأجيل النطق بالحكم');
+      return { ok: false };
     }
 
     await recalcNextHearing(caseData.id);
