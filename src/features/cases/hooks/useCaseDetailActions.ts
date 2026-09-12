@@ -690,11 +690,13 @@ ${PDF_FONT_LINK}
     finalJudgmentTarget: sessionsHook.finalJudgmentTarget, setFinalJudgmentTarget: sessionsHook.setFinalJudgmentTarget,
     confirmDeleteJudgment: sessionsHook.confirmDeleteJudgment, setConfirmDeleteJudgment: sessionsHook.setConfirmDeleteJudgment,
     deletingJudgment: sessionsHook.deletingJudgment,
+    cancelingReservationId: sessionsHook.cancelingReservationId,
     confirmDeleteSession: sessionsHook.confirmDeleteSession, setConfirmDeleteSession: sessionsHook.setConfirmDeleteSession,
     handleUpdateSession: sessionsHook.handleUpdateSession,
     handleDeleteSession: sessionsHook.handleDeleteSession,
     handleFinalJudgment: sessionsHook.handleFinalJudgment,
     handleDeleteFinalJudgment: sessionsHook.handleDeleteFinalJudgment,
+    handleCancelJudgmentReservation: sessionsHook.handleCancelJudgmentReservation,
     handlePreliminaryJudgment: sessionsHook.handlePreliminaryJudgment,
     handlePostponeJudgment: sessionsHook.handlePostponeJudgment,
 
