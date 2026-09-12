@@ -52,13 +52,20 @@ interface TimelineSectionProps {
   // ولا لأ. مبعوتة كـprop منفصلة (مش caseData كامل) عشان الملف يفضل
   // معتمد بس على الأعمدة اللي فعلاً بيستخدمها، زي باقي الملف.
   caseStatus: string | null;
+  // 🆕 (طلب "إلغاء حجز النطق بالحكم قبل تسجيل أي حكم"، 12 سبتمبر 2026):
+  // id الجلسة اللي جاري إلغاء حجزها دلوقتي (null لو مفيش عملية شغالة) —
+  // نفس نمط deletingSessionId.
+  cancelingReservationId: string | null;
+  // بيعمل UPDATE واحد بس (is_judgment_reserved: false) على الجلسة، من
+  // غير أي لمس لـcases.status — راجع تعليق الدالة في useCaseSessions.ts.
+  handleCancelJudgmentReservation: (sessionId: string) => void | Promise<void>;
 }
 
 function TimelineSection({
   loadingSessions, sessions,
   editingSession, setEditingSession, handleUpdateSession,
   setSessionUpdateTarget, setFinalJudgmentTarget, setConfirmDeleteJudgment, canEditCase, deletingSessionId, setConfirmDeleteSession,
-  caseStatus,
+  caseStatus, cancelingReservationId, handleCancelJudgmentReservation,
 }: TimelineSectionProps) {
   // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 7، 12 سبتمبر 2026):
   // كارت "✅ حكم نهائي" — بيظهر بس لو آخر جلسة (i===0) هي نفسها اللي
@@ -140,12 +147,31 @@ function TimelineSection({
                 ),
                 // 🆕 زرار "🏛️ الحكم النهائي" — منفصل وبعرض القسم كامل، فوق
                 // كارت آخر جلسة (راجع تعليق showJudgmentTrigger فوق).
-                showJudgmentTrigger && React.createElement('button', {
-                    onClick: () => setFinalJudgmentTarget(lastSession),
-                    'data-testid': 'final-judgment-trigger',
-                    className: "w-full flex items-center justify-center gap-1.5 py-3.5 rounded-2xl text-xs font-black active:scale-[0.98] transition-all slide-up",
-                    style: {background:'rgba(16,185,129,0.12)', color:'#10b981', border:'1px solid rgba(16,185,129,0.35)'}
-                }, "🏛️ النطق بالحكم"),
+                // 🆕 (طلب "إلغاء حجز النطق بالحكم قبل تسجيل أي حكم"، 12
+                // سبتمبر 2026): جنبه زرار أيقونة صغير "↩️ إلغاء الحجز" —
+                // نفس شرط الظهور بالظبط (showJudgmentTrigger)، لأنه نفس
+                // السيناريو المستهدف حرفيًا: آخر جلسة محجوزة للحكم ولسه
+                // مفيش حكم اتسجّل فعليًا (القضية لسه غير "منتهية"). الفرق
+                // عن كارت "✅ حكم نهائي" فوق (اللي فيه ✏️/🗑️ خاصين بحكم
+                // *مسجّل فعلاً*): هنا مفيش حكم أصلاً، فمفيش داعي لمودال
+                // تأكيد — عملية غير مدمّرة وبترجع الجلسة زي أي جلسة عادية.
+                showJudgmentTrigger && React.createElement('div', {className: "flex items-center gap-2 slide-up"},
+                    React.createElement('button', {
+                        onClick: () => setFinalJudgmentTarget(lastSession),
+                        'data-testid': 'final-judgment-trigger',
+                        className: "flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl text-xs font-black active:scale-[0.98] transition-all",
+                        style: {background:'rgba(16,185,129,0.12)', color:'#10b981', border:'1px solid rgba(16,185,129,0.35)'}
+                    }, "🏛️ النطق بالحكم"),
+                    cancelingReservationId === lastSession.id
+                    ? React.createElement('div', {className: "w-11 h-11 rounded-2xl flex items-center justify-center shrink-0", style:{background:'rgba(255,255,255,0.04)'}}, React.createElement(I.Spin))
+                    : React.createElement('button', {
+                        onClick: () => handleCancelJudgmentReservation(lastSession.id),
+                        'data-testid': 'judgment-reservation-cancel-trigger',
+                        title: 'إلغاء حجز النطق بالحكم',
+                        className: "w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black active:scale-90 transition-all shrink-0",
+                        style: {background:'rgba(255,255,255,0.04)', color:'#94a3b8', border:'1px solid rgba(255,255,255,0.08)'}
+                    }, "↩️")
+                ),
                 // 🗑️ FIX (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 1، 12
                 // سبتمبر 2026): زرار "إضافة جلسة جديدة" وفورمه اتشالوا نهائي
                 // من هنا — كانوا بيسمحوا بإنشاء جلسة جديدة من غير أي التزام
