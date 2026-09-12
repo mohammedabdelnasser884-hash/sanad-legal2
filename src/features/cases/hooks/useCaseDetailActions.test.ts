@@ -90,14 +90,11 @@ vi.mock('../../../shared/lib/dataAccess', async (importOriginal) => {
 function makeSessionsHookMock() {
   return {
     sessions: [], setSessions: vi.fn(),
-    showAddSession: false, setShowAddSession: vi.fn(),
     editingSession: null, setEditingSession: vi.fn(),
     deletingSessionId: null, setDeletingSessionId: vi.fn(),
     sessionUpdateTarget: null, setSessionUpdateTarget: vi.fn(),
-    savingSession: false,
-    sessionForm: {}, setSessionForm: vi.fn(),
     confirmDeleteSession: null, setConfirmDeleteSession: vi.fn(),
-    handleAddSession: vi.fn(), handleUpdateSession: vi.fn(), handleDeleteSession: vi.fn(),
+    handleUpdateSession: vi.fn(), handleDeleteSession: vi.fn(),
   };
 }
 function makeDocsHookMock() {
