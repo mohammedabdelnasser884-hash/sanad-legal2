@@ -28,7 +28,15 @@ export function useCaseSessions(
   // فلترة/جلب القضايا)، فمن غيرها القضية كانت بتفضل في القسم القديم
   // (متداولة/منتهية) في الشاشة لحد ما المستخدم يخرج من ملف القضية ويعمل
   // ريفريش يدوي — رغم إن الداتابيز نفسها كانت متحدّثة صح من أول لحظة.
-  onUpdate: ((newStatus: string) => void) | undefined
+  // 🔧 FIX (باگ "عدّلها شخص آخر" الزائف، 12 سبتمبر 2026): onUpdate بقت
+  // بتاخد كمان updated_at الجديد (اختياري) — مش الـstatus بس. أي عملية
+  // جلسة بتنادي recalcNextHearing (يعني كل العمليات هنا تقريبًا) بتغيّر
+  // cases.updated_at فعليًا من غير ما الكولر (caseData في CaseDetailView/
+  // AppModals.tsx) يعرف، فكان بيفضل معاه updated_at قديم يستخدمه كـ
+  // p_known_case_updated_at في أي RPC تالي (تسجيل حكم/إلغاء حكم) — بيكتشف
+  // تعارض مع نفس المستخدم نفسه. دلوقتي كل مكان بيغيّر cases.updated_at
+  // بينادي onUpdate بالقيمة الجديدة عشان الشاشة الأب تحدّث caseData بيها.
+  onUpdate: ((patch: { status?: string; updated_at?: string | null }) => void) | undefined
 ) {
   const [sessions, setSessions] = useState<CaseSessionRow[]>([]);
   // ⚠️ FIX (14 يوليو 2026): كان متوقع CaseSessionRow (شكل صف قاعدة البيانات
@@ -98,7 +106,8 @@ export function useCaseSessions(
     }
     if (error) { showErrorToast('session_delete', error, 'فشل حذف الجلسة، حاول مرة أخرى', 'حذف جلسة قضية'); return; }
     // FIX (2.3): لو الجلسة المحذوفة كانت هي الأقرب، لازم next_hearing يتحدّث
-    await recalcNextHearing(caseData.id);
+    const newCaseUpdatedAt = await recalcNextHearing(caseData.id);
+    onUpdate?.({ updated_at: newCaseUpdatedAt });
     toast('🗑 تم حذف الجلسة');
     logActivity(db, 'حذف جلسة', {
       entity_type: 'session', entity_id: sessionId, details: caseData.title || null,
@@ -145,7 +154,8 @@ export function useCaseSessions(
     if (conflict) { toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
     if (error) { showErrorToast('session_update', error, 'فشل تعديل بيانات الجلسة — تحقق من الاتصال وأعد المحاولة', 'تعديل جلسة قضية'); return; }
     // FIX (2.3): تاريخ الجلسة ممكن يكون اتغيّر، فلازم next_hearing يتحدّث معاه
-    await recalcNextHearing(caseData.id);
+    const newCaseUpdatedAt = await recalcNextHearing(caseData.id);
+    onUpdate?.({ updated_at: newCaseUpdatedAt });
     toast('✅ تم تعديل الجلسة');
     // ⚡ NEW (سجل النشاط — تتبع التغييرات، مرحلة 2، 19 أغسطس 2026):
     // مقارنة `session` (الكائن القديم، اتلقط فوق قبل __dbWrite) مع الحقول
@@ -248,9 +258,11 @@ export function useCaseSessions(
     // 🔧 FIX: نفس نمط handleChangeStatus — بنبلّغ الشاشة الأب فورًا إن
     // حالة القضية بقت "منتهية"، عشان القضية تتنقل لقسم "منتهية" في الحال
     // من غير خروج/ريفريش يدوي.
-    onUpdate?.('منتهية');
-
-    await recalcNextHearing(caseData.id);
+    // 🔧 FIX (باگ الـstaleness، 12 سبتمبر 2026): بقينا بننادي onUpdate
+    // مرة واحدة بس، بعد recalcNextHearing (مش قبلها) — عشان تحمل updated_at
+    // الأحدث (اللي هو أصلاً آخر كتابة بتلمس الصف ده)، مش status لوحدها.
+    const newCaseUpdatedAt = await recalcNextHearing(caseData.id);
+    onUpdate?.({ status: 'منتهية', updated_at: newCaseUpdatedAt });
     toast('✅ تم تسجيل الحكم النهائي وإغلاق القضية');
 
     logActivity(db, 'حكم نهائي', {
@@ -322,13 +334,14 @@ export function useCaseSessions(
       showErrorToast('undo_final_judgment', error, 'فشل إلغاء الحكم النهائي', 'إلغاء الحكم النهائي');
       return;
     }
-    // 🔧 FIX: القضية رجعت "نشطة"، فلازم الشاشة الأب تعرف فورًا عشان
-    // القضية ترجع لقسم "متداولة" في الحال.
-    onUpdate?.('نشطة');
-
     setDeletingJudgment(false);
 
-    await recalcNextHearing(caseData.id);
+    // 🔧 FIX: القضية رجعت "نشطة"، فلازم الشاشة الأب تعرف فورًا عشان
+    // القضية ترجع لقسم "متداولة" في الحال. (باگ الـstaleness، 12 سبتمبر
+    // 2026): بعد recalcNextHearing مش قبلها، ومعاها updated_at الأحدث —
+    // نفس فيكس handleFinalJudgment فوق بالظبط.
+    const newCaseUpdatedAt = await recalcNextHearing(caseData.id);
+    onUpdate?.({ status: 'نشطة', updated_at: newCaseUpdatedAt });
     toast('↩️ تم إلغاء الحكم النهائي، والقضية رجعت للقضايا المتداولة');
 
     logActivity(db, 'إلغاء حكم نهائي', {
@@ -453,7 +466,8 @@ export function useCaseSessions(
       return { ok: false };
     }
 
-    await recalcNextHearing(caseData.id);
+    const newCaseUpdatedAtPreliminary = await recalcNextHearing(caseData.id);
+    onUpdate?.({ updated_at: newCaseUpdatedAtPreliminary });
     toast('⚖️ تم تسجيل الحكم التمهيدي وجدولة الجلسة القادمة');
 
     logActivity(db, 'حكم تمهيدي', {
@@ -519,7 +533,8 @@ export function useCaseSessions(
       return { ok: false };
     }
 
-    await recalcNextHearing(caseData.id);
+    const newCaseUpdatedAtPostpone = await recalcNextHearing(caseData.id);
+    onUpdate?.({ updated_at: newCaseUpdatedAtPostpone });
     toast('⏳ تم تأجيل النطق بالحكم للجلسة القادمة');
 
     logActivity(db, 'تأجيل نطق بالحكم', {
