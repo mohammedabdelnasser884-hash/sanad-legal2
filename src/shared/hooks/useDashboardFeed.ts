@@ -3,10 +3,16 @@ import { db } from '../../supabaseClient';
 import { getCurrentTenantId } from '../../constants';
 import { createFetchGuard, runReadWithRetry } from '../lib/offlineGuard';
 import { toast } from '../lib/notifications';
+import { fetchMissedSessions as fetchMissedSessionsShared, type MissedSessionRow } from '../lib/dataAccess';
 import type { ProfileRow, ReminderRow } from '../../types';
 
 // شكل بيانات القضية المدمجة (embed) جوه استعلام case_sessions — نفس الأعمدة
 // المطلوبة فعليًا في select الأربعة تحت (`cases(id,title,plaintiff,defendant,court_name,case_type,case_number_official,client_id)`).
+// ⚡ NEW (خطة "إغلاق سلسلة الجلسات"، مرحلة 8 — 12 سبتمبر 2026): إضافة
+// status (اختيارية) عشان fetchMissedSessions (dataAccess.ts) يقدر يستبعد
+// القضايا "منتهية" من حساب الجلسات الفائتة. اختيارية عمدًا — استعلامات
+// جلسات اليوم/الأسبوع القادم فوق مش بتجيب status أصلاً (مش محتاجاه)،
+// فمفيش داعي نضيفه لسلكتاتهم لمجرد التوافق النوعي.
 export interface SessionCaseEmbed {
     id: string;
     title: string | null;
@@ -14,6 +20,7 @@ export interface SessionCaseEmbed {
     case_type: string | null;
     case_number_official: string | null;
     client_id: string | null;
+    status?: string | null;
 }
 
 // شكل صف الجلسة اللي بيترجع من select الأربعة — الأعمدة المطلوبة من case_sessions
@@ -203,36 +210,25 @@ export function useDashboardFeed(profile: ProfileRow | null) {
     }, [profile]);
 
     // ── جلب الجلسات الفائتة ──
-    // جلسة فائتة = آخر جلسة في قضيتها وتاريخها قبل اليوم ومافيش جلسة جديدة مجدولة بعدها
-    // ⚠️ الإصلاح: أزلنا limit(200) اللي كانت تفوّت قضايا قديمة — دلوقتي بنجيب
-    //    أحدث جلسة لكل قضية عبر فلترة server-side أدق
+    // ⚡ NEW (خطة "إغلاق سلسلة الجلسات"، مرحلة 8 — 12 سبتمبر 2026): بقى
+    // بينادي fetchMissedSessions الموحّدة (dataAccess.ts) بدل ما يكرر
+    // نفس منطق "آخر جلسة + مفيش جلسة جاية" بإيده — ده بيضمن إن تعريف
+    // "الجلسة الفائتة" هنا هو نفسه بالظبط المستخدم في SessionsCalendar.tsx
+    // (بادچ العداد) وMissedTab.tsx (بما فيها فلترة result/next_action
+    // واستبعاد القضايا "منتهية"، اللي كانوا ناقصين هنا قبل كده).
     const fetchMissedSessions = useCallback(async () => {
         if (!profile) return;
         const todayStr = fmtDate(new Date());
         const guard = createFetchGuard();
-        let futureData: Array<{ case_id: string | null }> | null = null;
-        let pastData: SessionFeedItem[] | null = null;
+        let data: MissedSessionRow[] | null = null;
         let error: { message: string } | null = null;
         if (guard.offline) {
             error = { message: 'offline' };
         } else {
             try {
-                // 1. كل الـ case_ids اللي عندها جلسة مستقبلية (اليوم أو بعده)
-                // 2. جيب أحدث جلسة فائتة لكل قضية (بدون limit — RLS بتحمي الحجم)
-                const [futureRes, pastRes] = await Promise.all([
-                    db.from('case_sessions')
-                      .select('case_id')
-                      .gte('session_date', todayStr)
-                      .abortSignal(guard.controller.signal),
-                    db.from('case_sessions')
-                      .select('id, session_date, session_time, session_floor, session_hall, description, case_id, client_id, result, next_action, title, case_number, court, case_type, circuit_number, cases(id,title,court_name,case_type,case_number_official,client_id)')
-                      .lt('session_date', todayStr)
-                      .order('session_date', { ascending: false })
-                      .abortSignal(guard.controller.signal),
-                ]);
-                futureData = futureRes.data;
-                pastData = pastRes.data;
-                error = pastRes.error || futureRes.error || null;
+                const res = await fetchMissedSessionsShared(db, todayStr, guard.controller.signal);
+                data = res.data;
+                error = res.error;
             } catch (err) {
                 error = { message: guard.didTimeOut() ? 'timeout' : (err as { message?: string })?.message || 'fetch failed' };
             } finally {
@@ -250,16 +246,7 @@ export function useDashboardFeed(profile: ProfileRow | null) {
             }
             return;
         }
-
-        // 3. فلتر: قضايا مفيهاش جلسة مستقبلية + خد جلسة واحدة (الأحدث) لكل قضية
-        const caseIdsWithFuture = new Set((futureData || []).map((s: { case_id: string | null }) => s.case_id));
-        const seenCases = new Set();
-        const uniqueMissed = (pastData || []).filter((s: SessionFeedItem) => {
-            if (caseIdsWithFuture.has(s.case_id)) return false;
-            if (seenCases.has(s.case_id)) return false;
-            seenCases.add(s.case_id);
-            return true;
-        });
+        const uniqueMissed = (data || []) as unknown as SessionFeedItem[];
         setMissedSessions(uniqueMissed);
         saveDashboardCache({ missedSessions: uniqueMissed });
     }, [profile]);
