@@ -3,7 +3,7 @@ import { db } from '../../../supabaseClient';
 import { toast } from '../../../shared/lib/notifications';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
 import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
-import { logActivity, recalcNextHearing as recalcNextHearingShared, buildFieldDiff, buildDeleteSnapshot, buildAddSnapshot, type FieldDiffMap } from '../../../shared/lib/dataAccess';
+import { logActivity, recalcNextHearing as recalcNextHearingShared, buildFieldDiff, buildDeleteSnapshot, type FieldDiffMap } from '../../../shared/lib/dataAccess';
 import type { ClientRow, ProfileRow, CaseSessionRow } from '../../../types';
 import type { MappedCase } from '../../../hooks/useAppData';
 import type { EditingSessionForm } from '../case-detail/TimelineSection';
@@ -22,7 +22,6 @@ export function useCaseSessions(
   refetchAll: () => Promise<void> | void
 ) {
   const [sessions, setSessions] = useState<CaseSessionRow[]>([]);
-  const [showAddSession, setShowAddSession] = useState(false);
   // ⚠️ FIX (14 يوليو 2026): كان متوقع CaseSessionRow (شكل صف قاعدة البيانات
   // الخام)، لكن القيمة الفعلية اللي بتتحط هنا (في TimelineSection.tsx عند
   // بدء التعديل) شكلها EditingSessionForm المُطبَّع (date/location_floor/
@@ -30,8 +29,6 @@ export function useCaseSessions(
   const [editingSession, setEditingSession] = useState<EditingSessionForm | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [sessionUpdateTarget, setSessionUpdateTarget] = useState<CaseSessionRow | null>(null);
-  const [savingSession, setSavingSession] = useState(false);
-  const [sessionForm, setSessionForm] = useState({ date: '', time_period: 'صباحي', location_floor: '', location_hall: '', description: '', result: '', next_action: '' });
   const [confirmDeleteSession, setConfirmDeleteSession] = useState<{ id: string; date: string } | null>(null);
 
   // ── FIX (2.3): إعادة حساب next_hearing بشكل صحيح ──
@@ -45,83 +42,12 @@ export function useCaseSessions(
   // لو مفيش جلسات قادمة خالص).
   const recalcNextHearing = (caseId: string) => recalcNextHearingShared(db, caseId);
 
-  const handleAddSession = async () => {
-    if (!sessionForm.date) return;
-    setSavingSession(true);
-    // 🆕 المرحلة 6.5 (توسيع الأوفلاين — H-3، تكملة ثالثة): __dbWrite بدل
-    // db.from(...).insert() المباشر — نفس نمط useCaseDetailActions.ts
-    // (case_notes) بالظبط. case_id هنا دايمًا حقيقي (القضية محمّلة ومعروضة
-    // على الشاشة فعليًا، مش تمبيد)، فمفيش داعي لـ _offlineFkTempId هنا.
-    const { error, offline, queued } = await window.__dbWrite({
-      type: 'INSERT', table: 'case_sessions', data: {
-        case_id: caseData.id,
-        session_date: sessionForm.date,
-        session_time: sessionForm.time_period || null,
-        session_floor: sessionForm.location_floor || null,
-        session_hall: sessionForm.location_hall || null,
-        description: sessionForm.description || null,
-        result: sessionForm.result || null,
-        next_action: sessionForm.next_action || null,
-      }
-    });
-    setSavingSession(false);
-    if (offline && queued) {
-      // ⚠️ next_hearing مش بيتحدّث هنا فورًا — القضية معروضة على الشاشة
-      // فعليًا، فمفيش طريقة نعرف "أقرب جلسة" صح غير بمقارنة كل الجلسات على
-      // القاعدة. التحديث بيحصل تلقائيًا بعد المزامنة الفعلية (راجع
-      // caseSessionCaseIdsToRecalc في offlineQueue.ts).
-      toast('📥 الجلسة محفوظة محلياً — ستُزامن عند عودة الإنترنت');
-      setSessionForm({ date: '', time_period: 'صباحي', location_floor: '', location_hall: '', description: '', result: '', next_action: '' });
-      setShowAddSession(false);
-      return;
-    }
-    if (error) {
-      // 🔒 FIX (تشخيص أوفلاين — نسخة 3، 26 يوليو 2026): قبل كده الخطأ الخام
-      // من __dbWrite كان بيضيع تمامًا (مفيش تسجيل خالص) — استُخدمت
-      // showErrorToast بدل toast مباشر عشان الخطأ الخام يتسجل في نظام صحة
-      // الخدمات (recordError) زي باقي أماكن معالجة الأخطاء في المشروع، من
-      // غير ما يتعرض للمستخدم.
-      showErrorToast('db_sessions', error, 'فشل إضافة الجلسة — تحقق من الاتصال وأعد المحاولة', 'إضافة جلسة قضية');
-      return;
-    }
-    // تحديث أقرب جلسة في جدول القضايا — بمقارنة حقيقية، مش استبدال أعمى
-    await recalcNextHearing(caseData.id);
-    toast('✅ تمت إضافة الجلسة');
-    // ⚡ NEW (سجل النشاط — بيان مميز عند الإضافة، مرحلة 2): نضيف المحكمة
-    // والطرفين (متاحين أصلاً في caseData) بدل ما نكتفي بالعنوان والتاريخ.
-    const sessionAddPartsLabel = [
-      caseData.court ? `المحكمة: ${caseData.court}` : null,
-      caseData.plaintiff ? `المدعي: ${caseData.plaintiff}` : null,
-      caseData.defendant ? `المدعى عليه: ${caseData.defendant}` : null,
-    ].filter(Boolean).join(' — ');
-    logActivity(db, 'إضافة جلسة', {
-      entity_type: 'session', details: `${caseData.title} — ${sessionForm.date}${sessionAddPartsLabel ? ' — ' + sessionAddPartsLabel : ''}`,
-      case_name: caseData.title || null, case_type: caseData.type || null,
-      client_name: client?.full_name || null,
-      userName: profile?.full_name || null,
-      changes: buildAddSnapshot(sessionForm as unknown as Record<string, unknown>, {
-        date: { label: 'تاريخ الجلسة' },
-        location_hall: { label: 'القاعة' },
-        description: { label: 'الوصف' },
-      }),
-    });
-    if (onNotify) {
-      let msg = `📅 <b>جلسة جديدة</b>\n\n`;
-      msg += `━━━━━━━━━━━━━━━━━━━━\n`;
-      msg += `⚖️ <b>${escapeTelegramHtml(caseData.title || '—')}</b>\n`;
-      msg += `📋 رقم القيد: ${escapeTelegramHtml(caseData.number || '—')}\n`;
-      msg += `🏛 المحكمة: ${escapeTelegramHtml(caseData.court || '—')}\n`;
-      msg += `📆 تاريخ الجلسة: ${escapeTelegramHtml(sessionForm.date)}`;
-      if (sessionForm.time_period) msg += ` (${escapeTelegramHtml(sessionForm.time_period)})`;
-      msg += `\n`;
-      if (sessionForm.location_floor || sessionForm.location_hall) msg += `📍 ${sessionForm.location_floor ? 'الطابق ' + escapeTelegramHtml(sessionForm.location_floor) + ' ' : ''} ${sessionForm.location_hall ? 'قاعة ' + escapeTelegramHtml(sessionForm.location_hall) : ''}\n`;
-      if (sessionForm.description) msg += `📝 ${escapeTelegramHtml(sessionForm.description)}\n`;
-      onNotify(msg);
-    }
-    setSessionForm({ date: '', time_period: 'صباحي', location_floor: '', location_hall: '', description: '', result: '', next_action: '' });
-    setShowAddSession(false);
-    refetchAll();
-  };
+  // 🗑️ FIX (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 1، 12 سبتمبر 2026):
+  // handleAddSession اتشالت نهائي من هنا — كانت بتنشئ جلسة جديدة INSERT
+  // مباشر من غير أي ربط بالجلسة اللي قبلها (نتيجة/إجراء قادم اختياريين)،
+  // بعكس handleUpdateSession/SessionUpdateModal اللي بيجبروا تسجيل نتيجة
+  // الجلسة الحالية كجزء من نفس عملية إنشاء التالية. الطريقة الوحيدة
+  // المتبقية لإنشاء جلسة جديدة على قضية هي "⚡ تحديث" (SessionUpdateModal).
 
   const handleDeleteSession = async (sessionId: string) => {
     // 🆕 المرحلة 6.5: __dbWrite بدل db.from(...).delete() المباشر.
@@ -246,14 +172,11 @@ export function useCaseSessions(
 
   return {
     sessions, setSessions,
-    showAddSession, setShowAddSession,
     editingSession, setEditingSession,
     deletingSessionId, setDeletingSessionId,
     sessionUpdateTarget, setSessionUpdateTarget,
-    savingSession,
-    sessionForm, setSessionForm,
     confirmDeleteSession, setConfirmDeleteSession,
-    handleAddSession, handleUpdateSession, handleDeleteSession,
+    handleUpdateSession, handleDeleteSession,
     recalcNextHearing,
   };
 }
