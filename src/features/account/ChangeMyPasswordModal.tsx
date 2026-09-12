@@ -84,7 +84,12 @@ function ChangeMyPasswordModal({ profile, onClose }: ChangeMyPasswordModalProps)
   };
 
   return React.createElement('div',{
-    className:`fixed inset-0 z-50 flex ${modalPresentation.overlayAlignClassName} justify-center`,
+    // 🔧 FIX (تراكب مودال "تغيير كلمة المرور" تحت شريط التنقّل السفلي على
+    // الموبايل، 12 سبتمبر 2026): كان z-50 — نفس z-index بالظبط بتاع
+    // CommandDock (شريط الأقسام السفلي، fixed z-50)، فبيبان الشريط فوق
+    // آخر جزء من المودال (حقل تأكيد كلمة المرور) حسب ترتيبهم في الـDOM.
+    // z-[60] بيضمن إن المودال دايمًا فوق الشريط بغض النظر عن الترتيب.
+    className:`fixed inset-0 z-[60] flex ${modalPresentation.overlayAlignClassName} justify-center`,
     style:{background:'rgba(0,0,0,0.75)',backdropFilter:'blur(4px)'}
   },
     React.createElement('div',{
