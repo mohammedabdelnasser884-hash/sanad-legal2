@@ -688,10 +688,13 @@ ${PDF_FONT_LINK}
     deletingSessionId: sessionsHook.deletingSessionId, setDeletingSessionId: sessionsHook.setDeletingSessionId,
     sessionUpdateTarget: sessionsHook.sessionUpdateTarget, setSessionUpdateTarget: sessionsHook.setSessionUpdateTarget,
     finalJudgmentTarget: sessionsHook.finalJudgmentTarget, setFinalJudgmentTarget: sessionsHook.setFinalJudgmentTarget,
+    confirmDeleteJudgment: sessionsHook.confirmDeleteJudgment, setConfirmDeleteJudgment: sessionsHook.setConfirmDeleteJudgment,
+    deletingJudgment: sessionsHook.deletingJudgment,
     confirmDeleteSession: sessionsHook.confirmDeleteSession, setConfirmDeleteSession: sessionsHook.setConfirmDeleteSession,
     handleUpdateSession: sessionsHook.handleUpdateSession,
     handleDeleteSession: sessionsHook.handleDeleteSession,
     handleFinalJudgment: sessionsHook.handleFinalJudgment,
+    handleDeleteFinalJudgment: sessionsHook.handleDeleteFinalJudgment,
 
     // مستندات (من useCaseDocuments)
     docs: docsHook.docs, setDocs: docsHook.setDocs,
