@@ -304,7 +304,12 @@ describe('useCaseDetailActions', () => {
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تغيير حالة قضية', expect.objectContaining({
         entity_id: 'case-status-1', details: 'قضية للتغيير — مؤجلة',
       }));
-      expect(onUpdate).toHaveBeenCalledWith('مؤجلة');
+      // 🔧 FIX (متابعة لتصحيح دالة safeUpdate بتاريخ 12 سبتمبر 2026): onUpdate
+      // بقت بتتنادى بـ patch object { status, updated_at } مش string خام —
+      // عشان الكولر (CaseDetailView) يقدر ينشر updated_at الجديد ويمنع
+      // تعارض وهمي مع نفسه في أي كتابة فورية بعدها. الـ mock هنا مش راجع
+      // updatedAt فبيتوقع undefined.
+      expect(onUpdate).toHaveBeenCalledWith({ status: 'مؤجلة', updated_at: undefined });
     });
 
     it('تعارض → وقف فوري، من غير onUpdate، وتوست تعارض صريح', async () => {
