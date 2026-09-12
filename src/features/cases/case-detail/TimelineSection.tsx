@@ -97,15 +97,17 @@ function TimelineSection({
                 // (مش جوه صف الـtimeline اللي فيه عمود النقطة/الخط، عشان
                 // يبان "منفصل" و"بعرض القسم كلة" زي ما اتفقنا).
                 showJudgmentCard && React.createElement('div', {
-                    className: "relative bg-emerald-500/5 border border-emerald-500/25 rounded-2xl p-4 slide-up text-center",
+                    className: "bg-emerald-500/5 border border-emerald-500/25 rounded-2xl p-4 slide-up text-center",
                     'data-testid': 'final-judgment-card',
                   },
                   // 🆕 (تعديل تخطيطي، 12 سبتمبر 2026): زراري تعديل/حذف بقوا
-                  // أيقونة فقط (بدل نص+عرض كامل) ومثبّتين في أعلى الكارت على
-                  // الشمال (position: absolute)، بدل ما كانوا صف كامل العرض
-                  // تحت نص المنطوق. مقيّدين بـcanEditCase زي ما كانوا بالظبط،
-                  // ونفس الـdata-testid عشان أي اختبار حالي يفضل شغال.
-                  canEditCase && React.createElement('div', { className: "absolute top-3 left-3 flex gap-1.5" },
+                  // أيقونة فقط، في صف مستقل فوق البادچ (مش position: absolute
+                  // زي المحاولة الأولى — كانت بتتراكب فوق نص "✅ صدر حكم نهائي
+                  // بجلسة..." لأنه كان بياخد عرض الكارت كله). الصف ده بياخد
+                  // مكانه الطبيعي في التخطيط (`flex justify-start`) فبيدفع
+                  // البادچ لتحت من غير أي تراكب. مقيّدين بـcanEditCase زي ما
+                  // كانوا بالظبط، ونفس الـdata-testid.
+                  canEditCase && React.createElement('div', { className: "flex justify-start gap-1.5 mb-2" },
                     React.createElement('button', {
                       onClick: () => setFinalJudgmentTarget(lastSession),
                       'data-testid': 'final-judgment-edit-trigger',
