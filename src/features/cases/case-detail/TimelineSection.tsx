@@ -30,6 +30,10 @@ interface TimelineSectionProps {
   setEditingSession: (v: EditingSessionForm | null | ((p: EditingSessionForm | null) => EditingSessionForm | null)) => void;
   handleUpdateSession: (sessionId: string, form: EditingSessionForm) => void | Promise<void>;
   setSessionUpdateTarget: (s: CaseSessionRow) => void;
+  // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 4، 12 سبتمبر 2026):
+  // يفتح `FinalJudgmentModal` (مرحلة 5) على الجلسة اللي اتضغط عليها زرار
+  // "🏛️ الحكم النهائي".
+  setFinalJudgmentTarget: (s: CaseSessionRow) => void;
   deletingSessionId: string | null;
   setConfirmDeleteSession: (v: { id: string; date: string } | null) => void;
 }
@@ -37,7 +41,7 @@ interface TimelineSectionProps {
 function TimelineSection({
   loadingSessions, sessions,
   editingSession, setEditingSession, handleUpdateSession,
-  setSessionUpdateTarget, deletingSessionId, setConfirmDeleteSession,
+  setSessionUpdateTarget, setFinalJudgmentTarget, deletingSessionId, setConfirmDeleteSession,
 }: TimelineSectionProps) {
   return React.createElement('div', {className: "space-y-4 fade-in"},
                 // 🗑️ FIX (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 1، 12
@@ -125,9 +129,19 @@ function TimelineSection({
                                                     )
                                                 ),
                                                 React.createElement('div', {className: "flex items-center gap-1.5"},
-                                                    // الجلسة الأخيرة: badge + زر تحديث
+                                                    // الجلسة الأخيرة: badge + زر تحديث + زر الحكم النهائي (مشروط)
                                                     i === 0 && React.createElement(React.Fragment, null,
                                                         React.createElement('span', {className: "text-[9px] px-2 py-0.5 bg-premium-gold/10 text-premium-gold rounded-full font-bold"}, "آخر جلسة"),
+                                                        // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 4، 12
+                                                        // سبتمبر 2026): زرار "🏛️ الحكم النهائي" — بيظهر بس لو
+                                                        // آخر جلسة (i === 0) متعلّمة is_judgment_reserved = true
+                                                        // (اتحطت من التوجل في SessionUpdateModal، مرحلة 3).
+                                                        s.is_judgment_reserved === true && React.createElement('button', {
+                                                            onClick: (e: React.MouseEvent) => { e.stopPropagation(); setFinalJudgmentTarget(s); },
+                                                            'data-testid': 'final-judgment-trigger',
+                                                            className: "flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black active:scale-90 transition-all",
+                                                            style: {background:'rgba(16,185,129,0.15)', color:'#10b981', border:'1px solid rgba(16,185,129,0.35)'}
+                                                        }, "🏛️ الحكم النهائي"),
                                                         React.createElement('button', {
                                                             onClick: (e: React.MouseEvent) => { e.stopPropagation(); setSessionUpdateTarget(s); },
                                                             className: "flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black active:scale-90 transition-all",
