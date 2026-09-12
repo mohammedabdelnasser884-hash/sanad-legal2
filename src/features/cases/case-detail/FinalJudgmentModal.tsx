@@ -155,7 +155,7 @@ function FinalJudgmentModal({ session, caseData, onClose, onConfirm }: FinalJudg
                         ),
 
                         React.createElement('div', { className: "bg-rose-500/8 border border-rose-500/15 rounded-2xl p-3 text-[10px] text-slate-400 leading-relaxed" },
-                            "بالتأكيد، حالة القضية ستتحول إلى \"منتهية\" ولن تظهر ضمن القضايا النشطة. تقدر ترجعها \"نشطة\" يدويًا في أي وقت، أو تلقائيًا لو سجّلت جلسة جديدة عليها لاحقًا."
+                            "بتأكيدك صدور حكم نهائي في الدعوى سيتم نقل الدعوى لقسم القضايا المنتهية، وفي حالة وجود طعن يمكنك تسجيله كقضية جديدة منفصلة."
                         ),
 
                         React.createElement('div', { className: "flex gap-2 pt-1" },
