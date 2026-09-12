@@ -210,9 +210,9 @@ function TimelineSection({
                                             )
                                           )
                                         : React.createElement('div', {
-                                            className: `flex-1 bg-premium-card border rounded-2xl p-4 mb-1 transition-all cursor-pointer active:scale-[0.99] ${i === 0 ? 'border-premium-gold/25 shadow-neon-gold' : 'border-white/5'}`,
+                                            className: `flex-1 bg-premium-card border rounded-2xl p-4 mb-1 transition-all active:scale-[0.99] ${i === 0 ? 'border-premium-gold/25 shadow-neon-gold' : 'border-white/5'} ${i === 0 && caseStatus !== 'منتهية' ? 'cursor-pointer' : ''}`,
                                             'data-testid': 'session-card',
-                                            onClick: () => i === 0 ? setSessionUpdateTarget(s) : null
+                                            onClick: () => (i === 0 && caseStatus !== 'منتهية') ? setSessionUpdateTarget(s) : null
                                           },
                                             // التاريخ + أزرار
                                             React.createElement('div', {className: "flex items-center justify-between mb-3"},
@@ -276,7 +276,11 @@ function TimelineSection({
                                             ),
                                             // 🆕 زرار "⚡ تحديث" — بقى تحت الكارت بعرض كامل بدل ما كان
                                             // زرار صغير جوه الهيدر (تعديل تخطيطي، 12 سبتمبر 2026).
-                                            i === 0 && React.createElement('button', {
+                                            // 🆕 (طلب "إخفاء زر تحديث آخر جلسة بعد الحكم النهائي"، 12 سبتمبر
+                                            // 2026): الزرار بقى مش بيظهر لو القضية "منتهية" — بعد ما الحكم
+                                            // يتسجّل، مفيش داعي تحديث آخر جلسة من هنا. لسه ممكن يترجع "نشطة"
+                                            // بس عن طريق إلغاء الحكم (كارت "✅ حكم نهائي" فوق).
+                                            i === 0 && caseStatus !== 'منتهية' && React.createElement('button', {
                                                 onClick: (e: React.MouseEvent) => { e.stopPropagation(); setSessionUpdateTarget(s); },
                                                 'data-testid': 'session-update-trigger',
                                                 className: "w-full py-2.5 rounded-xl text-[10px] font-black active:scale-[0.98] transition-all",
