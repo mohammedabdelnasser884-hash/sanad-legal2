@@ -107,7 +107,7 @@ function TimelineSection({
                   // مكانه الطبيعي في التخطيط (`flex justify-start`) فبيدفع
                   // البادچ لتحت من غير أي تراكب. مقيّدين بـcanEditCase زي ما
                   // كانوا بالظبط، ونفس الـdata-testid.
-                  canEditCase && React.createElement('div', { className: "flex justify-start gap-1.5 mb-2" },
+                  canEditCase && React.createElement('div', { className: "flex justify-end gap-1.5 mb-2" },
                     React.createElement('button', {
                       onClick: () => setFinalJudgmentTarget(lastSession),
                       'data-testid': 'final-judgment-edit-trigger',
