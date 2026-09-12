@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from '../../../shared/lib/notifications';
 import { showErrorToast } from '../../../shared/lib/errorReporting';
-import { safeUpdate, recalcNextHearing } from '../../../shared/lib/dataAccess';
+import { recalcNextHearing } from '../../../shared/lib/dataAccess';
 import { copySessionPartiesToNewSession, makeSessionGroupId } from '../hooks/caseSessionLinkingShared';
 import { escapeTelegramHtml } from '../../../shared/lib/sanitize';
 import DatePicker from '@/shared/ui/DatePicker';
@@ -46,6 +46,13 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onNotify, 
     const [nextDate, setNextDate] = useState('');
     const [nextRequired, setNextRequired] = useState(session.next_action || '');
     const [saving, setSaving] = useState(false);
+    // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 3، 12 سبتمبر 2026):
+    // توجل "محجوزة للحكم" — الـPre-check (قسم 4 من الخطة): لو الجلسة
+    // الحالية (اللي بنعمل لها "⚡ تحديث" دلوقتي) أصلاً كانت متعلّمة
+    // is_judgment_reserved = true، التوجل بيجي مفعّل تلقائيًا على الجلسة
+    // الجديدة كمان — مفيش سبب منطقي إن قضية كانت محجوزة للحكم فجأة
+    // تبقى مش محجوزة من غير قرار صريح من المستخدم يشيله.
+    const [judgmentReserved, setJudgmentReserved] = useState(session.is_judgment_reserved === true);
     // 🆕 (دفعة 2.1 — تقرير تشخيص تجربة سطح المكتب): نفس نمط useModalPresentation
     // المُطبَّق في NewCaseModal.tsx. هنا الحدود بالفعل كاملة (border-premium-gold/20)
     // مش border-t زي باقي المودالات، فبنستبدل بس جزء الاستدارة/الأنيميشن/المحاذاة
@@ -66,57 +73,92 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onNotify, 
         // الحالية أصلاً جزء من سلسلة سابقة، بنستخدم نفس المعرّف الموجود.
         const groupId = isStandalone ? (session.session_group_id || makeSessionGroupId()) : null;
 
-        // 1. حدّث الجلسة الحالية بـ "ما تم" — مع Optimistic Lock
-        const { conflict } = await safeUpdate(db, 'case_sessions', session.id, {
-            result: whatHappened || null,
-            ...(isStandalone && !session.session_group_id ? { session_group_id: groupId } : {}),
-        }, session.updated_at || null);
-        // 🔒 FIX (تقرير الموثوقية — القسم 12، Concurrent Editing): توست بدل السكوت التام.
-        if (conflict) { setSaving(false); toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
+        // 1. حدّث الجلسة الحالية بـ "ما تم" — عبر __dbWrite (دعم أوفلاين،
+        // مرحلة 3 من خطة إعادة تصميم إغلاق سلسلة الجلسات، 12 سبتمبر 2026):
+        // كانت بتستخدم safeUpdate (كتابة مباشرة) — لو النت مقطوع وقت الجلسة
+        // كان "⚡ تحديث" بالكامل بيفشل بالخطأ العام بدل ما يتقيّد محليًا
+        // زي باقي عمليات الجلسات (حذف/تعديل) في useCaseSessions.ts.
+        const updateResult = await window.__dbWrite({
+            type: 'UPDATE',
+            table: 'case_sessions',
+            id: session.id,
+            data: {
+                result: whatHappened || null,
+                ...(isStandalone && !session.session_group_id ? { session_group_id: groupId } : {}),
+            },
+            knownUpdatedAt: session.updated_at || null,
+        });
+        // 🔒 نفس فحص الـConflict القديم (تقرير الموثوقية — القسم 12).
+        if (updateResult.conflict) { setSaving(false); toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
+        if (updateResult.error && !updateResult.offline) { setSaving(false); showErrorToast('session_update', updateResult.error, 'فشل تسجيل ما تم في الجلسة', 'تحديث جلسة'); return; }
 
-        // 2. أنشئ جلسة جديدة
+        // 2. أنشئ جلسة جديدة — عبر __dbWrite كمان (نفس السبب فوق).
         // ⚠️ الجلسة المستقلة (caseData.id = null) مالهاش صف في جدول cases —
         // كل بياناتها (العنوان/الموكل/الخصم/المحكمة...) متخزنة على صف الجلسة
         // نفسه. من غير نسخها هنا، الجلسة الجديدة كانت هتتولد فاضية تمامًا
         // (بس تاريخ ومطلوب) وتفقد كل هويتها. القضايا الحقيقية مش محتاجة
         // النسخ ده لأن البيانات بتتجاب من جدول cases عن طريق case_id.
-        const { data: newSessionRow, error } = await db.from('case_sessions').insert([{
-            case_id: caseData.id,
-            session_date: nextDate,
-            session_time: session.session_time || null,
-            session_floor: session.session_floor || null,
-            session_hall: session.session_hall || null,
-            court_level: session.court_level || null,
-            secretary_hall: session.secretary_hall || null,
-            secretary_name: session.secretary_name || null,
-            secretary_mobile: session.secretary_mobile || null,
-            next_action: nextRequired || null,
-            ...(isStandalone ? {
-                title: session.title || null,
-                case_number: session.case_number || null,
-                court: session.court || null,
-                case_type: session.case_type || null,
-                circuit_number: session.circuit_number || null,
-                // ⚡ CHANGED (خطة تفكيك legacy columns — Phase F.2، 6 أغسطس
-                // 2026): كانت هنا مزامنة plaintiff/plaintiff_role/
-                // plaintiff_national_id/plaintiff_power_of_attorney/
-                // defendant/defendant_role/defendant_national_id/
-                // plaintiff_legal_title/defendant_legal_title من الجلسة
-                // الحالية (أو ملف الموكل الحي لو مربوطة) — ده كان مصدر
-                // الكتابة الرابع المكتشف في تحديث 6 (تصحيح "SessionUpdateModal
-                // من طبقة الكتابة مش العرض"). كل أطراف الجلسة الحقيقيين
-                // بيتنسخوا فعليًا لـcase_parties الجلسة الجديدة تحت عبر
-                // copySessionPartiesToNewSession — مفيش داعي لأي مزامنة هنا.
-                client_id: session.client_id || null,
-                // 🆕 (خطة تسلسل الجلسة المستقلة، 3 أغسطس 2026): راجع تعليق
-                // groupId فوق — نفس المعرّف بالحرف على الجلسة الجديدة.
-                session_group_id: groupId,
-            } : {}),
-        }]).select('id').single();
+        const insertResult = await window.__dbWrite({
+            type: 'INSERT',
+            table: 'case_sessions',
+            returning: true,
+            data: {
+                case_id: caseData.id,
+                session_date: nextDate,
+                session_time: session.session_time || null,
+                session_floor: session.session_floor || null,
+                session_hall: session.session_hall || null,
+                court_level: session.court_level || null,
+                secretary_hall: session.secretary_hall || null,
+                secretary_name: session.secretary_name || null,
+                secretary_mobile: session.secretary_mobile || null,
+                next_action: nextRequired || null,
+                // 🆕 (مرحلة 3، بوابة "محجوزة للحكم"): بتتكتب على الجلسة
+                // الجديدة نفسها اللي إحنا بنعملها دلوقتي — راجع تعليق
+                // الـstate فوق لتفاصيل الـPre-check.
+                is_judgment_reserved: judgmentReserved,
+                ...(isStandalone ? {
+                    title: session.title || null,
+                    case_number: session.case_number || null,
+                    court: session.court || null,
+                    case_type: session.case_type || null,
+                    circuit_number: session.circuit_number || null,
+                    // ⚡ CHANGED (خطة تفكيك legacy columns — Phase F.2، 6 أغسطس
+                    // 2026): كانت هنا مزامنة plaintiff/plaintiff_role/
+                    // plaintiff_national_id/plaintiff_power_of_attorney/
+                    // defendant/defendant_role/defendant_national_id/
+                    // plaintiff_legal_title/defendant_legal_title من الجلسة
+                    // الحالية (أو ملف الموكل الحي لو مربوطة) — ده كان مصدر
+                    // الكتابة الرابع المكتشف في تحديث 6 (تصحيح "SessionUpdateModal
+                    // من طبقة الكتابة مش العرض"). كل أطراف الجلسة الحقيقيين
+                    // بيتنسخوا فعليًا لـcase_parties الجلسة الجديدة تحت عبر
+                    // copySessionPartiesToNewSession — مفيش داعي لأي مزامنة هنا.
+                    client_id: session.client_id || null,
+                    // 🆕 (خطة تسلسل الجلسة المستقلة، 3 أغسطس 2026): راجع تعليق
+                    // groupId فوق — نفس المعرّف بالحرف على الجلسة الجديدة.
+                    session_group_id: groupId,
+                } : {}),
+            },
+        });
 
         setSaving(false);
 
-        if (error) { showErrorToast('session_create', error, 'فشل إنشاء الجلسة الجديدة', 'إنشاء جلسة تقويم'); return; }
+        if (insertResult.error) { showErrorToast('session_create', insertResult.error, 'فشل إنشاء الجلسة الجديدة', 'إنشاء جلسة تقويم'); return; }
+
+        // 📥 لو أي من الكتابتين اتقيّدت أوفلاين (مش من المفروض يحصل واحدة
+        // بس من غير التانية عمليًا — النت إما موجود أو مقطوع وقت النداءين
+        // المتتاليين دول — لكن بنتأكد من الاتنين احتياطيًا)، نوقف هنا:
+        // نسخ الأطراف/recalcNextHearing/إعادة فتح القضية/تيليجرام كلها
+        // عمليات onDone/بعد-الكتابة مش لازمة (أو مش ممكنة) وقت الأوفلاين —
+        // هتتنفذ آثارها المطلوبة (زي next_hearing) وقت المزامنة الفعلية.
+        if (updateResult.offline && updateResult.queued || insertResult.offline && insertResult.queued) {
+            toast('📥 تم حفظ التحديث محليًا — سيُزامن عند عودة الإنترنت');
+            onDone?.();
+            onClose();
+            return;
+        }
+
+        const newSessionId = insertResult.data?.id;
 
         // 🆕 (خطة "المسمى القانوني" — بند مؤجل ثانٍ، 24 يوليو 2026): نسخ كل
         // صفوف case_parties بتاعة الجلسة الحالية (لو فيها أكتر من شخص تحت
@@ -125,26 +167,43 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onNotify, 
         // تاريخي لما حصل فيها. مقصورة على المسار المستقل فقط (isStandalone)
         // — القضايا الحقيقية بتاخد أطرافها من case_parties.case_id، مش
         // مرتبطة بـsession_id، فمش محتاجة أي نسخ هنا أصلاً.
-        if (isStandalone && newSessionRow?.id) {
-            const copyResult = await copySessionPartiesToNewSession(db, session.id, newSessionRow.id);
+        if (isStandalone && newSessionId) {
+            const copyResult = await copySessionPartiesToNewSession(db, session.id, newSessionId);
             if (!copyResult.ok) {
                 toast('⚠️ تم إنشاء الجلسة القادمة لكن تعذّر نسخ بيانات بعض أطراف الدعوى — راجعها يدويًا', true);
             }
         }
 
-        // 🔴 FIX الحرج (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 2، 12
-        // سبتمبر 2026): من غير الاستدعاء ده، `cases.next_hearing` كان
-        // بيفضل معلّق على تاريخ الجلسة القديمة (اللي دلوقتي بقت النتيجة
-        // مسجّلة عليها) بدل الجلسة الجديدة القادمة — يعني البحث الشامل
-        // وكارت الجلسة في الداشبورد/التقويم كانوا هيعرضوا بيانات غلط
-        // بمجرد ما زرار "إضافة جلسة" اتشال (كان هو اللي بينادي
-        // recalcNextHearing قبل كده عن طريق useCaseSessions.handleAddSession
-        // — "⚡ تحديث" هنا بقت الطريقة الوحيدة لإنشاء جلسة، وماكانتش بتنادي
-        // الدالة دي خالص). مقصورة على القضايا الحقيقية (caseData.id
-        // موجود) — الجلسة المستقلة (isStandalone) مالهاش صف في جدول
-        // `cases` أصلًا فمفيش next_hearing تحدّثه.
         if (!isStandalone) {
+            // 🔴 FIX الحرج (مرحلة 2، 12 سبتمبر 2026): من غير الاستدعاء ده،
+            // `cases.next_hearing` كان بيفضل معلّق على تاريخ الجلسة القديمة
+            // (اللي دلوقتي بقت النتيجة مسجّلة عليها) بدل الجلسة الجديدة
+            // القادمة — يعني البحث الشامل وكارت الجلسة في الداشبورد/التقويم
+            // كانوا هيعرضوا بيانات غلط بمجرد ما زرار "إضافة جلسة" اتشال.
+            // مقصورة على القضايا الحقيقية (caseData.id موجود) — الجلسة
+            // المستقلة (isStandalone) مالهاش صف في جدول `cases` أصلًا.
             await recalcNextHearing(db, caseData.id);
+
+            // 🆕 (مرحلة 3، سيناريو "إعادة الفتح"، قسم 4.6 من الخطة): لو
+            // القضية كانت متقفلة ("منتهية") — عادةً بعد حكم نهائي سابق —
+            // وبنسجّل جلسة جديدة ليها دلوقتي عن طريق "⚡ تحديث"، ده معناه
+            // عمليًا إن القضية اتفتحت تاني (استئناف/طعن/إعادة نظر)، فحالتها
+            // لازم ترجع "نشطة" تلقائيًا بدل ما تفضل عالقة على "منتهية" رغم
+            // وجود جلسة قادمة فعلية. عملية best-effort (مش بنوقف نجاح
+            // تحديث الجلسة لو فشلت — القضية هتفضل "منتهية" والمستخدم يقدر
+            // يغيّرها يدويًا من قائمة الحالة العادية).
+            if (caseData.status === 'منتهية') {
+                const reopenResult = await window.__dbWrite({
+                    type: 'UPDATE',
+                    table: 'cases',
+                    id: caseData.id,
+                    data: { status: 'نشطة' },
+                    knownUpdatedAt: caseData.updated_at || null,
+                });
+                if (reopenResult.error || reopenResult.conflict) {
+                    toast('⚠️ تم تحديث الجلسة، لكن تعذّر إعادة فتح القضية تلقائيًا — غيّر حالتها يدويًا من القضية', true);
+                }
+            }
         }
 
         toast('✅ تم تحديث الجلسة وإنشاء الجلسة القادمة');
@@ -228,6 +287,27 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onNotify, 
                     testId: 'session-update-next-date-trigger',
                     dayTestId: 'session-update-next-date-day',
                 }),
+
+                // 🆕 (مرحلة 3، بوابة "محجوزة للحكم"): توجل جنب تاريخ الجلسة
+                // القادمة — بيتفعّل تلقائيًا لو الجلسة الحالية أصلاً محجوزة
+                // للحكم (Pre-check، راجع تعليق الـstate فوق).
+                React.createElement('button', {
+                    type: 'button',
+                    onClick: () => setJudgmentReserved((p: boolean) => !p),
+                    'data-testid': 'session-update-judgment-reserved-toggle',
+                    className: `w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border transition-all active:scale-[0.99] ${judgmentReserved ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-white/5 border-white/10'}`
+                },
+                    React.createElement('span', { className: `text-[10px] font-black ${judgmentReserved ? 'text-emerald-400' : 'text-slate-400'}` },
+                        "🏛️ هذه الجلسة محجوزة للحكم"
+                    ),
+                    React.createElement('span', {
+                        className: `w-9 h-5 rounded-full relative transition-colors ${judgmentReserved ? 'bg-emerald-500' : 'bg-white/15'}`
+                    },
+                        React.createElement('span', {
+                            className: `absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${judgmentReserved ? 'right-0.5' : 'right-4'}`
+                        })
+                    )
+                ),
 
                 // الحقل 3: المطلوب في الجلسة القادمة
                 React.createElement('div', { className: "space-y-1.5" },
