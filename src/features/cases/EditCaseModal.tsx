@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { I } from '../../constants';
 import { Inp } from '@/shared/ui/Inp';
-import { Sel } from '@/shared/ui/Sel';
 import { ClientSearchSelect, type ClientSearchResult } from '@/shared/ui/ClientSearchSelect';
 import { toast } from '../../shared/lib/notifications';
 import { onlyDigits, normalizeArabicDigits } from '../../shared/lib/sanitize';
-import DatePicker from '@/shared/ui/DatePicker';
 import { db } from '../../supabaseClient';
 import { usePartyFields } from '@/shared/parties/usePartyFields';
 import { PartyFieldsGroup } from '@/shared/parties/PartyFieldsGroup';
@@ -102,13 +100,6 @@ interface CasePartyRow {
     // select('*') تحت، ناقصة من النوع بس.
     updated_at: string | null;
 }
-
-// خيارات وقت الجلسة — كانت زرارين، دلوقتي select واحد عشان تقدر تقعد جنب
-// حقل التاريخ في نفس السطر (طلب مباشر، 22 يوليو 2026).
-const SESSION_TIME_OPTIONS = [
-    { value: 'صباحي', label: '🌅 صباحي' },
-    { value: 'مسائي', label: '🌆 مسائي' },
-];
 
 // ══════════════════════════════════════════════════════════════
 //  EditCaseModal (outer shell) — مرحلة 5.1 من خطة تعدد الأطراف: قبل ما
@@ -670,21 +661,13 @@ function EditCaseModalForm({caseData, onClose, onSave, countryCourts, countryCas
                 )
             ),
 
-            // ٥. تاريخ الجلسة القادمة + وقت الجلسة (نفس السطر، وقت الجلسة
-            // بيظهر بس بعد ما التاريخ يتحدد — قبل كده بياخد العرض كله لوحده).
-            // 🆕 (طلب مباشر — 11 سبتمبر 2026): بقى إجباري (required + فحص
-            // وقت الحفظ تحت) — زي باقي بيانات القيد الرسمي.
-            form.date
-                ? React.createElement('div',{className:"grid grid-cols-2 gap-2 items-start lg:col-span-2"},
-                    React.createElement(DatePicker, {label:"تاريخ الجلسة القادمة", value:form.date, onChange:(v: string) =>s("date",v), required:true, testId:'edit-case-date-trigger', dayTestId:'edit-case-date-day'}),
-                    React.createElement(Sel,{
-                        label:"وقت الجلسة",
-                        value:form.session_time,
-                        onChange:(e: React.ChangeEvent<HTMLSelectElement>) =>s('session_time',e.target.value),
-                        options:SESSION_TIME_OPTIONS,
-                    })
-                )
-                : React.createElement(DatePicker, {label:"تاريخ الجلسة القادمة", value:form.date, onChange:(v: string) =>s("date",v), required:true, testId:'edit-case-date-trigger', dayTestId:'edit-case-date-day'}),
+            // 🗑️ (طلب مباشر — 12 سبتمبر 2026): بند "٥. تاريخ الجلسة القادمة
+            // + وقت الجلسة" اتشال بالكامل من مودال "تعديل بيانات القضية" —
+            // القيمتين (form.date/session_time) لسه موجودين في الـstate
+            // ومتقفولين بقيمتهم الأصلية من caseData (بيتبعتوا زي ما هم وقت
+            // الحفظ من غير تعديل)، بس بقى تعديل الجلسة نفسه بيتم بس من
+            // مسارات الجلسات المخصصة (TimelineSection/SessionUpdateModal)
+            // منعًا لتعارض مصدرين للتعديل على نفس البيانات.
 
             // ٦. درجة التقاضي
             // ⚡ CHANGED (طلب مباشر — 9 أغسطس 2026): نفس فيكس "المحكمة
@@ -803,9 +786,6 @@ function EditCaseModalForm({caseData, onClose, onSave, countryCourts, countryCas
                     if(!form.type.trim()){ toast('⚠️ حقل "تصنيف الدعوى" مطلوب', true); return; }
                     if(!form.circuit_number.trim()){ toast('⚠️ حقل "رقم الدائرة" مطلوب', true); return; }
                     if(!form.court_level.trim()){ toast('⚠️ حقل "درجة التقاضي" مطلوب', true); return; }
-                    // 🆕 (طلب مباشر — 11 سبتمبر 2026): تاريخ الجلسة القادمة بقى
-                    // إجباري برضو — نفس نمط باقي بيانات القيد الرسمي فوق.
-                    if(!form.date.trim()){ toast('⚠️ حقل "تاريخ الجلسة القادمة" مطلوب', true); return; }
                     // ⚡ CHANGED (مرحلة 5.1 — خطة تعدد الأطراف): فاليديشن
                     // أطراف الدعوى كلها بقت من casePartiesValidation.ts (نفس
                     // قواعد NewCaseModal.tsx مرحلة 4.1) بدل الفحوصات المفردة
