@@ -321,6 +321,51 @@ describe('useCaseSessions — handleFinalJudgment (onUpdate sync)', () => {
 
     expect(onUpdate).not.toHaveBeenCalled();
   });
+
+  // 🆕 FIX (باگ "الحكم بيتسجل جزئي — القضية تتقفل بس المنطوق مايتسجلش"،
+  // طلب جيمي 12 سبتمبر 2026)
+  it('فشل حقيقي في تحديث حالة القضية → بترجع {ok:false} ومفيش توست نجاح كاذب', async () => {
+    dbWriteMock()
+      .mockResolvedValueOnce({ error: null }) // session update succeeds
+      .mockResolvedValueOnce({ error: { message: 'update failed' }, offline: false }); // case update fails
+    const { result } = renderSessionsHook();
+
+    let returned: { ok: boolean } | undefined;
+    await act(async () => {
+      returned = await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
+    });
+
+    expect(returned).toEqual({ ok: false });
+    expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('تم تسجيل الحكم النهائي وإغلاق القضية'));
+  });
+
+  it('تحديث الجلسة اتقيّد أوفلاين → تحديث القضية بيتبعت بـ forceQueue:true عشان يتزامنوا مع بعض', async () => {
+    const dbWrite = dbWriteMock();
+    dbWrite
+      .mockResolvedValueOnce({ error: null, offline: true, queued: true }) // session update queued offline
+      .mockResolvedValueOnce({ error: null, offline: true, queued: true }); // case update
+    const { result } = renderSessionsHook();
+
+    await act(async () => {
+      await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
+    });
+
+    const caseUpdateCall = dbWrite.mock.calls.find((c) => c[0]?.table === 'cases');
+    expect(caseUpdateCall?.[0]?.forceQueue).toBe(true);
+  });
+
+  it('تحديث الجلسة نجح أونلاين عادي → تحديث القضية من غير forceQueue', async () => {
+    const dbWrite = dbWriteMock();
+    dbWrite.mockResolvedValue({ error: null });
+    const { result } = renderSessionsHook();
+
+    await act(async () => {
+      await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
+    });
+
+    const caseUpdateCall = dbWrite.mock.calls.find((c) => c[0]?.table === 'cases');
+    expect(caseUpdateCall?.[0]?.forceQueue).toBe(false);
+  });
 });
 
 describe('useCaseSessions — handleDeleteFinalJudgment (onUpdate sync)', () => {
@@ -347,5 +392,20 @@ describe('useCaseSessions — handleDeleteFinalJudgment (onUpdate sync)', () => 
     });
 
     expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it('تصفير الحكم اتقيّد أوفلاين → رجوع حالة القضية بيتبعت بـ forceQueue:true', async () => {
+    const dbWrite = dbWriteMock();
+    dbWrite
+      .mockResolvedValueOnce({ error: null, offline: true, queued: true }) // session reset queued offline
+      .mockResolvedValueOnce({ error: null, offline: true, queued: true }); // case update
+    const { result } = renderSessionsHook();
+
+    await act(async () => {
+      await result.current.handleDeleteFinalJudgment('sess-1');
+    });
+
+    const caseUpdateCall = dbWrite.mock.calls.find((c) => c[0]?.table === 'cases');
+    expect(caseUpdateCall?.[0]?.forceQueue).toBe(true);
   });
 });
