@@ -48,7 +48,9 @@ export interface CasePartyRow {
 
 export function useCaseDetailActions(
   caseData: MappedCase,
-  onUpdate: ((newStatus: string) => void) | undefined,
+  // 🔧 FIX (باگ "عدّلها شخص آخر" الزائف، 12 سبتمبر 2026) — راجع نفس
+  // التعليق في useCaseSessions.ts.
+  onUpdate: ((patch: { status?: string; updated_at?: string | null }) => void) | undefined,
   onDelete: ((caseId: string) => void | Promise<void>) | undefined,
   onNotify: ((msg: string) => void | Promise<void>) | undefined,
   setShowStatusPicker?: (v: boolean) => void,
@@ -666,7 +668,7 @@ ${PDF_FONT_LINK}
   const handleChangeStatus = async (newStatus: string) => {
     setChangingStatus(true);
     setShowStatusPicker?.(false);
-    const { success, conflict, error } = await safeUpdate(db, 'cases', caseData.id, { status: newStatus }, caseData.updated_at || null);
+    const { success, conflict, error, updatedAt } = await safeUpdate(db, 'cases', caseData.id, { status: newStatus }, caseData.updated_at || null);
     setChangingStatus(false);
     // 🔒 FIX (تقرير الموثوقية — القسم 12، Concurrent Editing): كانت بترجع
     // بصمت تام عند التعارض. نفس نمط الرسالة المستخدم في case_notes/cases.
@@ -686,7 +688,7 @@ ${PDF_FONT_LINK}
         { status: { label: 'الحالة' } }
       ),
     });
-    onUpdate?.(newStatus);
+    onUpdate?.({ status: newStatus, updated_at: updatedAt });
   };
 
   return {
