@@ -379,6 +379,84 @@ describe('useCaseSessions — handleFinalJudgment', () => {
   });
 });
 
+// 🆕 (فيكس atomicity، phase24): handlePreliminaryJudgment بقى بينادي RPC
+// ذرّية واحدة (record_preliminary_judgment) بدل كتابتين منفصلتين عبر
+// __dbWrite (UPDATE على الجلسة الحالية + INSERT للجلسة القادمة) — راجع
+// database/migrations/sql-migrations-phase24/01-preliminary-judgment-atomic-rpc.sql.
+// نفس منطق تستات handleFinalJudgment فوق بالظبط: مفيش سيناريو "نجاح جزئي"
+// ممكن يحصل تاني (العمليتين جوه transaction واحدة)، مفيش دعم أوفلاين.
+describe('useCaseSessions — handlePreliminaryJudgment', () => {
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'onLine', { value: true, writable: true, configurable: true });
+  });
+
+  it('نجاح → RPC بتتنادى بالبيانات الصح، recalc، توست نجاح، تسجيل نشاط، refetchAll', async () => {
+    mockDb.rpc.mockResolvedValue({ data: null, error: null });
+    const { result, refetchAll } = renderSessionsHook();
+    act(() => { result.current.setSessions([{ id: 'sess-1', updated_at: '2026-07-01T00:00:00.000Z' } as never]); });
+
+    let returned: { ok: boolean } | undefined;
+    await act(async () => {
+      returned = await result.current.handlePreliminaryJudgment('sess-1', 'حكم بندب خبير', '2026-09-01');
+    });
+
+    expect(mockDb.rpc).toHaveBeenCalledWith('record_preliminary_judgment', {
+      p_session_id: 'sess-1',
+      p_case_id: 'case-1',
+      p_verdict_text: 'حكم بندب خبير',
+      p_next_session_date: '2026-09-01',
+      p_known_session_updated_at: '2026-07-01T00:00:00.000Z',
+    });
+    expect(returned).toEqual({ ok: true });
+    expect(toast).toHaveBeenCalledWith('⚖️ تم تسجيل الحكم التمهيدي وجدولة الجلسة القادمة');
+    expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'حكم تمهيدي', expect.objectContaining({ entity_type: 'session', entity_id: 'sess-1' }));
+    expect(refetchAll).toHaveBeenCalled();
+  });
+
+  it('أوفلاين → ممنوع بالكامل، مفيش أي نداء RPC، توست يطلب اتصال إنترنت', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, writable: true, configurable: true });
+    const { result, refetchAll } = renderSessionsHook();
+
+    let returned: { ok: boolean } | undefined;
+    await act(async () => {
+      returned = await result.current.handlePreliminaryJudgment('sess-1', 'حكم بندب خبير', '2026-09-01');
+    });
+
+    expect(mockDb.rpc).not.toHaveBeenCalled();
+    expect(returned).toEqual({ ok: false });
+    expect(refetchAll).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith('⚠️ تسجيل الحكم التمهيدي يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+  });
+
+  it('conflict (الجلسة اتعدّلت من حد تاني) → توست تعارض، بترجع {ok:false}', async () => {
+    mockDb.rpc.mockResolvedValue({ data: null, error: { message: 'conflict:session' } });
+    const { result, refetchAll } = renderSessionsHook();
+
+    let returned: { ok: boolean } | undefined;
+    await act(async () => {
+      returned = await result.current.handlePreliminaryJudgment('sess-1', 'حكم بندب خبير', '2026-09-01');
+    });
+
+    expect(returned).toEqual({ ok: false });
+    expect(toast).toHaveBeenCalledWith('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true);
+    expect(refetchAll).not.toHaveBeenCalled();
+  });
+
+  it('فشل حقيقي (خطأ RPC عام) → توست فشل، بترجع {ok:false}، مفيش توست نجاح كاذب', async () => {
+    mockDb.rpc.mockResolvedValue({ data: null, error: { message: 'permission denied' } });
+    const { result, refetchAll } = renderSessionsHook();
+
+    let returned: { ok: boolean } | undefined;
+    await act(async () => {
+      returned = await result.current.handlePreliminaryJudgment('sess-1', 'حكم بندب خبير', '2026-09-01');
+    });
+
+    expect(returned).toEqual({ ok: false });
+    expect(refetchAll).not.toHaveBeenCalled();
+    expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('تم تسجيل الحكم التمهيدي وجدولة الجلسة القادمة'));
+  });
+});
+
 // 🆕 (طلب "إلغاء حجز النطق بالحكم قبل تسجيل أي حكم"، 12 سبتمبر 2026):
 // عملية مختلفة تمامًا عن handleDeleteFinalJudgment تحت — كتابة واحدة بس
 // على الجلسة (is_judgment_reserved: false)، من غير أي لمس لـcases.status
