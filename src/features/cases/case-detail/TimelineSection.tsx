@@ -99,6 +99,29 @@ function TimelineSection({
     if (el) setJudgmentOverflows(el.scrollHeight > el.clientHeight + 1);
   }, [showJudgmentCard, judgmentExpanded, lastSession?.id, lastSession?.result]);
 
+  // 🆕 (طلب "كارت حكم تمهيدي بنفس شكل كارت الحكم النهائي"، 12 سبتمبر
+  // 2026): نفس منطق قياس overflow فوق، لكن لأي عدد جلسات فيها
+  // judgment_type === 'تمهيدي' مع بعض (مش جلسة واحدة بس زي showJudgmentCard) —
+  // كل واحدة منهم بتاخد كارت كامل بنفس تصميم "✅ حكم نهائي" (بادچ + منطوق
+  // + عرض الكل)، لكن في مكانها الطبيعي جوه تسلسل الـTimeline (مش مثبتة
+  // فوق زي كارت الحكم النهائي، لأن القضية هنا لسه "متداولة" وبتتضاف
+  // عليها جلسات جديدة فوقها بالترتيب الزمني العادي). بنستخدم Map بدل ref
+  // واحد عشان نتابع كذا كارت في نفس الوقت.
+  const prelimVerdictRefs = React.useRef(new Map<string, HTMLParagraphElement>());
+  const [prelimExpanded, setPrelimExpanded] = React.useState<Record<string, boolean>>({});
+  const [prelimOverflows, setPrelimOverflows] = React.useState<Record<string, boolean>>({});
+  React.useLayoutEffect(() => {
+    const next: Record<string, boolean> = {};
+    prelimVerdictRefs.current.forEach((el, id) => {
+      if (el) next[id] = el.scrollHeight > el.clientHeight + 1;
+    });
+    setPrelimOverflows((prev) => {
+      const keys = Object.keys(next);
+      const changed = keys.length !== Object.keys(prev).length || keys.some((k) => next[k] !== prev[k]);
+      return changed ? next : prev;
+    });
+  }, [sessions, prelimExpanded]);
+
   return React.createElement('div', {className: "space-y-4 fade-in"},
                 // 🆕 كارت "✅ حكم نهائي" — فوق التايم لاين كله، بعرض القسم
                 // (مش جوه صف الـtimeline اللي فيه عمود النقطة/الخط، عشان
@@ -305,23 +328,44 @@ function TimelineSection({
                                                 React.createElement('p', {className: "text-xs text-slate-200 leading-relaxed"}, s.description)
                                             ),
                                             // ما جرى في الجلسة
-                                            // 🆕 (بند 17، إعادة تصميم مودال "النطق بالحكم"، 12 سبتمبر 2026):
-                                            // لو الجلسة دي اتسجّل عليها حكم تمهيدي فعليًا (judgment_type ===
-                                            // 'تمهيدي' — عمود جديد، مستقل عن is_judgment_reserved اللي بيتحكم
-                                            // بس في ظهور زرار "🏛️")، بادچ مميز "⚖️ حكم تمهيدي" بدل "📌 النتيجة"
-                                            // العادية — عشان يبان واضح إن ده مش مجرد "ما تم" عابر، ده حكم فعلي
-                                            // اتسجّل على القضية وهي لسه "متداولة".
-                                            s.result && React.createElement('div', {
-                                                className: s.judgment_type === 'تمهيدي'
-                                                    ? "bg-sky-500/8 border border-sky-500/20 rounded-xl p-3 mb-2"
-                                                    : "bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-3 mb-2"
-                                            },
-                                                React.createElement('p', {
-                                                    className: s.judgment_type === 'تمهيدي'
-                                                        ? "text-[9px] font-black text-sky-400 mb-1"
-                                                        : "text-[9px] font-black text-emerald-400 mb-1"
-                                                }, s.judgment_type === 'تمهيدي' ? "⚖️ حكم تمهيدي" : "📌 النتيجة"),
-                                                React.createElement('p', {className: "text-[11px] text-slate-200 font-bold leading-relaxed"}, s.result)
+                                            // 🔁 (طلب "كارت حكم تمهيدي بنفس شكل كارت الحكم النهائي"، 12
+                                            // سبتمبر 2026): البادچ الصغير القديم "⚖️ حكم تمهيدي" اتشال
+                                            // بالكامل، ومكانه بقى كارت كامل الحجم بنفس تصميم/بيانات كارت
+                                            // "✅ حكم نهائي" فوق (بادچ + "منطوق الحكم" + النص + عرض الكل)،
+                                            // بس بلون أزرق (sky) بدل الأخضر عشان يتفرّق بصريًا عن الحكم
+                                            // النهائي، ومن غير أزرار تعديل/حذف (مش مطلوبة هنا). الفرق
+                                            // الجوهري عن كارت الحكم النهائي: ده مش مثبت فوق الـTimeline
+                                            // كله — بياخد مكانه الطبيعي جوه تسلسل الجلسات، فأي جلسة جديدة
+                                            // بعده (بما فيها الجلسة اللي اتعملت وقت الحكم التمهيدي نفسه)
+                                            // بتظهر فوقه بالترتيب الزمني العادي — لأن القضية هنا لسه
+                                            // "متداولة" ومفتوحة لإضافة جلسات، بعكس الحكم النهائي.
+                                            s.result && (s.judgment_type === 'تمهيدي'
+                                                ? React.createElement('div', {
+                                                    className: "bg-sky-500/5 border border-sky-500/25 rounded-2xl p-4 mb-2 text-center",
+                                                    'data-testid': 'preliminary-judgment-card',
+                                                  },
+                                                    React.createElement('span', {className: "inline-block px-3 py-1.5 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400 text-sm font-black mb-2"},
+                                                      "⚖️ صدر حكم تمهيدي بجلسة " + (s.session_date || '—')
+                                                    ),
+                                                    React.createElement('p', {className: "text-[10px] font-black text-sky-400/80 mb-1"}, "منطوق الحكم"),
+                                                    React.createElement('p', {
+                                                        ref: (el: HTMLParagraphElement | null) => {
+                                                            if (el) prelimVerdictRefs.current.set(s.id, el);
+                                                            else prelimVerdictRefs.current.delete(s.id);
+                                                        },
+                                                        className: `text-sm text-slate-100 font-black leading-relaxed ${prelimExpanded[s.id] ? '' : 'line-clamp-2'}`,
+                                                        'data-testid': 'preliminary-judgment-verdict-text-display',
+                                                    }, s.result),
+                                                    prelimOverflows[s.id] && React.createElement('button', {
+                                                        onClick: () => setPrelimExpanded((p) => ({...p, [s.id]: !p[s.id]})),
+                                                        'data-testid': 'preliminary-judgment-verdict-toggle',
+                                                        className: "mt-1.5 text-[10px] font-black text-sky-400 underline underline-offset-2 active:scale-95 transition-all",
+                                                    }, prelimExpanded[s.id] ? "إخفاء" : "عرض الكل")
+                                                )
+                                                : React.createElement('div', {className: "bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-3 mb-2"},
+                                                    React.createElement('p', {className: "text-[9px] font-black text-emerald-400 mb-1"}, "📌 النتيجة"),
+                                                    React.createElement('p', {className: "text-[11px] text-slate-200 font-bold leading-relaxed"}, s.result)
+                                                )
                                             ),
                                             // الإجراء القادم
                                             s.next_action && React.createElement('div', {className: "bg-amber-500/5 border border-amber-500/15 rounded-xl p-3 mb-2"},
