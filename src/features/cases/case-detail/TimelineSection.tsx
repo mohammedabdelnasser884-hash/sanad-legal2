@@ -93,17 +93,16 @@ function TimelineSection({
                 // (مش جوه صف الـtimeline اللي فيه عمود النقطة/الخط، عشان
                 // يبان "منفصل" و"بعرض القسم كلة" زي ما اتفقنا).
                 showJudgmentCard && React.createElement('div', {
-                    className: "bg-emerald-500/5 border border-emerald-500/25 rounded-2xl p-4 slide-up",
+                    className: "bg-emerald-500/5 border border-emerald-500/25 rounded-2xl p-4 slide-up text-center",
                     'data-testid': 'final-judgment-card',
                   },
-                  React.createElement('div', {className: "flex items-center justify-between mb-2"},
-                    React.createElement('span', {className: "text-[10px] px-2.5 py-1 bg-emerald-500/15 text-emerald-400 rounded-full font-black"}, "✅ حكم نهائي"),
-                    React.createElement('span', {className: "text-[10px] text-slate-400 font-bold"}, lastSession.session_date)
+                  React.createElement('span', {className: "inline-block px-3 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-sm font-black mb-2"},
+                    "✅ صدر حكم نهائي بجلسة " + lastSession.session_date
                   ),
-                  React.createElement('p', {className: "text-[9px] font-black text-emerald-400/80 mb-1"}, "منطوق الحكم"),
+                  React.createElement('p', {className: "text-[10px] font-black text-emerald-400/80 mb-1"}, "منطوق الحكم"),
                   React.createElement('p', {
                     ref: judgmentTextRef,
-                    className: `text-xs text-slate-100 font-black leading-relaxed ${judgmentExpanded ? '' : 'line-clamp-2'}`,
+                    className: `text-sm text-slate-100 font-black leading-relaxed ${judgmentExpanded ? '' : 'line-clamp-2'}`,
                     'data-testid': 'final-judgment-verdict-text-display',
                   }, lastSession.result),
                   judgmentOverflows && React.createElement('button', {
