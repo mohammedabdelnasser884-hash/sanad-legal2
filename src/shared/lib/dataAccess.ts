@@ -311,3 +311,97 @@ export async function recalcNextHearing(db: SupabaseClient<Database>, caseId: st
     });
     await db.from('cases').update({ next_hearing: nearest }).eq('id', caseId);
 }
+
+// ══════════════════════════════════════════════════════════════
+//  fetchMissedSessions — تعريف موحّد لـ"الجلسة الفائتة"
+//  ⚠️ خطة "إعادة تصميم إغلاق سلسلة الجلسات"، المرحلة 8 (12 سبتمبر 2026):
+//  كان عندنا 3 تعريفات مختلفة فعليًا لنفس المفهوم في 3 أماكن —
+//  useDashboardFeed.ts (آخر جلسة في القضية + مفيش جلسة جاية، بغضّ النظر
+//  عن result/next_action) مقابل SessionsCalendar.tsx (بادچ العداد)
+//  وMissedTab.tsx (أي جلسة فات تاريخها ومفيهاش result/next_action، بغضّ
+//  النظر عن وجود جلسة جاية) — وده سبب فعليًا "تعارض عداد 63/14" اللي
+//  MissedTab.tsx كان بيصلّح نص المشكلة بتاعته بس (limit) من غير ما يصلّح
+//  اختلاف التعريف نفسه.
+//  التعريف الموحّد دلوقتي: جلسة فائتة = آخر جلسة مسجّلة في قضيتها (مفيش
+//  جلسة جاية مجدولة بعدها) + تاريخها فات + مفيهاش result ولا next_action
+//  (محدش رجع حدّثها فعليًا) + القضية نفسها مش "منتهية" (لو اتقفلت بحكم
+//  نهائي — مرحلة 6 — مفيش داعي تتحسب فائتة تاني).
+//  بيرجع نفس شكل الصف اللي الأماكن التلاتة بتحتاجه فعليًا (نفس أعمدة
+//  الـselect القديمة + status جوه cases embed)، وكل مكان يكاستها لنوعه
+//  المحلي زي ما بيعمل فعلاً مع نتائج Supabase في باقي الملف (as unknown as X[]).
+// ══════════════════════════════════════════════════════════════
+export interface MissedSessionCaseEmbed {
+    id: string;
+    title: string | null;
+    court_name: string | null;
+    case_type: string | null;
+    case_number_official: string | null;
+    client_id: string | null;
+    status: string | null;
+}
+
+export interface MissedSessionRow {
+    id: string;
+    session_date: string | null;
+    session_time: string | null;
+    session_floor: string | null;
+    session_hall: string | null;
+    description: string | null;
+    case_id: string | null;
+    client_id: string | null;
+    result: string | null;
+    next_action: string | null;
+    title: string | null;
+    case_number: string | null;
+    court: string | null;
+    case_type: string | null;
+    circuit_number: string | null;
+    cases: MissedSessionCaseEmbed | MissedSessionCaseEmbed[] | null;
+}
+
+// نفس أعمدة الـselect المستخدمة فعليًا في الأماكن التلاتة قبل التوحيد،
+// بالإضافة لـstatus جوه cases embed (كانت ناقصة في التلاتة أماكن).
+export const MISSED_SESSION_SELECT =
+    'id,session_date,session_time,session_floor,session_hall,description,case_id,client_id,result,next_action,title,case_number,court,case_type,circuit_number,cases(id,title,court_name,case_type,case_number_official,client_id,status)';
+
+function missedSessionCaseStatus(cases: MissedSessionCaseEmbed | MissedSessionCaseEmbed[] | null): string | null {
+    if (!cases) return null;
+    return Array.isArray(cases) ? (cases[0]?.status ?? null) : cases.status;
+}
+
+/**
+ * @param db       - Supabase client
+ * @param todayStr - تاريخ اليوم بصيغة YYYY-MM-DD (نفس صيغة fmtDate/toDateStr في الأماكن الثلاثة)
+ * @param signal   - AbortSignal اختياري (مرّرها لو الاستدعاء بيستخدم offlineGuard زي MissedTab.tsx/useDashboardFeed.ts)
+ * @returns صفوف الجلسات الفائتة (بعد فلترة الشروط الأربعة فوق)، أو error لو الاستعلام فشل
+ */
+export async function fetchMissedSessions(
+    db: SupabaseClient<Database>,
+    todayStr: string,
+    signal?: AbortSignal
+): Promise<{ data: MissedSessionRow[] | null; error: PostgrestError | { message: string } | null }> {
+    // ملحوظة: builder Supabase بيتغيّر نوعه بعد .abortSignal()، فبنبنيه في
+    // تعبير واحد متسلسل (زي كل استعلامات المشروع) بدل ما نعيد تعيينه لمتغيّر
+    // وسيط — تفاديًا لأي تعارض نوع TypeScript مش قادرين نتأكد منه محليًا
+    // (مفيش node_modules/tsc في بيئة التنفيذ دي).
+    const ctrl = signal ? null : new AbortController();
+    const effectiveSignal = signal ?? (ctrl as AbortController).signal;
+    const [futureRes, pastRes] = await Promise.all([
+        db.from('case_sessions').select('case_id').gte('session_date', todayStr).abortSignal(effectiveSignal),
+        db.from('case_sessions').select(MISSED_SESSION_SELECT).lt('session_date', todayStr).order('session_date', { ascending: false }).abortSignal(effectiveSignal),
+    ]);
+    if (futureRes.error || pastRes.error) {
+        return { data: null, error: pastRes.error || futureRes.error };
+    }
+    const caseIdsWithFuture = new Set((futureRes.data || []).map((s: { case_id: string | null }) => s.case_id));
+    const seenCases = new Set<string | null>();
+    const missed = ((pastRes.data || []) as unknown as MissedSessionRow[]).filter((s) => {
+        if (caseIdsWithFuture.has(s.case_id)) return false;              // فيه جلسة جاية مجدولة لنفس القضية
+        if (seenCases.has(s.case_id)) return false;                      // مش آخر جلسة في القضية
+        seenCases.add(s.case_id);
+        if (s.result?.trim() || s.next_action?.trim()) return false;     // اتحدثت فعليًا (نتيجة أو خطوة تالية)
+        if (missedSessionCaseStatus(s.cases) === 'منتهية') return false; // القضية اتقفلت بحكم نهائي
+        return true;
+    });
+    return { data: missed, error: null };
+}
