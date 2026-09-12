@@ -20,13 +20,28 @@ vi.mock('../../supabaseClient', () => ({ db: {} }));
 
 // ── Mock بسيط لسلسلة استدعاءات Supabase المستخدمة فعليًا جوه safeUpdate:
 //    db.from(table).select('updated_at').eq('id', id).single()
-//    db.from(table).update(data).eq('id', id)
+//    db.from(table).update(data).eq('id', id).select('updated_at').single()
+// 🔧 FIX (متابعة لتصحيح staleness بتاريخ 12 سبتمبر 2026): safeUpdate بقى
+// بيضيف .select('updated_at').single() بعد .update().eq() عشان يرجّع
+// updated_at الجديد (راجع تعليق الفيكس في dataAccess.ts). الـ mock هنا
+// كان بيوقف السلسلة عند .eq() القديمة، فبيرجع updateEq() كأنه resolved
+// value مباشرة بدل ما يرجع { select }. اتصلح عشان يطابق السلسلة الحقيقية.
 function makeMockDb(opts: {
     serverUpdatedAt?: string | null;
     fetchError?: unknown;
     updateError?: unknown;
+    updatedAtAfterWrite?: string | null;
 }) {
-    const updateEq = vi.fn().mockResolvedValue({ error: opts.updateError ?? null });
+    const updatedAtAfterWrite = opts.updatedAtAfterWrite !== undefined
+        ? opts.updatedAtAfterWrite
+        : (opts.serverUpdatedAt ?? null);
+
+    const updateSingle = vi.fn().mockResolvedValue({
+        data: opts.updateError ? null : { updated_at: updatedAtAfterWrite },
+        error: opts.updateError ?? null,
+    });
+    const updateSelect = vi.fn(() => ({ single: updateSingle }));
+    const updateEq = vi.fn(() => ({ select: updateSelect }));
     const update = vi.fn(() => ({ eq: updateEq }));
 
     const single = vi.fn().mockResolvedValue({
@@ -37,8 +52,9 @@ function makeMockDb(opts: {
     const select = vi.fn(() => ({ eq: selectEq }));
 
     const from = vi.fn(() => ({ select, update }));
-    return { from, update, updateEq, select, selectEq, single } as unknown as SupabaseClient<Database> & {
-        update: typeof update; updateEq: typeof updateEq; select: typeof select; single: typeof single;
+    return { from, update, updateEq, updateSelect, updateSingle, select, selectEq, single } as unknown as SupabaseClient<Database> & {
+        update: typeof update; updateEq: typeof updateEq; updateSelect: typeof updateSelect;
+        updateSingle: typeof updateSingle; select: typeof select; single: typeof single;
     };
 }
 
@@ -49,7 +65,7 @@ describe('safeUpdate — القفل التفاؤلي (Optimistic Locking)', () =
 
         const result = await safeUpdate(mockDb, 'cases', 'case-1', { title: 'قضية معدّلة' }, t);
 
-        expect(result).toEqual({ success: true, conflict: false, error: null });
+        expect(result).toEqual({ success: true, conflict: false, error: null, updatedAt: t });
         expect(mockDb.update).toHaveBeenCalledTimes(1);
     });
 
@@ -71,17 +87,17 @@ describe('safeUpdate — القفل التفاؤلي (Optimistic Locking)', () =
         const t1 = '2026-07-16T10:00:05.000Z'; // updated_at الجديد بعد أول تحديث ناجح
 
         // التحديث الأول: السيرفر لسه على t0 (نفس وقت العميل) → ينجح
-        const firstDb = makeMockDb({ serverUpdatedAt: t0 });
+        const firstDb = makeMockDb({ serverUpdatedAt: t0, updatedAtAfterWrite: t1 });
         const firstResult = await safeUpdate(firstDb, 'cases', 'case-1', { title: 'تعديل 1' }, t0);
-        expect(firstResult).toEqual({ success: true, conflict: false, error: null });
+        expect(firstResult).toEqual({ success: true, conflict: false, error: null, updatedAt: t1 });
 
         // التحديث الثاني الفوري: لو الكولر استخدم updated_at الجديد (t1) اللي
-        // المفروض السيرفر رجّعه بعد التحديث الأول (زي ما __dbWrite بيعمل فعليًا) —
+        // السيرفر رجّعه بعد التحديث الأول (زي ما firstResult.updatedAt بيثبت) —
         // مينفعش يتكشف كتعارض وهمي مع نفسه
         const secondDb = makeMockDb({ serverUpdatedAt: t1 });
         const secondResult = await safeUpdate(secondDb, 'cases', 'case-1', { title: 'تعديل 2' }, t1);
 
-        expect(secondResult).toEqual({ success: true, conflict: false, error: null });
+        expect(secondResult).toEqual({ success: true, conflict: false, error: null, updatedAt: t1 });
         expect(secondDb.update).toHaveBeenCalledTimes(1);
     });
 
@@ -90,7 +106,7 @@ describe('safeUpdate — القفل التفاؤلي (Optimistic Locking)', () =
 
         const result = await safeUpdate(mockDb, 'cases', 'case-1', { title: 'تعديل بدون تحقق' }, null);
 
-        expect(result).toEqual({ success: true, conflict: false, error: null });
+        expect(result).toEqual({ success: true, conflict: false, error: null, updatedAt: null });
         // مفروض ميحصلش استدعاء select('updated_at') خالص في المسار ده
         expect(mockDb.select).not.toHaveBeenCalled();
         expect(mockDb.update).toHaveBeenCalledTimes(1);
