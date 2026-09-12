@@ -34,6 +34,10 @@ interface TimelineSectionProps {
   // يفتح `FinalJudgmentModal` (مرحلة 5) على الجلسة اللي اتضغط عليها زرار
   // "🏛️ الحكم النهائي".
   setFinalJudgmentTarget: (s: CaseSessionRow) => void;
+  // 🆕 (طلب "تعديل/حذف الحكم النهائي"، 12 سبتمبر 2026): بيفتح مودال تأكيد
+  // إلغاء الحكم النهائي (نفس شكل setConfirmDeleteSession تحت، بس بيستهدف
+  // إلغاء الحكم لا حذف الجلسة نفسها).
+  setConfirmDeleteJudgment: (v: { id: string; date: string } | null) => void;
   // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 9، 12 سبتمبر 2026):
   // بيخفي زرار "🏛️ الحكم النهائي" لو المستخدم مالوش صلاحية can_edit_cases.
   // "⚡ تحديث" و"✏️ تعديل" اتسابوا زي ما هم (توصية الخطة، قسم 10.3) —
@@ -53,7 +57,7 @@ interface TimelineSectionProps {
 function TimelineSection({
   loadingSessions, sessions,
   editingSession, setEditingSession, handleUpdateSession,
-  setSessionUpdateTarget, setFinalJudgmentTarget, canEditCase, deletingSessionId, setConfirmDeleteSession,
+  setSessionUpdateTarget, setFinalJudgmentTarget, setConfirmDeleteJudgment, canEditCase, deletingSessionId, setConfirmDeleteSession,
   caseStatus,
 }: TimelineSectionProps) {
   // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 7، 12 سبتمبر 2026):
@@ -109,7 +113,27 @@ function TimelineSection({
                     onClick: () => setJudgmentExpanded((v) => !v),
                     'data-testid': 'final-judgment-verdict-toggle',
                     className: "mt-1.5 text-[10px] font-black text-emerald-400 underline underline-offset-2 active:scale-95 transition-all",
-                  }, judgmentExpanded ? "إخفاء" : "عرض الكل")
+                  }, judgmentExpanded ? "إخفاء" : "عرض الكل"),
+                  // 🆕 (طلب "تعديل/حذف الحكم النهائي"، 12 سبتمبر 2026): زراري
+                  // تعديل/حذف على نفس الحكم — مقيّدين بـcanEditCase (نفس
+                  // صلاحية تسجيل الحكم أصلاً). "تعديل" بيفتح نفس
+                  // FinalJudgmentModal (بيتعرف تلقائيًا إنه Edit من
+                  // caseStatus === 'منتهية' في CaseDetailView)، و"حذف"
+                  // بيفتح مودال تأكيد إلغاء الحكم (يرجّع القضية "متداولة").
+                  canEditCase && React.createElement('div', { className: "flex gap-2 mt-3" },
+                    React.createElement('button', {
+                      onClick: () => setFinalJudgmentTarget(lastSession),
+                      'data-testid': 'final-judgment-edit-trigger',
+                      className: "flex-1 py-2 rounded-xl text-[10px] font-black active:scale-[0.98] transition-all",
+                      style: {background:'rgba(212,175,55,0.15)', color:'#D4AF37', border:'1px solid rgba(212,175,55,0.3)'}
+                    }, "✏️ تعديل"),
+                    React.createElement('button', {
+                      onClick: () => setConfirmDeleteJudgment({ id: lastSession.id, date: lastSession.session_date || '—' }),
+                      'data-testid': 'final-judgment-delete-trigger',
+                      className: "flex-1 py-2 rounded-xl text-[10px] font-black active:scale-[0.98] transition-all",
+                      style: {background:'rgba(244,63,94,0.1)', color:'#fb7185', border:'1px solid rgba(244,63,94,0.25)'}
+                    }, "🗑 حذف")
+                  )
                 ),
                 // 🆕 زرار "🏛️ الحكم النهائي" — منفصل وبعرض القسم كامل، فوق
                 // كارت آخر جلسة (راجع تعليق showJudgmentTrigger فوق).
