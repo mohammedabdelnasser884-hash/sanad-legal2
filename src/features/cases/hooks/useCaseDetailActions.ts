@@ -691,6 +691,7 @@ ${PDF_FONT_LINK}
     confirmDeleteSession: sessionsHook.confirmDeleteSession, setConfirmDeleteSession: sessionsHook.setConfirmDeleteSession,
     handleUpdateSession: sessionsHook.handleUpdateSession,
     handleDeleteSession: sessionsHook.handleDeleteSession,
+    handleFinalJudgment: sessionsHook.handleFinalJudgment,
 
     // مستندات (من useCaseDocuments)
     docs: docsHook.docs, setDocs: docsHook.setDocs,
