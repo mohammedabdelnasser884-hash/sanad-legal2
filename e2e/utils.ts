@@ -518,19 +518,31 @@ export function todayIso(): string {
 }
 export const ADVANCE_PAYMENT_DATE = '2020-01-15';
 
-// المرحلة 3 (خطة تنفيذ اختبارات E2E المقسمة) — هيلبر إضافة جلسة لقضية
-// مفتوحة بالفعل على شاشة تفاصيلها (case-detail-view، تبويب "الجلسات"
-// نشط). بيستقبل رقم اليوم (day) في الشهر الحالي (نفس تاريخ اليوم أو أي
-// يوم تاني في نفس الشهر — بلا احتياج للتنقل بين الشهور في الـDatePicker،
-// راجع ملحوظة sessions.spec.ts الأصلية) عشان تستات المرحلة 3 (تعديل/حذف/
-// تعارض) تقدر تتحكم في ترتيب الجلستين (الأحدث تاريخًا = index 0، وعليها
-// زرار "⚡ تحديث" بس من غير تعديل/حذف مباشر — راجع TimelineSection.tsx).
+// 🔄 REWRITE (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 1، 12 سبتمبر
+// 2026): زرار/فورم "إضافة جلسة جديدة" (add-session-button وكل الـtestids
+// المرتبطة بيه) اتشالوا نهائي من TimelineSection.tsx — راجع نفس التعليق
+// هناك. الطريقة الوحيدة دلوقتي لإنشاء جلسة جديدة لقضية مفتوحة هي "⚡
+// تحديث" (SessionUpdateModal)، اللي بتفتح بالضغط على كارت آخر جلسة
+// (index 0 — الكارت كله قابل للضغط ليه فقط، راجع onClick في
+// TimelineSection.tsx). كل قضية جديدة بتتعمل بجلسة أولى (بس تاريخ، من
+// NewCaseModal — بلا وصف) فكارت واحد بيبقى موجود دايمًا كنقطة بداية.
+// ⚠️ فرق مهم عن السلوك القديم: SessionUpdateModal معندهوش حقل "وصف"
+// مستقل للجلسة الجديدة (راجع handleSave — التحديث بيكتب `result` على
+// الجلسة *القديمة*، والإنشاء الجديد بياخد بس `next_action` من حقل
+// "المطلوب في الجلسة القادمة"). عشان الـcallers الحاليين كلها بتلاقي
+// الجلسة اللي عملتها بعدين عن طريق `session-card` + `hasText: description`
+// (فلترة نصية على الكارت)، بنمرر الـ`description` هنا لحقل "المطلوب"
+// (`session-update-next-required`) بدل حقل وصف مش موجود أصلاً — النص ده
+// بيظهر فعليًا على الكارت تحت "⚡ الإجراء القادم" فالفلترة النصية لسه
+// بتشتغل بنفس المنطق القديم من غير ما أي ملف .spec.ts يتغيّر.
 export async function addCaseSession(page: Page, day: number, description: string): Promise<void> {
-  await page.getByTestId('add-session-button').click();
-  await page.getByTestId('session-date-trigger').click();
-  await page.getByTestId('session-date-day').filter({ hasText: new RegExp(`^${day}$`) }).click();
-  await page.getByTestId('session-description').fill(description);
-  await page.getByTestId('save-session-button').click();
+  await page.getByTestId('session-card').first().click();
+  await page.getByTestId('session-update-modal').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByTestId('session-update-next-date-trigger').click();
+  await page.getByTestId('session-update-next-date-day').filter({ hasText: new RegExp(`^${day}$`) }).click();
+  await page.getByTestId('session-update-next-required').fill(description);
+  await page.getByTestId('session-update-save').click();
+  await page.getByTestId('session-update-modal').waitFor({ state: 'hidden', timeout: 15_000 });
   await page.getByTestId('session-card').filter({ hasText: description }).first().waitFor({ state: 'visible', timeout: 15_000 });
 }
 
@@ -595,15 +607,27 @@ export async function createStandaloneSession(page: Page, title: string): Promis
 // إن فيه قضية مفتوحة بالفعل (case-detail-view ظاهرة) — بترجع لنفس الشاشة
 // بعد الحفظ زي addCaseSession العادي، وبتستخدم نفس يوم النهاردة بس في
 // الشهر السابق (Math.min بـ 28 عشان نضمن إن اليوم موجود في أي شهر).
-export async function addMissedSession(page: Page, description: string): Promise<void> {
+// 🔄 REWRITE (نفس مرحلة 1، 12 سبتمبر 2026 — راجع تعليق addCaseSession
+// فوق لتفاصيل سبب الاستبدال بـ"⚡ تحديث"). فرق مهم هنا عن addCaseSession:
+// المعيار الفعلي لـ"جلسة فائتة" (fetchMissedSessions/fetchMissedCount)
+// هو تاريخ فات *و* `result` فاضي *و* `next_action` فاضي (راجع MissedTab.tsx
+// وSessionsCalendar.tsx) — فلازم نسيب حقلَي "ما تم"/"المطلوب" في
+// SessionUpdateModal فاضيين تمامًا هنا (عكس addCaseSession اللي بتملى
+// "المطلوب" عمدًا). ده معناه إن `description` بقت غير مستخدمة فعليًا (مفيش
+// حقل تقدر تتحط فيه من غير ما تكسر شرط "الفائتة")، لكن سايبين البارامتر
+// في التوقيع عشان الـcallers الحالية (dashboard/calendar-month/missed-tab)
+// تفضل شغالة من غير تعديل — التست الوحيد اللي بيتأكد من نتيجة الهيلبر ده
+// فعليًا (calendar-missed-tab.spec.ts) بيفلتر بعنوان القضية مش بوصف
+// الجلسة، فمفيش فقد تغطية.
+export async function addMissedSession(page: Page, _description: string): Promise<void> {
   const day = Math.min(new Date().getDate(), 28);
-  await page.getByTestId('add-session-button').click();
-  await page.getByTestId('session-date-trigger').click();
+  await page.getByTestId('session-card').first().click();
+  await page.getByTestId('session-update-modal').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.getByTestId('session-update-next-date-trigger').click();
   await page.getByTestId('date-picker-prev-month').click();
-  await page.getByTestId('session-date-day').filter({ hasText: new RegExp(`^${day}$`) }).click();
-  await page.getByTestId('session-description').fill(description);
-  await page.getByTestId('save-session-button').click();
-  await page.getByTestId('session-card').filter({ hasText: description }).first().waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByTestId('session-update-next-date-day').filter({ hasText: new RegExp(`^${day}$`) }).click();
+  await page.getByTestId('session-update-save').click();
+  await page.getByTestId('session-update-modal').waitFor({ state: 'hidden', timeout: 15_000 });
 }
 
 export async function createReminder(page: Page, title: string): Promise<void> {
