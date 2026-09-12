@@ -19,7 +19,16 @@ export function useCaseSessions(
   client: ClientRow | null | undefined,
   profile: ProfileRow | null | undefined,
   onNotify: ((msg: string) => void | Promise<void>) | undefined,
-  refetchAll: () => Promise<void> | void
+  refetchAll: () => Promise<void> | void,
+  // 🔧 FIX (طلب جيمي، 12 سبتمبر 2026): handleFinalJudgment/
+  // handleDeleteFinalJudgment تحت بيحدّثوا cases.status فعليًا، لكن كانوا
+  // مبيندوش onUpdate — بعكس handleChangeStatus في useCaseDetailActions.ts
+  // اللي بينادي onUpdate?.(newStatus) بعد كل نجاح. onUpdate هي اللي بتحدّث
+  // state القضايا في AppModals.tsx (selectedCase + قائمة cases + إعادة
+  // فلترة/جلب القضايا)، فمن غيرها القضية كانت بتفضل في القسم القديم
+  // (متداولة/منتهية) في الشاشة لحد ما المستخدم يخرج من ملف القضية ويعمل
+  // ريفريش يدوي — رغم إن الداتابيز نفسها كانت متحدّثة صح من أول لحظة.
+  onUpdate: ((newStatus: string) => void) | undefined
 ) {
   const [sessions, setSessions] = useState<CaseSessionRow[]>([]);
   // ⚠️ FIX (14 يوليو 2026): كان متوقع CaseSessionRow (شكل صف قاعدة البيانات
@@ -217,6 +226,12 @@ export function useCaseSessions(
     });
     if (caseUpdateResult.error && !caseUpdateResult.offline) {
       showErrorToast('final_judgment_case', caseUpdateResult.error, 'تم تسجيل الحكم على الجلسة، لكن تعذّر تحديث حالة القضية إلى "منتهية" — غيّرها يدويًا', 'الحكم النهائي');
+    } else {
+      // 🔧 FIX: نفس نمط handleChangeStatus — بنبلّغ الشاشة الأب فورًا إن
+      // حالة القضية بقت "منتهية" (سواء اتحدّثت أونلاين دلوقتي أو اتقيّدت
+      // أوفلاين هتتحدّث بعدين)، عشان القضية تتنقل لقسم "منتهية" في الحال
+      // من غير خروج/ريفريش يدوي.
+      onUpdate?.('منتهية');
     }
 
     // 📥 لو أي من الكتابتين اتقيّدت أوفلاين — نفس منطق SessionUpdateModal.
@@ -289,6 +304,10 @@ export function useCaseSessions(
     });
     if (caseUpdateResult.error && !caseUpdateResult.offline) {
       showErrorToast('undo_final_judgment_case', caseUpdateResult.error, 'تم إلغاء الحكم على الجلسة، لكن تعذّر إرجاع حالة القضية إلى "نشطة" — غيّرها يدويًا', 'إلغاء الحكم النهائي');
+    } else {
+      // 🔧 FIX: نفس السبب فوق — القضية رجعت "نشطة"، فلازم الشاشة الأب
+      // تعرف فورًا عشان القضية ترجع لقسم "متداولة" في الحال.
+      onUpdate?.('نشطة');
     }
 
     setDeletingJudgment(false);
