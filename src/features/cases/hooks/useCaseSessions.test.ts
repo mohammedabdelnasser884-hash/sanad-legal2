@@ -36,11 +36,23 @@ function makeMockDb() {
     }),
   }));
 
-  return { from, setResult, updateSpy, selectEqSpy };
+  // 🆕 (فيكس atomicity — phase23): handleFinalJudgment/handleDeleteFinalJudgment
+  // بقوا بينادوا db.rpc('record_final_judgment'|'undo_final_judgment', …) بدل
+  // __dbWrite مرتين. rpc منفصل عن vi.fn() ثابت (rpcSpy تحت) بدل مرور بـ
+  // configured/get زي from فوق — عشان التستات تقدر تستخدم mockResolvedValueOnce
+  // بالتتابع (سيناريوهات conflict/فشل) بنفس أسلوب dbWriteMock() الموجود.
+  const rpc = vi.fn();
+
+  return { from, setResult, updateSpy, selectEqSpy, rpc };
 }
 
 let mockDb = makeMockDb();
-vi.mock('../../../supabaseClient', () => ({ db: { from: (...a: Parameters<typeof mockDb.from>) => mockDb.from(...a) } }));
+vi.mock('../../../supabaseClient', () => ({
+  db: {
+    from: (...a: Parameters<typeof mockDb.from>) => mockDb.from(...a),
+    rpc: (...a: unknown[]) => mockDb.rpc(...a),
+  },
+}));
 
 // 🆕 المرحلة 6.5: mock لـ window.__dbWrite — نفس نمط useCaseDetailActions.test.ts
 // (dbWriteMock() بترجع نفس الـ vi.fn ثابتة عبر إعادة إسنادها في beforeEach).
@@ -283,52 +295,62 @@ describe('useCaseSessions — handleUpdateSession', () => {
 // 🔧 FIX (طلب جيمي، 12 سبتمبر 2026): handleFinalJudgment/handleDeleteFinalJudgment
 // كانوا بيحدّثوا cases.status في الداتابيز من غير ما ينادوا onUpdate — القضية
 // كانت بتفضل شكلها القديم (منتهية/متداولة) في شاشة الأب لحد خروج وريفريش يدوي.
-describe('useCaseSessions — handleFinalJudgment (onUpdate sync)', () => {
-  it('نجاح → onUpdate بينادى بـ "منتهية" عشان الشاشة الأب تتحدّث فورًا', async () => {
-    dbWriteMock().mockResolvedValue({ error: null });
-    const { result, onUpdate } = renderSessionsHook();
+// 🔧 FIX (باگ atomicity، phase23): handleFinalJudgment بقى بينادي RPC ذرّية
+// واحدة (record_final_judgment) بدل كتابتين منفصلتين عبر __dbWrite — راجع
+// database/migrations/sql-migrations-phase23/01-final-judgment-atomic-rpc.sql.
+// التستات القديمة اللي كانت بتحاكي "نجاح جزئي" (تحديث جلسة نجح، تحديث قضية
+// فشل) اتشالت لأن السيناريو ده مبقاش ممكن أصلاً — العمليتين بقوا داخل
+// transaction واحدة في الداتابيز، فإما الاتنين ينجحوا مع بعض أو يترجعوا مع
+// بعض. مفيش دعم أوفلاين خالص هنا (RPC مش table write)، فتستات forceQueue
+// القديمة اتشالت برضه.
+describe('useCaseSessions — handleFinalJudgment', () => {
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'onLine', { value: true, writable: true, configurable: true });
+  });
+
+  it('نجاح → RPC بتتنادى بالبيانات الصح، onUpdate بـ"منتهية"، recalc، توست نجاح، تسجيل نشاط، refetchAll', async () => {
+    mockDb.rpc.mockResolvedValue({ data: null, error: null });
+    const { result, onUpdate, refetchAll } = renderSessionsHook();
     act(() => { result.current.setSessions([{ id: 'sess-1', updated_at: '2026-07-01T00:00:00.000Z' } as never]); });
 
+    let returned: { ok: boolean } | undefined;
     await act(async () => {
-      await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
+      returned = await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
     });
 
+    expect(mockDb.rpc).toHaveBeenCalledWith('record_final_judgment', {
+      p_session_id: 'sess-1',
+      p_case_id: 'case-1',
+      p_verdict_text: 'حكم لصالح المدعي',
+      p_judgment_date: '2026-08-01',
+      p_known_session_updated_at: '2026-07-01T00:00:00.000Z',
+      p_known_case_updated_at: '2026-07-16T10:00:00.000Z',
+    });
+    expect(returned).toEqual({ ok: true });
     expect(onUpdate).toHaveBeenCalledWith('منتهية');
+    expect(toast).toHaveBeenCalledWith('✅ تم تسجيل الحكم النهائي وإغلاق القضية');
+    expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'حكم نهائي', expect.objectContaining({ entity_type: 'case', entity_id: 'case-1' }));
+    expect(refetchAll).toHaveBeenCalled();
   });
 
-  it('اتقيّدت أوفلاين (case update) → onUpdate برضو بينادى بـ "منتهية" (هتتزامن بعدين)', async () => {
-    dbWriteMock()
-      .mockResolvedValueOnce({ error: null }) // session update
-      .mockResolvedValueOnce({ error: null, offline: true, queued: true }); // case update
+  it('أوفلاين → ممنوع بالكامل، مفيش أي نداء RPC، توست يطلب اتصال إنترنت', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, writable: true, configurable: true });
     const { result, onUpdate } = renderSessionsHook();
 
+    let returned: { ok: boolean } | undefined;
     await act(async () => {
-      await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
+      returned = await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
     });
 
-    expect(onUpdate).toHaveBeenCalledWith('منتهية');
-  });
-
-  it('فشل حقيقي في تحديث حالة القضية (بلا offline) → onUpdate ما بينادوش خالص', async () => {
-    dbWriteMock()
-      .mockResolvedValueOnce({ error: null }) // session update succeeds
-      .mockResolvedValueOnce({ error: { message: 'update failed' }, offline: false }); // case update fails
-    const { result, onUpdate } = renderSessionsHook();
-
-    await act(async () => {
-      await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
-    });
-
+    expect(mockDb.rpc).not.toHaveBeenCalled();
+    expect(returned).toEqual({ ok: false });
     expect(onUpdate).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith('⚠️ تسجيل الحكم النهائي يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
   });
 
-  // 🆕 FIX (باگ "الحكم بيتسجل جزئي — القضية تتقفل بس المنطوق مايتسجلش"،
-  // طلب جيمي 12 سبتمبر 2026)
-  it('فشل حقيقي في تحديث حالة القضية → بترجع {ok:false} ومفيش توست نجاح كاذب', async () => {
-    dbWriteMock()
-      .mockResolvedValueOnce({ error: null }) // session update succeeds
-      .mockResolvedValueOnce({ error: { message: 'update failed' }, offline: false }); // case update fails
-    const { result } = renderSessionsHook();
+  it('conflict (الجلسة/القضية اتعدّلت من حد تاني) → توست تعارض، بترجع {ok:false}، onUpdate ما بينادوش', async () => {
+    mockDb.rpc.mockResolvedValue({ data: null, error: { message: 'conflict:session' } });
+    const { result, onUpdate, refetchAll } = renderSessionsHook();
 
     let returned: { ok: boolean } | undefined;
     await act(async () => {
@@ -336,35 +358,24 @@ describe('useCaseSessions — handleFinalJudgment (onUpdate sync)', () => {
     });
 
     expect(returned).toEqual({ ok: false });
+    expect(toast).toHaveBeenCalledWith('⚠️ هذه الجلسة أو القضية عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true);
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(refetchAll).not.toHaveBeenCalled();
+  });
+
+  it('فشل حقيقي (خطأ RPC عام) → توست فشل، بترجع {ok:false}، مفيش توست نجاح كاذب، onUpdate ما بينادوش', async () => {
+    mockDb.rpc.mockResolvedValue({ data: null, error: { message: 'permission denied' } });
+    const { result, onUpdate, refetchAll } = renderSessionsHook();
+
+    let returned: { ok: boolean } | undefined;
+    await act(async () => {
+      returned = await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
+    });
+
+    expect(returned).toEqual({ ok: false });
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(refetchAll).not.toHaveBeenCalled();
     expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('تم تسجيل الحكم النهائي وإغلاق القضية'));
-  });
-
-  it('تحديث الجلسة اتقيّد أوفلاين → تحديث القضية بيتبعت بـ forceQueue:true عشان يتزامنوا مع بعض', async () => {
-    const dbWrite = dbWriteMock();
-    dbWrite
-      .mockResolvedValueOnce({ error: null, offline: true, queued: true }) // session update queued offline
-      .mockResolvedValueOnce({ error: null, offline: true, queued: true }); // case update
-    const { result } = renderSessionsHook();
-
-    await act(async () => {
-      await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
-    });
-
-    const caseUpdateCall = dbWrite.mock.calls.find((c) => c[0]?.table === 'cases');
-    expect(caseUpdateCall?.[0]?.forceQueue).toBe(true);
-  });
-
-  it('تحديث الجلسة نجح أونلاين عادي → تحديث القضية من غير forceQueue', async () => {
-    const dbWrite = dbWriteMock();
-    dbWrite.mockResolvedValue({ error: null });
-    const { result } = renderSessionsHook();
-
-    await act(async () => {
-      await result.current.handleFinalJudgment('sess-1', '2026-08-01', 'حكم لصالح المدعي');
-    });
-
-    const caseUpdateCall = dbWrite.mock.calls.find((c) => c[0]?.table === 'cases');
-    expect(caseUpdateCall?.[0]?.forceQueue).toBe(false);
   });
 });
 
@@ -465,44 +476,72 @@ describe('useCaseSessions — handleCancelJudgmentReservation', () => {
   });
 });
 
-describe('useCaseSessions — handleDeleteFinalJudgment (onUpdate sync)', () => {
-  it('نجاح → onUpdate بينادى بـ "نشطة" عشان القضية ترجع لقسم متداولة فورًا', async () => {
-    dbWriteMock().mockResolvedValue({ error: null });
-    const { result, onUpdate } = renderSessionsHook();
+// 🔧 FIX (باگ atomicity، phase23): نفس منطق handleFinalJudgment فوق — RPC
+// ذرّية واحدة (undo_final_judgment) بدل كتابتين منفصلتين.
+describe('useCaseSessions — handleDeleteFinalJudgment', () => {
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'onLine', { value: true, writable: true, configurable: true });
+  });
+
+  it('نجاح → RPC بتتنادى بالبيانات الصح، onUpdate بـ"نشطة"، deletingJudgment يرجع false، recalc، refetchAll', async () => {
+    mockDb.rpc.mockResolvedValue({ data: null, error: null });
+    const { result, onUpdate, refetchAll } = renderSessionsHook();
     act(() => { result.current.setSessions([{ id: 'sess-1', updated_at: '2026-07-01T00:00:00.000Z' } as never]); });
 
     await act(async () => {
       await result.current.handleDeleteFinalJudgment('sess-1');
     });
 
+    expect(mockDb.rpc).toHaveBeenCalledWith('undo_final_judgment', {
+      p_session_id: 'sess-1',
+      p_case_id: 'case-1',
+      p_known_session_updated_at: '2026-07-01T00:00:00.000Z',
+      p_known_case_updated_at: '2026-07-16T10:00:00.000Z',
+    });
     expect(onUpdate).toHaveBeenCalledWith('نشطة');
+    expect(result.current.deletingJudgment).toBe(false);
+    expect(toast).toHaveBeenCalledWith('↩️ تم إلغاء الحكم النهائي، والقضية رجعت للقضايا المتداولة');
+    expect(refetchAll).toHaveBeenCalled();
   });
 
-  it('فشل حقيقي في تحديث حالة القضية (بلا offline) → onUpdate ما بينادوش خالص', async () => {
-    dbWriteMock()
-      .mockResolvedValueOnce({ error: null }) // session update succeeds
-      .mockResolvedValueOnce({ error: { message: 'update failed' }, offline: false }); // case update fails
+  it('أوفلاين → ممنوع بالكامل، مفيش أي نداء RPC، توست يطلب اتصال إنترنت', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, writable: true, configurable: true });
     const { result, onUpdate } = renderSessionsHook();
 
     await act(async () => {
       await result.current.handleDeleteFinalJudgment('sess-1');
     });
 
+    expect(mockDb.rpc).not.toHaveBeenCalled();
     expect(onUpdate).not.toHaveBeenCalled();
+    expect(result.current.deletingJudgment).toBe(false);
+    expect(toast).toHaveBeenCalledWith('⚠️ إلغاء الحكم النهائي يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
   });
 
-  it('تصفير الحكم اتقيّد أوفلاين → رجوع حالة القضية بيتبعت بـ forceQueue:true', async () => {
-    const dbWrite = dbWriteMock();
-    dbWrite
-      .mockResolvedValueOnce({ error: null, offline: true, queued: true }) // session reset queued offline
-      .mockResolvedValueOnce({ error: null, offline: true, queued: true }); // case update
-    const { result } = renderSessionsHook();
+  it('conflict → توست تعارض، onUpdate ما بينادوش، deletingJudgment يرجع false', async () => {
+    mockDb.rpc.mockResolvedValue({ data: null, error: { message: 'conflict:case' } });
+    const { result, onUpdate, refetchAll } = renderSessionsHook();
 
     await act(async () => {
       await result.current.handleDeleteFinalJudgment('sess-1');
     });
 
-    const caseUpdateCall = dbWrite.mock.calls.find((c) => c[0]?.table === 'cases');
-    expect(caseUpdateCall?.[0]?.forceQueue).toBe(true);
+    expect(toast).toHaveBeenCalledWith('⚠️ هذه الجلسة أو القضية عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true);
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(result.current.deletingJudgment).toBe(false);
+    expect(refetchAll).not.toHaveBeenCalled();
+  });
+
+  it('فشل حقيقي (خطأ RPC عام) → توست فشل، onUpdate ما بينادوش، مفيش refetchAll', async () => {
+    mockDb.rpc.mockResolvedValue({ data: null, error: { message: 'permission denied' } });
+    const { result, onUpdate, refetchAll } = renderSessionsHook();
+
+    await act(async () => {
+      await result.current.handleDeleteFinalJudgment('sess-1');
+    });
+
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(result.current.deletingJudgment).toBe(false);
+    expect(refetchAll).not.toHaveBeenCalled();
   });
 });
