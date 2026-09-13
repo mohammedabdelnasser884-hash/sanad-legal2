@@ -23,6 +23,11 @@ async function assertEncyclopediaTabOpensCleanly(page: import('@playwright/test'
   // زرارا التعديل/الحذف بتوع لوحة الإدارة ملهمش وجود في نسخة التصفح دي
   await expect(page.getByTestId('admin-encyclopedia-folder-edit')).toHaveCount(0);
   await expect(page.getByTestId('admin-encyclopedia-folder-delete')).toHaveCount(0);
+  // ⚡ NEW (فصل إدارة الموسوعة عن شبكة أقسام لوحة الإدارة): زرار "إدارة
+  // الموسوعة" بييجي بس لحساب السوبر أدمن الوحيد (onManageEncyclopedia في
+  // App.tsx) — أي حساب تاني (أدمن مكتب عادي أو lawyer) مش المفروض يشوفه
+  // خالص هنا.
+  await expect(page.getByTestId('encyclopedia-manage-button')).toHaveCount(0);
 }
 
 test('حساب أدمن عادي (مش سوبر أدمن) → تاب "الموسوعة القانونية" ظاهر ومفتوح، بخلاف تاب الأتعاب/لوحة الإدارة', async ({ page }) => {
