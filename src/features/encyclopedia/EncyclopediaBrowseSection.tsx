@@ -20,8 +20,9 @@ interface EncyclopediaBrowseSectionProps {
 
 // بطاقة نموذج (ملف) — نسخة عرض/تحميل بس، بدون تعديل/حذف (ده مقصور على
 // EncyclopediaSection.tsx بتاعة لوحة الإدارة). الكارت نفسه بلا أي onClick
-// (مقصود) — سطرين بس: اسم النموذج، وتحته سطر فيه badge النوع (PDF/DOC)
-// على اليمين + أيقونتا الإجراء (معاينة/تحميل) على الشمال في نفس السطر.
+// (مقصود) — سطرين بس: السطر الأول badge النوع (PDF/DOC) بنفس حجم/مكان
+// أيقونة المجلد بالظبط (على اليمين) + اسم النموذج جنبه، والسطر التاني
+// context البحث على اليمين + أيقونتا الإجراء (معاينة/تحميل) على الشمال.
 // badge النوع بلون مختلف حسب الملف (أحمر "PDF" / أزرق "DOC") عشان يتميّز
 // بصريًا عن أيقونة المجلد الكهرمانية/البنفسجي من أول نظرة.
 // categoryLabel اختياري — بيتحط بس في نتائج البحث المسطّحة (context
@@ -39,17 +40,21 @@ function FormCard({ form, downloading, onDownload, previewing, onPreview, catego
     key: form.id, 'data-testid': 'encyclopedia-form-card',
     className: 'bg-premium-card border border-white/5 rounded-2xl p-3.5 space-y-2',
   },
-    // ── السطر الأول: الاسم (+ الوصف لو موجود، اختياري) ──
-    React.createElement('p', { className: 'text-xs font-black text-white leading-snug' }, form.title),
-    form.description && React.createElement('p', { className: 'text-[10px] text-slate-500 -mt-1 leading-relaxed' }, form.description),
+    // ── السطر الأول: badge النوع (نفس حجم أيقونة المجلد) + الاسم (+ الوصف
+    // لو موجود). ──
+    React.createElement('div', { className: 'flex items-center gap-3' },
+      React.createElement('div', {
+        className: `w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-black text-[9px] ${isPdf ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'}`,
+      }, isPdf ? 'PDF' : 'DOC'),
+      React.createElement('div', { className: 'flex-1 min-w-0' },
+        React.createElement('p', { className: 'text-xs font-black text-white leading-tight truncate' }, form.title),
+        form.description && React.createElement('p', { className: 'text-[10px] text-slate-500 mt-0.5 leading-relaxed line-clamp-1' }, form.description)
+      )
+    ),
 
-    // ── السطر التاني: badge النوع + context البحث على اليمين، أيقونتا
-    // الإجراء على الشمال. ──
+    // ── السطر التاني: context البحث على اليمين، أيقونتا الإجراء على الشمال. ──
     React.createElement('div', { className: 'flex items-center justify-between gap-2' },
       React.createElement('div', { className: 'flex items-center gap-1.5 flex-wrap min-w-0' },
-        React.createElement('span', {
-          className: `inline-block text-[9px] font-black px-1.5 py-0.5 rounded-md ${isPdf ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'}`,
-        }, isPdf ? 'PDF' : 'DOC'),
         categoryLabel && React.createElement('span', { 'data-testid': 'encyclopedia-search-result-category', className: 'inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-400/10 text-amber-400' }, categoryLabel)
       ),
       React.createElement('div', { className: 'flex items-center gap-1.5 shrink-0' },
