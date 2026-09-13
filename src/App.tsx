@@ -19,6 +19,8 @@ import ExitConfirmModal from './app/ExitConfirmModal';
 import CommandDock from './app/CommandDock';
 import AppLoadingScreen from './app/AppLoadingScreen';
 import AppModals from './app/AppModals';
+// ⚡ NEW (تصفح "الموسوعة القانونية" لكل المستخدمين — قراءة/تحميل بس)
+import { useEncyclopediaBrowse } from './features/encyclopedia/hooks/useEncyclopediaBrowse';
 // ⚡ NEW (A4 — 14 أغسطس 2026، خطة Desktop Experience): استبدال الـ div
 // الجذري inline بـ AppShell (اتبنى هيكليًا في A3) — نفس className ونفس
 // data-testid="app-shell" بالحرف، صفر تغيير بصري.
@@ -64,6 +66,9 @@ const AdminPanel = React.lazy(() => import('./features/admin/AdminPanel'));
 // مبيدخلوش عليه فورًا. نفس نمط AdminPanel فوق بالظبط: React.lazy +
 // React.Suspense في مكان الرندر تحت.
 const ArchiveTab = React.lazy(() => import('./features/dashboard/ArchiveTab'));
+// ⚡ NEW (تصفح "الموسوعة القانونية" لكل المستخدمين) — نفس نمط ArchiveTab
+// فوق بالظبط: تاب مش هيدخل عليه غالبية المستخدمين كل مرة، فـReact.lazy.
+const EncyclopediaBrowseSection = React.lazy(() => import('./features/encyclopedia/EncyclopediaBrowseSection'));
 
 // ─── Dashboard Components ─────────────────
 import AppHeaderRaw from './features/dashboard/AppHeader';
@@ -134,6 +139,16 @@ function App() {
     const nav = useNavigation();
     const tab = nav.tab;
     const setTab = useCallback((newTab: TabName) => nav.navigateTo(newTab), [nav]);
+
+    // ⚡ NEW (تصفح "الموسوعة القانونية" لكل المستخدمين): بيانات مستقلة
+    // تمامًا عن useAdminEncyclopedia بتاعة لوحة الإدارة — نفس فكرة
+    // ArchiveTab/DocsTab اللي بيجيب بياناته وقت ما التاب بتاعه يتفتح، مش
+    // من أول تحميل للتطبيق.
+    const encyclopediaBrowse = useEncyclopediaBrowse();
+    const { fetchEncyclopedia: fetchEncyclopediaBrowse } = encyclopediaBrowse;
+    useEffect(() => {
+        if (tab === 'encyclopedia') fetchEncyclopediaBrowse();
+    }, [tab, fetchEncyclopediaBrowse]);
 
     // ⚡ PERF (خطة تحسين الأداء — مبني على قياس Profiler فعلي، 7 سبتمبر
     // 2026): بيتتبع مين من التلات تابات (dashboard/cases/clients) اتفتح
@@ -690,6 +705,20 @@ function App() {
         },
         React.createElement(ArchiveTab, { cases, clients: clientsWithExtras, nav, profile })
     );
+    // ⚡ Suspense مطلوب هنا لأن EncyclopediaBrowseSection بقى React.lazy فوق.
+    const EncyclopediaTabContent = React.createElement(React.Suspense, {
+            fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                React.createElement(I.Spin)
+            )
+        },
+        React.createElement(EncyclopediaBrowseSection, {
+            loadingEncyclopedia: encyclopediaBrowse.loadingEncyclopedia,
+            categories: encyclopediaBrowse.categories,
+            forms: encyclopediaBrowse.forms,
+            downloadingFormId: encyclopediaBrowse.downloadingFormId,
+            onDownload: encyclopediaBrowse.handleDownloadForm,
+        })
+    );
 
     const showMenu = showHeaderMenu;
 
@@ -912,6 +941,7 @@ function App() {
                 : React.createElement('div', { className: 'text-center text-slate-500 text-xs pt-20' }, 'غير مصرح لك بهذا القسم')
             ),
             tab === 'documents' && DocsTab,
+            tab === 'encyclopedia' && EncyclopediaTabContent,
             tab === 'admin' && (isAdmin
                 // ⚡ FIX (8 أغسطس 2026 — البند 5 من تقرير حالة التنفيذ): clientsWithExtras
                 // بدل clients الخام — useAdminArchive بيدوّر بـ clients.find(id) عشان
