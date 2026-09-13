@@ -92,7 +92,9 @@ export function useCaseSessions(
     // قبل الحذف — وبنبعتها كمان جوه data مع __dbWrite عشان لو الحذف اتقيّد
     // أوفلاين، تفضل متاحة وقت المزامنة (offlineSync.ts).
     const deletedSession = sessions.find((s) => s.id === sessionId);
-    const { error, offline, queued } = await window.__dbWrite({
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
+    // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
+    const { error } = await window.__dbWrite({
       type: 'DELETE', table: 'case_sessions', id: sessionId,
       data: {
         _offlineSessionCaseId: caseData.id,
@@ -100,10 +102,6 @@ export function useCaseSessions(
         session_hall: deletedSession?.session_hall,
       }
     });
-    if (offline && queued) {
-      toast('📥 الحذف محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-      return;
-    }
     if (error) { showErrorToast('session_delete', error, 'فشل حذف الجلسة، حاول مرة أخرى', 'حذف جلسة قضية'); return; }
     // FIX (2.3): لو الجلسة المحذوفة كانت هي الأقرب، لازم next_hearing يتحدّث
     const newCaseUpdatedAt = await recalcNextHearing(caseData.id);
@@ -133,7 +131,9 @@ export function useCaseSessions(
     // ⚠️ تحسين إضافي عن السلوك القديم: safeUpdate كانت بترجع conflict من
     // غير أي toast خالص (سكوت تام). دلوقتي بقى فيه رسالة واضحة، بنفس نمط
     // handleUpdateNote في useCaseDetailActions.ts.
-    const { error, offline, queued, conflict } = await window.__dbWrite({
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
+    // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
+    const { error, conflict } = await window.__dbWrite({
       type: 'UPDATE', table: 'case_sessions', id: sessionId,
       data: {
         session_date: form.date,
@@ -147,10 +147,6 @@ export function useCaseSessions(
       },
       knownUpdatedAt: session?.updated_at || null,
     });
-    if (offline && queued) {
-      toast('📥 التعديل محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-      return;
-    }
     if (conflict) { toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
     if (error) { showErrorToast('session_update', error, 'فشل تعديل بيانات الجلسة — تحقق من الاتصال وأعد المحاولة', 'تعديل جلسة قضية'); return; }
     // FIX (2.3): تاريخ الجلسة ممكن يكون اتغيّر، فلازم next_hearing يتحدّث معاه
@@ -397,11 +393,9 @@ export function useCaseSessions(
     if (result.conflict) { toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
     if (result.error && !result.offline) { toast('❌ فشل إلغاء حجز النطق بالحكم، حاول مرة أخرى', true); return; }
 
-    if (result.offline && result.queued) {
-      toast('📥 تم حفظ إلغاء الحجز محليًا — سيُزامن عند عودة الإنترنت');
-      refetchAll();
-      return;
-    }
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): كان هنا
+    // `if (result.offline && result.queued) {...}` — مستحيل يتحقق بعد
+    // المرحلة 1 (__dbWrite بترجع offline:false دايمًا)، اتشال.
 
     toast('↩️ تم إلغاء حجز النطق بالحكم');
 
