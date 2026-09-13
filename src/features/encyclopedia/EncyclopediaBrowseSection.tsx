@@ -38,17 +38,17 @@ function FormCard({ form, downloading, onDownload, previewing, onPreview, catego
   const isPdf = form.file_type === 'pdf';
   return React.createElement('div', {
     key: form.id, 'data-testid': 'encyclopedia-form-card',
-    className: 'bg-premium-card border border-white/5 rounded-2xl p-3.5 space-y-2',
+    className: 'bg-premium-card border border-white/5 rounded-xl p-2.5 space-y-1.5',
   },
     // ── السطر الأول: badge النوع (نفس حجم أيقونة المجلد) + الاسم (+ الوصف
     // لو موجود). ──
-    React.createElement('div', { className: 'flex items-center gap-3' },
+    React.createElement('div', { className: 'flex items-center gap-2.5' },
       React.createElement('div', {
-        className: `w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-black text-[9px] ${isPdf ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'}`,
+        className: `w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-black text-[8.5px] ${isPdf ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'}`,
       }, isPdf ? 'PDF' : 'DOC'),
       React.createElement('div', { className: 'flex-1 min-w-0' },
         React.createElement('p', { className: 'text-xs font-black text-white leading-tight truncate' }, form.title),
-        form.description && React.createElement('p', { className: 'text-[10px] text-slate-500 mt-0.5 leading-relaxed line-clamp-1' }, form.description)
+        form.description && React.createElement('p', { className: 'text-[9.5px] text-slate-500 leading-snug line-clamp-1' }, form.description)
       )
     ),
 
@@ -61,12 +61,12 @@ function FormCard({ form, downloading, onDownload, previewing, onPreview, catego
         React.createElement('button', {
           onClick: onPreview, disabled: previewing || downloading, 'data-testid': 'encyclopedia-form-preview',
           'aria-label': 'معاينة', title: 'معاينة',
-          className: 'w-7 h-7 rounded-full bg-white/5 border border-white/10 text-slate-300 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50',
+          className: 'w-6 h-6 rounded-full bg-white/5 border border-white/10 text-slate-300 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50',
         }, previewing ? React.createElement(I.Spin) : React.createElement(I.Eye)),
         React.createElement('button', {
           onClick: onDownload, disabled: downloading || previewing, 'data-testid': 'encyclopedia-form-download',
           'aria-label': 'تحميل', title: 'تحميل',
-          className: 'w-7 h-7 rounded-full bg-teal-400/10 border border-teal-400/20 text-teal-400 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50',
+          className: 'w-6 h-6 rounded-full bg-teal-400/10 border border-teal-400/20 text-teal-400 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50',
         }, downloading ? React.createElement(I.Spin) : React.createElement(I.Download))
       )
     )
