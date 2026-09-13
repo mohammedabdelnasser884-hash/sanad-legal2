@@ -1,4 +1,4 @@
-// إشعارات الواجهة: toast، بانر الأوفلاين، مؤشر المزامنة
+// إشعارات الواجهة: toast
 // 🔒 FIX (تشخيص لوجز E2E — 1 أغسطس 2026): كل نداء لـtoast() كان بيجدول
 // setTimeout منفصل لإزالة كلاس 'show' بعد 3.4 ثانية، من غير إلغاء أي
 // setTimeout سابق لسه شغّال. لو توستان حصلوا في وقت قريب من بعض (مثلاً:
@@ -19,39 +19,10 @@ export function toast(msg: string, isErr = false) {
     toastHideTimer = setTimeout(() => { el.classList.remove('show'); toastHideTimer = null; }, 3400);
 }
 
-export function showOfflineBanner(pendingCount = 0) {
-    const banner = document.getElementById('offline-banner');
-    const badge  = document.getElementById('offline-queue-badge');
-    if (!banner) return;
-    banner.classList.add('visible');
-    if (badge) {
-        if (pendingCount > 0) { badge.textContent = `${pendingCount} معلّق`; (badge as HTMLElement).style.display = 'inline'; }
-        else (badge as HTMLElement).style.display = 'none';
-    }
-}
-
-export function hideOfflineBanner() {
-    const banner = document.getElementById('offline-banner');
-    if (banner) banner.classList.remove('visible');
-}
-
-export function showSyncIndicator(text = 'جاري المزامنة...') {
-    const el = document.getElementById('sync-indicator');
-    const tx = document.getElementById('sync-text');
-    if (el) el.classList.add('visible');
-    if (tx) tx.textContent = text;
-}
-
-export function hideSyncIndicator(successText: string | null = null) {
-    const el = document.getElementById('sync-indicator');
-    const tx = document.getElementById('sync-text');
-    if (successText && tx) {
-        tx.textContent = successText;
-        setTimeout(() => { if (el) el.classList.remove('visible'); }, 2000);
-    } else {
-        if (el) el.classList.remove('visible');
-    }
-}
+// 🗑️ المرحلة 2 (إلغاء الأوفلاين في الكتابة، 13 سبتمبر 2026):
+// showOfflineBanner/hideOfflineBanner/showSyncIndicator/hideSyncIndicator
+// اتشالوا — كانوا مستخدمين فقط من offlineQueue.ts/offlineSync.ts (المحذوفين)
+// وتستاتهم، لتنبيه المستخدم بحالة طابور الكتابة الأوفلاين اللي بقى مش موجود.
 
 export async function flushPendingSubscription() {
     if (window.__pendingSubscription) {
