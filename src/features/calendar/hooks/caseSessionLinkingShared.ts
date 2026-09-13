@@ -47,18 +47,21 @@ export function makeSessionGroupId(): string {
   return `sg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** لو caseId لسه تمبيد (القضية نفسها اتقيدت أوفلاين ولسه ما اتزامنتش)،
- * بيضيف sentinel الحل الذاتي (_offlineSelfTempId + _offlineSelfFallbackName)
- * عشان دورة المزامنة تقدر تحل الـ id الحقيقي قبل تنفيذ الـ UPDATE ده —
- * راجع resolveOfflineSelfId في offlineQueue.ts. لو id حقيقي بالفعل، بيرجع
- * data زي ما هي من غير أي تغيير (نفس شكل الناتج القديم بالظبط). */
+/** 🗑️ المرحلة 3 (إلغاء الأوفلاين فى الكتابة، 13 سبتمبر 2026): كانت بتضيف
+ * sentinel الحل الذاتي (_offlineSelfTempId + _offlineSelfFallbackName) لو
+ * caseId لسه تمبيد أوفلاين — بعد المرحلة 1 (الكتابة أونلاين دايمًا)، caseId
+ * اللي بيوصل هنا من أي caller بقى id حقيقي دايمًا (مفيش تمبيد بيفضل مستخدم
+ * بعد نجاح كتابة أونلاين)، فشرط isOfflineTempId(caseId) مستحيل يتحقق
+ * عمليًا. الدالة فضلت بنفس التوقيع (الـcallers فى useClientLinking.ts/
+ * caseSessionLinkingShared.ts متلمسوش) كـpassthrough بسيط لحد ما تتشال هي
+ * والـcallers مع بعض فى تبسيط لاحق. */
 export function withCaseSelfOfflineSentinel(
   caseId: string,
   data: Record<string, unknown>,
   fallbackTitle: string | undefined,
 ): Record<string, unknown> {
-  if (!isOfflineTempId(caseId)) return data;
-  return { ...data, _offlineSelfTempId: caseId, _offlineSelfFallbackName: fallbackTitle };
+  void caseId; void fallbackTitle;
+  return data;
 }
 
 /** لو العملية رجعت queued (أوفلاين)، بيضيف sentinel حل الـ FK
@@ -73,6 +76,14 @@ export function withCaseSelfOfflineSentinel(
  * (مفيش عمود "اسم" فريد منطقي يتبحث بيه — تعليق موجود بالفعل في
  * offlineQueue.ts) فالحل هيعتمد بس على تطابق التمبيد في نفس دورة
  * المزامنة، بالظبط زي أي جدول تاني برا القايمة دي. */
+// 🗑️ المرحلة 3 (إلغاء الأوفلاين فى الكتابة، 13 سبتمبر 2026): شرط الدالة
+// (offline && queued) بقى مستحيل يتحقق بـtrue بعد المرحلة 1 — __dbWrite
+// بيرجع offline:false دايمًا وqueued فضلت undefined دايمًا (مفيش طابور
+// يتقيّد فيه أصلاً). عمليًا كل نداء لـwithFkOfflineSentinel كان بيرجع data
+// زي ما هي من غير أي تغيير حتى قبل التبسيط ده. الدالة فضلت بنفس التوقيع
+// (6 نداء إجمالاً مؤكَّدين بالعدّ — 4 فى الملف ده + useCaseCrudActions.ts +
+// NewStandaloneSessionModal.tsx — كلهم متلمسوش) كـpassthrough بسيط لحد ما
+// تتشال هي والـcallers مع بعض فى تبسيط لاحق.
 export function withFkOfflineSentinel(
   offline: boolean | undefined,
   queued: boolean | undefined,
@@ -82,8 +93,8 @@ export function withFkOfflineSentinel(
   fallbackNameValue: string | null | undefined,
   data: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (!(offline && queued)) return data;
-  return { ...data, _offlineFkTempId: [{ field, tempId, table, fallbackNameValue }] };
+  void offline; void queued; void field; void tempId; void table; void fallbackNameValue;
+  return data;
 }
 
 /** الحقول المشتركة اللازمة لبناء صف INSERT في جدول cases عند تحويل جلسة
@@ -128,7 +139,13 @@ export interface CaseInsertSourceFields {
  * @param existingClientId مرّرها بس لو المصدر جلسة محفوظة بالفعل ممكن
  *   تكون اتربطت بموكل قبل التحويل (session.client_id) — لو undefined،
  *   عمود client_id مش بيتبعت خالص في الـ INSERT (زي مسار الفورم اللي
- *   لسه ما اتحفظش، مفيش فيه مفهوم "موكل مربوط قبل كده" أصلاً). */
+ *   لسه ما اتحفظش، مفيش فيه مفهوم "موكل مربوط قبل كده" أصلاً).
+ * @param offlineTempId 🗑️ المرحلة 3 (إلغاء الأوفلاين فى الكتابة، 13 سبتمبر
+ *   2026): بقى باراميتر غير مستخدم جوه الدالة دي (كان بيتبعت كـ
+ *   _offlineTempId فى الصف — اتشال، مفيش قارئ له). فضل فى التوقيع عمدًا
+ *   عشان useClientLinking.ts/StandaloneSessionDetailModal.tsx لسه بيستخدموه
+ *   لأغراض تانية (fallback الـid، تمرير لـwithFkOfflineSentinel) هيتشالوا
+ *   مع باقي بنية الأوفلاين لاحقًا. */
 // ⚡ CHANGED (خطة تفكيك legacy columns — Phase F.3، 6 أغسطس 2026): وقّفنا
 // كتابة plaintiff/plaintiff_role/plaintiff_national_id/
 // plaintiff_power_of_attorney/plaintiff_address/defendant/defendant_role/
@@ -193,7 +210,6 @@ export function buildCaseInsertData(
     // دلوقتي هنا كمان، عشان الفحص يشتغل بغض النظر عن ترتيب التريجرز.
     tenant_id: getCurrentTenantId(),
     ...(existingClientId !== undefined ? { client_id: existingClientId || null } : {}),
-    _offlineTempId: offlineTempId,
   };
 }
 
