@@ -92,6 +92,10 @@ function EncyclopediaBrowseSection({
   // المجلد الحالي (مش محتاج تفتح المجلدات واحد واحد). نتيجة مسطّحة، مش
   // فلترة على المستوى الحالي بس.
   const [searchQuery, setSearchQuery] = useState('');
+  // ── طي/فتح جملة الإقرار الخاصة بمصدر الصيغ (زرار "عرض التفاصيل" تحت
+  // الوصف الأساسي). بتتقفل تلقائيًا لو المستخدم دخل جوه مجلد أو خرج من
+  // الصفحة الجذرية (مفيش داعي تفضل مفتوحة في مكان تاني أصلاً مش هتظهر فيه). ──
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
 
   const activeCategory = categories.find((c) => c.id === activeCategoryId) || null;
   const topLevel = categories.filter((c) => !c.parent_id);
@@ -151,13 +155,27 @@ function EncyclopediaBrowseSection({
 
   return React.createElement('div', { className: 'space-y-3 fade-in' },
 
-    // شرح بسيط
-    React.createElement('div', { className: 'bg-premium-card border border-teal-500/15 rounded-2xl p-3.5 flex items-start gap-2.5' },
-      React.createElement('div', { className: 'w-8 h-8 rounded-xl bg-teal-500/10 flex items-center justify-center text-teal-400 shrink-0' },
-        React.createElement(I.Folder)
-      ),
-      React.createElement('p', { className: 'text-[11px] text-slate-400 leading-relaxed' },
-        'نماذج وصيغ قانونية جاهزة للتحميل، منظّمة في مجلدات.'
+    // شرح بسيط — ظاهر بس في الصفحة الجذرية (المجلدات الرئيسية)، مش جوه أي مجلد.
+    !isInsideAnyFolder && React.createElement('div', { className: 'bg-premium-card border border-teal-500/15 rounded-2xl p-3.5' },
+      React.createElement('div', { className: 'flex items-start gap-2.5' },
+        React.createElement('div', { className: 'w-8 h-8 rounded-xl bg-teal-500/10 flex items-center justify-center text-teal-400 shrink-0' },
+          React.createElement(I.Folder)
+        ),
+        React.createElement('div', { className: 'flex-1 min-w-0' },
+          React.createElement('p', { className: 'text-[11px] text-slate-400 leading-relaxed' },
+            'نماذج وصيغ قانونية جاهزة للتحميل، منظّمة في مجلدات.'
+          ),
+          React.createElement('button', {
+            onClick: () => setShowDisclaimer((v) => !v), 'data-testid': 'encyclopedia-disclaimer-toggle',
+            className: 'flex items-center gap-1 mt-1.5 text-[10px] font-bold text-teal-400/80 active:opacity-70',
+          },
+            React.createElement(I.ChevronRight, { className: `w-3 h-3 transition-transform ${showDisclaimer ? '-rotate-90' : ''}` }),
+            showDisclaimer ? 'إخفاء التفاصيل' : 'عرض التفاصيل'
+          ),
+          showDisclaimer && React.createElement('p', { className: 'text-[10.5px] text-slate-500 leading-relaxed mt-2 pt-2 border-t border-white/5' },
+            'هذه الصيغ والنماذج ليست من إعداد فريق سند، وإنما من إعداد لفيف من السادة المحامين الأفاضل، قام الفريق القانوني بسند بجمعها ومراجعتها وإعادة تنسيقها. ويحرص الفريق على تحديثها وإضافة صيغ جديدة إليها بشكل مستمر.'
+          )
+        )
       )
     ),
 
