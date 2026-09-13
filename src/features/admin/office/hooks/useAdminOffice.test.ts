@@ -8,7 +8,7 @@ import type { ProfileRow } from '../../../../types';
 // useAdminOffice.ts (اتأكدت منها بقراءة الكود، مفيش تخمين):
 //   - db.from('office_settings').select('*').eq('tenant_id',x).limit(1).maybeSingle()   [fetchOfficeSettings]
 //   - db.from('office_settings').select('*').eq('tenant_id',x).limit(1).maybeSingle()   [handleSaveOfficeSettings — فحص وجود صف قديم (بقى '*' مش 'id' فقط، عشان buildFieldDiff، 19 أغسطس 2026)]
-//   - db.from('office_settings').update(payload).eq('id', existing.id)                  [handleSaveOfficeSettings — تعديل]
+//   - db.from('office_settings').update(payload).eq('id', existing.id).select('id')     [handleSaveOfficeSettings — تعديل، .select('id') مضافة 13 سبتمبر 2026 لكشف رفض RLS الصامت]
 //   - db.from('office_settings').insert({...payload, tenant_id})                        [handleSaveOfficeSettings — إنشاء]
 //   - db.storage.from('client-docs').upload(path, file, {upsert:true})                  [handleSaveOfficeSettings — رفع شعار جديد]
 // select('*') و select('id') بيترجعوا نتايج مختلفة، فبنفرّق بينهم بالـ cols
@@ -36,7 +36,22 @@ function makeMockDb() {
     })),
     update: vi.fn((payload: Record<string, unknown>) => {
       updateSpy(table, payload);
-      return { eq: vi.fn((col: string, val: unknown) => { updateSpy('eq', col, val); return Promise.resolve(get(`${table}:update`)); }) };
+      return {
+        eq: vi.fn((col: string, val: unknown) => {
+          updateSpy('eq', col, val);
+          // 🔒 FIX (توحيد رسائل المنع — المرحلة 4، 13 سبتمبر 2026): الكود
+          // الحقيقي بقى بينادي .select('id') بعد .update().eq() (كشف الرفض
+          // الصامت من RLS عبر lockErrorIfNoRowsAffected) — لازم نحاكي نفس
+          // السلسلة هنا. الافتراضي (لو مفيش setResult صريح) لازم يمثّل نجاح
+          // حقيقي (صف واحد اتأثر)، مش EMPTY العام (data:null) اللي كانت
+          // هتتفسر غلط كـ"صفر صفوف = قفل" بمجرد إضافة الفحص الجديد للكود.
+          return {
+            select: vi.fn((_cols: string) => Promise.resolve(
+              configured[`${table}:update`] ?? { data: [{ id: val }], error: null }
+            )),
+          };
+        }),
+      };
     }),
     insert: vi.fn((payload: Record<string, unknown>) => {
       insertSpy(table, payload);
@@ -205,6 +220,22 @@ describe('useAdminOffice', () => {
       expect(mockDb.updateSpy).toHaveBeenCalledWith('office_settings', expect.any(Object));
       expect(mockDb.updateSpy).toHaveBeenCalledWith('eq', 'id', 'row-1');
       expect(mockDb.insertSpy).not.toHaveBeenCalled();
+    });
+
+    it('🔒 FIX (توحيد رسائل المنع — المرحلة 4، 13 سبتمبر 2026): تحديث صف قديم بيرجع صفر صفوف من غير error (رفض RLS صامت لمكتب مقفول) → بيتحول لرسالة قفل موحدة عبر lockErrorIfNoRowsAffected، مش نجاح خادع', async () => {
+      mockDb.setResult('office_settings:select:*', { data: { id: 'row-1' }, error: null });
+      mockDb.setResult('office_settings:update', { data: [], error: null });
+      const { result } = setup();
+
+      await act(async () => { await result.current.handleSaveOfficeSettings(); });
+
+      expect(recordError).toHaveBeenCalledWith(
+        'save_office_settings',
+        expect.stringContaining('tenant_write_allowed'),
+        expect.objectContaining({ message: expect.stringContaining('وضع مشاهدة فقط') }),
+      );
+      expect(toast).not.toHaveBeenCalledWith('✅ تم حفظ إعدادات المكتب');
+      expect(logActivity).not.toHaveBeenCalled();
     });
 
     it('فيه ملف شعار جديد لكن validateUploadFile رفضه → توست برسالة الفحص، مفيش أي محاولة رفع أو حفظ', async () => {
