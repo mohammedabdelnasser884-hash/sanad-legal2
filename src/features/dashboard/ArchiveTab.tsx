@@ -69,6 +69,11 @@ function ArchiveTab({cases, clients, nav, profile}: ArchiveTabProps){
     // نفس صلاحية حذف القضية (can_delete_cases) — بالقرار، حذف مستند
     // القضية يتبع نفس صلاحية حذف القضية نفسها، مفيش مفتاح مستقل.
     const canDeleteDocument = checkPermission(profile, 'can_delete_cases');
+    // 🔒 NEW (فصل صلاحيات المشاهد عن وضع المشاهدة الجماعي، 13 سبتمبر
+    // 2026): زراير "رفع مستند"/"ابدأ الأرشفة" تحت كانوا من غير أي فحص
+    // صلاحية. نفس can_edit_cases المستخدم لنفس القرار في DocsSection.tsx
+    // (رفع مستند داخل قضية) — مفيش مفتاح مستقل للمستندات.
+    const canUploadDocument = checkPermission(profile, 'can_edit_cases');
     const [docs, setDocs]           = useState<CaseDocumentRow[]>([]);
     const [docsTotal, setDocsTotal] = useState(0);
     const [docsPage, setDocsPage]   = useState(0);
@@ -370,7 +375,7 @@ function ArchiveTab({cases, clients, nav, profile}: ArchiveTabProps){
                 React.createElement('h3',{className:"text-sm font-black text-white"},"الأرشيف الرقمي"),
                 React.createElement('p',{className:"text-[9px] text-slate-500 mt-0.5"},docsTotal+" مستند")
             ),
-            React.createElement('button',{
+            canUploadDocument && React.createElement('button',{
                 onClick:()=>fileInputRef.current&&fileInputRef.current.click(),
                 'data-testid':'archive-upload-toggle',
                 className:"flex items-center bg-gradient-to-tr from-purple-600 to-purple-400 text-white px-3 py-2 rounded-xl text-xs font-black shadow-lg gap-1 active:scale-95 transition-transform"
@@ -447,7 +452,9 @@ function ArchiveTab({cases, clients, nav, profile}: ArchiveTabProps){
                     React.createElement('p',{className:"text-white font-black text-sm"},searchQ||filterCat!=='الكل'?"لا توجد نتائج":"الأرشيف فارغ"),
                     searchQ||filterCat!=='الكل'
                         ? React.createElement('button',{onClick:()=>{handleSearchChange('');handleCatChange('الكل');},className:"text-purple-400 text-xs font-bold"},"مسح الفلاتر")
-                        : React.createElement('button',{onClick:()=>fileInputRef.current&&fileInputRef.current.click(),className:"mx-auto mt-2 flex items-center gap-2 px-4 py-2.5 bg-purple-500/10 border border-purple-500/20 text-purple-300 rounded-xl text-xs font-black active:scale-95"},React.createElement(I.Plus),"ابدأ الأرشفة")
+                        : canUploadDocument
+                            ? React.createElement('button',{onClick:()=>fileInputRef.current&&fileInputRef.current.click(),className:"mx-auto mt-2 flex items-center gap-2 px-4 py-2.5 bg-purple-500/10 border border-purple-500/20 text-purple-300 rounded-xl text-xs font-black active:scale-95"},React.createElement(I.Plus),"ابدأ الأرشفة")
+                            : null
                   )
                 : React.createElement('div',{className:"space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 xl:grid-cols-3"},
                     // 🆕 Phase 3 (تقرير تشخيص تجربة سطح المكتب — 15 أغسطس):
