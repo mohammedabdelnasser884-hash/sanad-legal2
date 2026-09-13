@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { I } from '../../constants';
+import { useNestedModalBackButton } from '../../shared/lib/useNestedModalBackButton';
 import type { EncyclopediaCategoryRow, EncyclopediaFormRow } from '../../types';
 
 interface EncyclopediaBrowseSectionProps {
@@ -84,6 +85,28 @@ function EncyclopediaBrowseSection({
   const formsCountIncludingChildren = (categoryId: string) =>
     formsOf(categoryId).length + subCategoriesOf(categoryId).reduce((sum, c) => sum + formsOf(c.id).length, 0);
 
+  // ── رجوع خطوة واحدة: من مجلد فرعي → مجلده الرئيسي، من مجلد رئيسي →
+  // القائمة الجذرية. نفس الدالة تتنادى من زرار "رجوع" الظاهر في الشاشة
+  // ومن زر رجوع الموبايل الفعلي تحت (تسلسل واحد متسق للاتنين). ──
+  const goBackOneLevel = () => {
+    setActiveCategoryId((current) => {
+      const currentCategory = categories.find((c) => c.id === current) || null;
+      return currentCategory ? currentCategory.parent_id : null;
+    });
+  };
+
+  // ── زر الرجوع الفعلي بالموبايل: مسجّلين مستويين مستقلين عن بعض (بنفس
+  // آلية registerNestedModal المستخدمة أصلاً لمودالات فرعية جوه مودالات
+  // رئيسية) عشان الضغطة الأولى ترجع من الفرعي للرئيسي بس، مش تقفل التاب
+  // كله دفعة واحدة. لازم نفصل بين "داخل أي مجلد" (يشمل الاتنين) و"داخل
+  // فرعي تحديدًا" عشان يتسجلوا كخطوتين منفصلتين في الـstack. ──
+  const isInsideAnyFolder = activeCategory !== null;
+  const isInsideSubFolder = activeCategory !== null && activeCategory.parent_id !== null;
+  useNestedModalBackButton(isInsideAnyFolder, () => setActiveCategoryId(null));
+  useNestedModalBackButton(isInsideSubFolder, () => {
+    if (activeCategory?.parent_id) setActiveCategoryId(activeCategory.parent_id);
+  });
+
   if (loadingEncyclopedia) {
     return React.createElement('div', { className: 'bg-premium-card border border-white/5 rounded-xl p-10 text-center text-slate-500 text-xs' },
       React.createElement(I.Spin), React.createElement('span', { className: 'mr-2' }, 'جاري التحميل...')
@@ -102,22 +125,29 @@ function EncyclopediaBrowseSection({
       )
     ),
 
-    // ── مسار التنقل (Breadcrumb) ──
-    activeCategory && React.createElement('div', { className: 'flex items-center gap-1.5 text-[11px] font-bold' },
+    // ── مسار التنقل (Breadcrumb) + زرار رجوع صريح ──
+    activeCategory && React.createElement('div', { className: 'flex items-center gap-2' },
       React.createElement('button', {
-        onClick: () => setActiveCategoryId(null),
-        'data-testid': 'encyclopedia-breadcrumb-root',
-        className: 'text-slate-400 hover:text-white',
-      }, 'الموسوعة القانونية'),
-      React.createElement(I.ChevronLeft),
-      activeCategory.parent_id && React.createElement(React.Fragment, null,
+        onClick: goBackOneLevel, 'data-testid': 'encyclopedia-back-button',
+        className: 'w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-slate-300 shrink-0 active:scale-90 transition-transform',
+        'aria-label': 'رجوع',
+      }, React.createElement(I.ChevronRight, { className: 'w-4 h-4' })),
+      React.createElement('div', { className: 'flex items-center gap-1.5 text-[11px] font-bold flex-wrap' },
         React.createElement('button', {
-          onClick: () => setActiveCategoryId(activeCategory.parent_id),
+          onClick: () => setActiveCategoryId(null),
+          'data-testid': 'encyclopedia-breadcrumb-root',
           className: 'text-slate-400 hover:text-white',
-        }, categories.find((c) => c.id === activeCategory.parent_id)?.name_ar || ''),
-        React.createElement(I.ChevronLeft)
-      ),
-      React.createElement('span', { className: 'text-teal-400' }, activeCategory.name_ar)
+        }, 'الموسوعة القانونية'),
+        React.createElement(I.ChevronLeft),
+        activeCategory.parent_id && React.createElement(React.Fragment, null,
+          React.createElement('button', {
+            onClick: () => setActiveCategoryId(activeCategory.parent_id),
+            className: 'text-slate-400 hover:text-white',
+          }, categories.find((c) => c.id === activeCategory.parent_id)?.name_ar || ''),
+          React.createElement(I.ChevronLeft)
+        ),
+        React.createElement('span', { className: 'text-teal-400' }, activeCategory.name_ar)
+      )
     ),
 
     // ── المستوى الجذري: المجلدات الرئيسية ──
