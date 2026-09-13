@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { I } from '../../constants';
+import { useNestedModalBackButton } from '../../shared/lib/useNestedModalBackButton';
 
 // ─── Sub-components ──────────────────────
 import { IconAdmin, IconToggle, IconKey, IconPortal, IconActivity, IconSecurity, IconWarning, IconBackup, IconSessions, IconOffice, IconArchive, IconStats, ROLE_CONFIG, PERMISSION_LABELS } from './icons';
@@ -97,6 +98,18 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
       onInitialSectionConsumed?.();
     }
   }, [initialSection, isSuperAdminUser, onInitialSectionConsumed]);
+
+  // ⚡ NEW (فيكس زر الرجوع الفعلي بالموبايل — طلب Gemy): قبل كده مفيش أي
+  // تسجيل لـ"section" في آلية useNestedModalBackButton خالص، فزر الرجوع
+  // الفعلي وقت ما أي قسم مفتوح كان بيتجاهله ويقفز مباشرة لسلوك popstate
+  // الافتراضي (يقفل تاب الإدارة كله لـdashboard) بدل ما يقفل القسم بس
+  // ويرجع لشبكة الأقسام. مقصور دلوقتي على 'encyclopedia' بس (مش كل
+  // الأقسام) — قسم 'archive' بيستخدم آلية تانية تمامًا لمودال تأكيد الحذف
+  // بتاعه (nav.openModal('delete')، شوف confirmDeleteCase فوق)، فتسجيل
+  // عام لكل الأقسام هنا كان ممكن يتعارض معاه (زر الرجوع كان هيقفل الأرشيف
+  // كله بدل ما يقفل مودال التأكيد بس). التوسيع لباقي الأقسام قرار منفصل
+  // يستحق مراجعة مستقلة لكل قسم على حدة.
+  useNestedModalBackButton(section === 'encyclopedia', () => setSection(null));
 
   // ── قفل الـ scroll ──
   useEffect(() => {
