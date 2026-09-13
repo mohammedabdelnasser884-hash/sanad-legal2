@@ -15,6 +15,7 @@ export function useEncyclopediaBrowse() {
   const [forms, setForms] = useState<EncyclopediaFormRow[]>([]);
   const [loadingEncyclopedia, setLoadingEncyclopedia] = useState(false);
   const [downloadingFormId, setDownloadingFormId] = useState<string | null>(null);
+  const [previewingFormId, setPreviewingFormId] = useState<string | null>(null);
 
   // ── جلب المجلدات + النماذج (قراءة مباشرة — RLS مفتوحة لأي authenticated) ──
   const fetchEncyclopedia = useCallback(async () => {
@@ -44,8 +45,28 @@ export function useEncyclopediaBrowse() {
     setDownloadingFormId(null);
   };
 
+  // ── معاينة نموذج قبل التحميل: نفس رابط التحميل الموقّع بالظبط (mode:
+  // 'view')، من غير ما يزوّد عداد التحميلات. الـPDF بيتفتح مباشرة في تاب
+  // جديد (المتصفح بيعرضه inline بشكل طبيعي). الـWord (docx) مش المتصفح
+  // بيعرضه لوحده، فبنلفه بـGoogle Docs Viewer (بيقدر يقرا أي رابط HTTPS
+  // عام مؤقت زي الرابط الموقّع طول ما لسه صالح وقت الفتح). ──
+  const handlePreviewForm = async (form: EncyclopediaFormRow) => {
+    setPreviewingFormId(form.id);
+    try {
+      const { url } = await callEncyclopediaDownload(form.id, 'view');
+      const viewerUrl = form.file_type === 'docx'
+        ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(url)}`
+        : url;
+      window.open(viewerUrl, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      showErrorToast('encyclopedia_preview_form', e, 'تعذّر فتح المعاينة. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'الموسوعة القانونية');
+    }
+    setPreviewingFormId(null);
+  };
+
   return {
     categories, forms, loadingEncyclopedia, fetchEncyclopedia,
     downloadingFormId, handleDownloadForm,
+    previewingFormId, handlePreviewForm,
   };
 }
