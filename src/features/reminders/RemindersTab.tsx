@@ -121,7 +121,11 @@ function RemindersTab({initialFilter, profile=null, nav, externalRefreshSignal}:
                     ),
 
                 // زرار إضافة تذكير (ذهبي)
-                React.createElement('button',{
+                // 🔒 NEW (فصل صلاحيات المشاهد عن وضع المشاهدة الجماعي، 13 سبتمبر
+                // 2026): محكوم بـcan_edit_reminders (canEditReminder محسوبة فوق
+                // أصلاً وبتتحكم فى زراير التعديل/الحذف — الزرار ده كان الوحيد
+                // الناقص من نفس المجموعة).
+                canEditReminder && React.createElement('button',{
                     onClick:()=>setShowForm(!showForm),
                     'data-testid':'new-reminder-toggle',
                     className:"flex items-center bg-gradient-to-tr from-premium-gold to-amber-200 text-premium-bg px-2.5 py-1.5 rounded-xl text-[11px] font-black shadow-lg gap-1 active:scale-95 transition-transform shrink-0"
