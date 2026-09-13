@@ -161,4 +161,20 @@ describe('encyclopedia-download', () => {
     expect(data.ok).toBe(true);
     expect(data.url).toContain('cat-1/form-1.pdf');
   });
+
+  it('وضع المعاينة (mode: "view"): بيرجّع نفس الرابط الموقّع بس من غير ما يزوّد عداد التحميلات خالص', async () => {
+    const res = await handler(jsonRequest({ form_id: 'form-1', mode: 'view' }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.url).toContain('cat-1/form-1.pdf');
+    expect(data.file_name).toBe('صحيفة دعوى.pdf');
+    expect(state.patchCalls.length).toBe(0);
+  });
+
+  it('أي قيمة تانية لـmode (أو غيابها) بتفضل تزوّد العداد زي السلوك الأصلي', async () => {
+    const res = await handler(jsonRequest({ form_id: 'form-1', mode: 'download' }));
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.patchCalls).toEqual([{ id: 'form-1', body: { download_count: 4 } }]);
+  });
 });
