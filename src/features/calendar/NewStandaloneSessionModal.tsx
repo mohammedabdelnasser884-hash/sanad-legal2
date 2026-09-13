@@ -309,13 +309,12 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
         // مستقلة) هيتضاف في مرحلة 6.2 التالية.
         const primaryPlaintiff = partyFields.plaintiffs.find((p) => p.is_client) || partyFields.plaintiffs[0];
         const primaryDefendant = partyFields.defendants.find((p) => p.is_client) || partyFields.defendants[0];
-        // ⚡ NEW (مرحلة 6.2 — خطة تعدد الأطراف): معرّف مؤقت لصف الجلسة
-        // نفسها — بيتبعت دايمًا مع نداء __dbWrite بغض النظر عن حالة
-        // الاتصال (نفس نمط offlineTempId في useCaseActions.ts)، عشان لو
-        // الجلسة اتقيّدت أوفلاين، صفوف case_parties المرتبطة بيها تقدر
-        // تتحل لـ session_id الحقيقي وقت المزامنة (withFkOfflineSentinel
-        // تحت). لو أونلاين، __dbWrite بيشيله تلقائيًا قبل الـ INSERT
-        // الحقيقي (stripOfflineSentinels في offlineQueue.ts) — صفر أثر.
+        // ⚡ (مرحلة 6.2 — خطة تعدد الأطراف)، معدَّل فى المرحلة 3 (إلغاء
+        // الأوفلاين فى الكتابة، 13 سبتمبر 2026): معرّف مؤقت لصف الجلسة —
+        // كان بيتبعت كـ_offlineTempId فى payload الجلسة (اتشال)، ولسه
+        // بيتبعت كـtempId argument لـwithFkOfflineSentinel تحت (بقت
+        // passthrough بسيطة — راجع caseSessionLinkingShared.ts، مفيش أثر
+        // فعلي دلوقتي).
         const sessionOfflineTempId = makeOfflineTempId();
         // ⚡ NEW (مرحلة 6.2): بيكتب صف في case_parties لكل طرف في
         // partyFields.parties، بنداءات __dbWrite منفصلة — نفس آلية
@@ -418,8 +417,6 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
                     // جامع. نفس الغلطة اتصلحت قبل كده في NewCaseModal.tsx.
                     plaintiff_legal_title: partyFields.legalTitles.plaintiff || null,
                     defendant_legal_title: partyFields.legalTitles.defendant || null,
-                    // ⚡ NEW (مرحلة 6.2): راجع تعليق sessionOfflineTempId فوق.
-                    _offlineTempId: sessionOfflineTempId,
                 },
                 returning: true,
             });
