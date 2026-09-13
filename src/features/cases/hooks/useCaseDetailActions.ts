@@ -581,19 +581,15 @@ ${PDF_FONT_LINK}
     // case_notes مالهاش FK فعلي على case_id (مؤكَّد بالقسم 0.1 من التقرير)،
     // ومفيش سيناريو عملي لملاحظة بتتضاف لقضية لسه تمبيد (الشاشة دي أصلاً
     // مبتفتحش غير لقضية حقيقية متزامنة)، فمفيش داعي لـ _offlineFkTempId هنا.
-    const { error, offline, queued } = await window.__dbWrite({
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
+    // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
+    const { error } = await window.__dbWrite({
       type: 'INSERT', table: 'case_notes', data: {
         case_id: caseData.id,
         content: noteText.trim(),
       }
     });
     setSavingNote(false);
-    if (offline && queued) {
-      toast('📥 الملاحظة محفوظة محلياً — ستُزامن عند عودة الإنترنت');
-      setNoteText('');
-      setShowAddNote(false);
-      return;
-    }
     if (error) { showErrorToast('note_add', error, 'فشل إضافة الملاحظة — تحقق من الاتصال وأعد المحاولة', 'إضافة ملاحظة'); return; }
     toast('✅ تمت إضافة الملاحظة');
     logActivity(db, 'إضافة ملاحظة', {
@@ -610,11 +606,9 @@ ${PDF_FONT_LINK}
 
   const handleDeleteNote = async (noteId: string) => {
     // 🆕 المرحلة 6 (تكملة ثانية): __dbWrite بدل db.from(...).delete() المباشر.
-    const { error, offline, queued } = await window.__dbWrite({ type: 'DELETE', table: 'case_notes', id: noteId });
-    if (offline && queued) {
-      toast('📥 الحذف محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-      return;
-    }
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
+    // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
+    const { error } = await window.__dbWrite({ type: 'DELETE', table: 'case_notes', id: noteId });
     if (error) { showErrorToast('note_delete', error, 'فشل حذف الملاحظة، حاول مرة أخرى', 'حذف ملاحظة'); return; }
     toast('🗑 تم حذف الملاحظة');
     // ⚡ NEW (سجل النشاط — تغطية كاملة، 30 أغسطس 2026): كان بيسجل عنوان
@@ -639,13 +633,11 @@ ${PDF_FONT_LINK}
     // 🆕 المرحلة 6 (تكملة ثانية): __dbWrite بدل safeUpdate — بيحافظ على نفس
     // فحص التعارض (knownUpdatedAt) أونلاين، وكمان بيقيّد في طابور الأوفلاين
     // لو النت مقطوع (بعكس safeUpdate اللي كانت بترجع فشل صريح بس).
-    const { error, offline, queued, conflict } = await window.__dbWrite({
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
+    // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
+    const { error, conflict } = await window.__dbWrite({
       type: 'UPDATE', table: 'case_notes', data: { content }, id: noteId, knownUpdatedAt: note?.updated_at || null
     });
-    if (offline && queued) {
-      toast('📥 التعديل محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-      return;
-    }
     if (conflict) { toast('⚠️ هذه الملاحظة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
     if (error) { showErrorToast('note_update', error, 'فشل تعديل الملاحظة — تحقق من الاتصال وأعد المحاولة', 'تعديل ملاحظة'); return; }
     toast('✅ تم تعديل الملاحظة');
