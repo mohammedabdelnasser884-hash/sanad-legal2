@@ -16,12 +16,15 @@ interface EncyclopediaBrowseSectionProps {
 // بطاقة نموذج (ملف) — نسخة عرض/تحميل بس، بدون تعديل/حذف (ده مقصور على
 // EncyclopediaSection.tsx بتاعة لوحة الإدارة). زرارين: معاينة (يفتح
 // الملف للعرض بس، من غير ما يزوّد عداد التحميلات) وتحميل (زي ما كان).
-function FormCard({ form, downloading, onDownload, previewing, onPreview }: {
+// categoryLabel اختياري — بيتحط بس في نتائج البحث المسطّحة (context
+// عن مكان النموذج، لأن نتيجة البحث بتظهر من غير التنقل جوه المجلدات).
+function FormCard({ form, downloading, onDownload, previewing, onPreview, categoryLabel }: {
   form: EncyclopediaFormRow;
   downloading: boolean;
   onDownload: () => void;
   previewing: boolean;
   onPreview: () => void;
+  categoryLabel?: string;
 }) {
   return React.createElement('div', {
     key: form.id, 'data-testid': 'encyclopedia-form-card',
@@ -34,7 +37,10 @@ function FormCard({ form, downloading, onDownload, previewing, onPreview }: {
       React.createElement('div', { className: 'flex-1 min-w-0' },
         React.createElement('p', { className: 'text-xs font-black text-white leading-snug' }, form.title),
         form.description && React.createElement('p', { className: 'text-[10px] text-slate-500 mt-0.5 leading-relaxed' }, form.description),
-        React.createElement('span', { className: 'inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 uppercase mt-1' }, form.file_type)
+        React.createElement('div', { className: 'flex items-center gap-1.5 flex-wrap mt-1' },
+          React.createElement('span', { className: 'inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 uppercase' }, form.file_type),
+          categoryLabel && React.createElement('span', { 'data-testid': 'encyclopedia-search-result-category', className: 'inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-400/10 text-amber-400' }, categoryLabel)
+        )
       )
     ),
     React.createElement('div', { className: 'flex items-center gap-2' },
@@ -77,6 +83,10 @@ function EncyclopediaBrowseSection({
 }: EncyclopediaBrowseSectionProps) {
   // مستويين بس — activeCategoryId يمثل المجلد المفتوح حاليًا (رئيسي أو فرعي)، null = القائمة الرئيسية
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  // بحث خاص بالموسوعة — بيدوّر في عنوان/وصف كل النماذج بغض النظر عن
+  // المجلد الحالي (مش محتاج تفتح المجلدات واحد واحد). نتيجة مسطّحة، مش
+  // فلترة على المستوى الحالي بس.
+  const [searchQuery, setSearchQuery] = useState('');
 
   const activeCategory = categories.find((c) => c.id === activeCategoryId) || null;
   const topLevel = categories.filter((c) => !c.parent_id);
@@ -107,6 +117,27 @@ function EncyclopediaBrowseSection({
     if (activeCategory?.parent_id) setActiveCategoryId(activeCategory.parent_id);
   });
 
+  // ── البحث: نتيجة مسطّحة عبر كل النماذج (مش مقصورة على المجلد المفتوح
+  // حاليًا)، من غير أي استعلام إضافي — البيانات كلها محمّلة أصلاً
+  // (fetchEncyclopedia بيجيب الكل مرة واحدة). زر رجوع الموبايل وقت
+  // البحث بيقفل البحث الأول (زي أي overlay)، قبل ما يرجع لمنطق المجلدات. ──
+  const trimmedQuery = searchQuery.trim();
+  const isSearching = trimmedQuery.length > 0;
+  const searchResults = isSearching
+    ? forms.filter((f) =>
+        f.title.toLowerCase().includes(trimmedQuery.toLowerCase())
+        || (f.description || '').toLowerCase().includes(trimmedQuery.toLowerCase())
+      )
+    : [];
+  const categoryLabelFor = (categoryId: string) => {
+    const cat = categories.find((c) => c.id === categoryId);
+    if (!cat) return '';
+    if (!cat.parent_id) return cat.name_ar;
+    const parent = categories.find((c) => c.id === cat.parent_id);
+    return parent ? `${parent.name_ar} / ${cat.name_ar}` : cat.name_ar;
+  };
+  useNestedModalBackButton(isSearching, () => setSearchQuery(''));
+
   if (loadingEncyclopedia) {
     return React.createElement('div', { className: 'bg-premium-card border border-white/5 rounded-xl p-10 text-center text-slate-500 text-xs' },
       React.createElement(I.Spin), React.createElement('span', { className: 'mr-2' }, 'جاري التحميل...')
@@ -125,8 +156,37 @@ function EncyclopediaBrowseSection({
       )
     ),
 
+    // ── بحث خاص بالموسوعة — شغّال في أي وقت (مستوى جذري أو جوه مجلد)،
+    // بيدوّر في كل النماذج مرة واحدة (مش محتاج تفتح المجلدات). ──
+    React.createElement('div', { className: 'relative' },
+      React.createElement('input', {
+        type: 'text', value: searchQuery,
+        onChange: (e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value),
+        placeholder: 'ابحث في الموسوعة القانونية...', 'data-testid': 'encyclopedia-search-input',
+        className: 'w-full bg-premium-card border border-white/10 rounded-xl py-2.5 pr-3.5 pl-9 text-[11px] font-bold text-white placeholder:text-slate-500 focus:outline-none focus:border-teal-400/40',
+      }),
+      isSearching && React.createElement('button', {
+        onClick: () => setSearchQuery(''), 'data-testid': 'encyclopedia-search-clear',
+        className: 'absolute left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-slate-300',
+        'aria-label': 'مسح البحث',
+      }, '×')
+    ),
+
+    // ── وضع البحث: نتيجة مسطّحة، بتحجب التنقل بالمجلدات مؤقتًا ──
+    isSearching && (
+      searchResults.length === 0
+        ? React.createElement('div', { 'data-testid': 'encyclopedia-search-empty', className: 'bg-premium-card border border-white/5 rounded-xl p-10 text-center text-slate-500 text-xs' }, 'مفيش نتايج مطابقة')
+        : searchResults.map((form) => React.createElement(FormCard, {
+            key: form.id, form, downloading: downloadingFormId === form.id,
+            onDownload: () => onDownload(form),
+            previewing: previewingFormId === form.id,
+            onPreview: () => onPreview(form),
+            categoryLabel: categoryLabelFor(form.category_id),
+          }))
+    ),
+
     // ── مسار التنقل (Breadcrumb) + زرار رجوع صريح ──
-    activeCategory && React.createElement('div', { className: 'flex items-center gap-2' },
+    !isSearching && activeCategory && React.createElement('div', { className: 'flex items-center gap-2' },
       React.createElement('button', {
         onClick: goBackOneLevel, 'data-testid': 'encyclopedia-back-button',
         className: 'w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-slate-300 shrink-0 active:scale-90 transition-transform',
@@ -151,7 +211,7 @@ function EncyclopediaBrowseSection({
     ),
 
     // ── المستوى الجذري: المجلدات الرئيسية ──
-    !activeCategory && (
+    !isSearching && !activeCategory && (
       topLevel.length === 0
         ? React.createElement('div', { 'data-testid': 'encyclopedia-empty', className: 'bg-premium-card border border-white/5 rounded-xl p-10 text-center text-slate-500 text-xs' }, 'لا توجد مجلدات مضافة بعد')
         : topLevel.map((cat) => React.createElement(FolderCard, {
@@ -161,7 +221,7 @@ function EncyclopediaBrowseSection({
     ),
 
     // ── داخل مجلد رئيسي: مجلداته الفرعية + نماذجه المباشرة ──
-    activeCategory && !activeCategory.parent_id && React.createElement(React.Fragment, null,
+    !isSearching && activeCategory && !activeCategory.parent_id && React.createElement(React.Fragment, null,
       subCategoriesOf(activeCategory.id).map((sub) => React.createElement(FolderCard, {
         key: sub.id, category: sub, formsCount: formsOf(sub.id).length,
         onOpen: () => setActiveCategoryId(sub.id),
@@ -177,7 +237,7 @@ function EncyclopediaBrowseSection({
     ),
 
     // ── داخل مجلد فرعي: نماذجه بس (مفيش مستوى تالت) ──
-    activeCategory && activeCategory.parent_id && React.createElement(React.Fragment, null,
+    !isSearching && activeCategory && activeCategory.parent_id && React.createElement(React.Fragment, null,
       formsOf(activeCategory.id).length === 0
         ? React.createElement('div', { 'data-testid': 'encyclopedia-empty', className: 'bg-premium-card border border-white/5 rounded-xl p-10 text-center text-slate-500 text-xs' }, 'المجلد فارغ حاليًا')
         : formsOf(activeCategory.id).map((form) => React.createElement(FormCard, {
