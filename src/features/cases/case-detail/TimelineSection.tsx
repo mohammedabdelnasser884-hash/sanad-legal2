@@ -45,6 +45,10 @@ interface TimelineSectionProps {
   // إجراء نهائي بيغيّر حالة القضية نفسها، فمنطقي يتقيّد بصلاحية تعديل
   // القضية تحديدًا.
   canEditCase: boolean;
+  // 🔒 NEW (فصل صلاحيات المشاهد عن وضع المشاهدة الجماعي، 13 سبتمبر
+  // 2026): زرار حذف الجلسة بقى مستقل عن canEditCase — نفس نمط
+  // canDeleteNote/canDeleteDocument في باقي أقسام القضية.
+  canDeleteCase: boolean;
   deletingSessionId: string | null;
   setConfirmDeleteSession: (v: { id: string; date: string } | null) => void;
   // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 7، 12 سبتمبر 2026):
@@ -64,7 +68,7 @@ interface TimelineSectionProps {
 function TimelineSection({
   loadingSessions, sessions,
   editingSession, setEditingSession, handleUpdateSession,
-  setSessionUpdateTarget, setFinalJudgmentTarget, setConfirmDeleteJudgment, canEditCase, deletingSessionId, setConfirmDeleteSession,
+  setSessionUpdateTarget, setFinalJudgmentTarget, setConfirmDeleteJudgment, canEditCase, canDeleteCase, deletingSessionId, setConfirmDeleteSession,
   caseStatus, cancelingReservationId, handleCancelJudgmentReservation,
 }: TimelineSectionProps) {
   // 🆕 (خطة إعادة تصميم إغلاق سلسلة الجلسات، مرحلة 7، 12 سبتمبر 2026):
@@ -328,23 +332,25 @@ function TimelineSection({
                                                     // يحدّث حالة القضية صح.
                                                     i === 0 && React.createElement('span', {className: "text-[9px] px-2 py-0.5 bg-premium-gold/10 text-premium-gold rounded-full font-bold"}, "آخر جلسة"),
                                                     // 🔒 FIX (فصل صلاحيات المشاهد عن وضع المشاهدة الجماعي، 13
-                                    // سبتمبر 2026): زراري تعديل/حذف الجلسة كانا بيظهروا لأي
-                                    // مستخدم من غير أي فحص canEditCase — بعكس زرار "⚡ تحديث"
-                                    // جوه نفس الكارت اللي اتقفل فعلاً (شوف الشرط تحت في نفس
-                                    // الملف). بقيا محكومين بنفس canEditCase.
-                                    canEditCase && i === 0 && s.is_judgment_reserved !== true && React.createElement(React.Fragment, null,
-                                                        React.createElement('button', {
+                                                    // سبتمبر 2026): زراري تعديل/حذف الجلسة كانا بيظهروا لأي
+                                                    // مستخدم من غير أي فحص صلاحية خالص. بقى كل زرار محكوم
+                                                    // بصلاحيته المستقلة (canEditCase للتعديل، canDeleteCase
+                                                    // للحذف) — نفس نمط canEditNote/canDeleteNote في
+                                                    // NotesSection وcanUploadDocument/canDeleteDocument في
+                                                    // DocsSection، بدل ما يبقوا الاتنين على شرط واحد.
+                                                    i === 0 && s.is_judgment_reserved !== true && React.createElement(React.Fragment, null,
+                                                        canEditCase && React.createElement('button', {
                                                             onClick: (e: React.MouseEvent) => { e.stopPropagation(); setEditingSession({id:s.id, date:s.session_date||'', time_period:s.session_time||'صباحي', location_floor:s.session_floor||'', location_hall:s.session_hall||'', description:s.description||'', result:s.result||'', next_action:s.next_action||''}); },
                                                             'data-testid': 'session-edit-trigger',
                                                             className: "w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center text-slate-500 hover:text-premium-gold active:scale-90 transition-all"
                                                         }, React.createElement(I.Edit)),
-                                                        deletingSessionId === s.id
+                                                        canDeleteCase && (deletingSessionId === s.id
                                                         ? React.createElement('div', {className:"w-6 h-6 flex items-center justify-center"}, React.createElement(I.Spin))
                                                         : React.createElement('button', {
                                                             onClick: (e: React.MouseEvent) => { e.stopPropagation(); setConfirmDeleteSession({id: s.id, date: s.session_date || '—'}); },
                                                             'data-testid': 'session-delete-trigger',
                                                             className: "w-6 h-6 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-400 hover:bg-rose-500/20 active:scale-90 transition-all"
-                                                        }, React.createElement(I.Trash))
+                                                        }, React.createElement(I.Trash)))
                                                     )
                                                 )
                                             ),
