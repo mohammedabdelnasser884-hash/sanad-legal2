@@ -259,12 +259,14 @@ export function useClientActions(params: {
             contact_info: { id_url: idUrl, id_back_url: idBackUrl, poa_url: poaUrl } as ClientContactInfo,
         };
 
-        // ⚡ NEW: تمبيد أوفلاين للموكل — بنفس نمط offlineTempId المستخدم في
-        // useClientLinking.ts، عشان لو فيه clientLinkTarget نقدر نربط بيه
-        // حتى لو الإدراج نفسه راح للطابور (أوفلاين).
+        // 🗑️ المرحلة 3 (إلغاء الأوفلاين فى الكتابة، 13 سبتمبر 2026): كان
+        // بيتبعت كـ_offlineTempId فى الـpayload فوق — اتشال (مفيش قارئ له
+        // بعد حذف offlineSync.ts فى المرحلة 2). offlineTempId فضل متغيّر
+        // محلي بيتولّد زي الأول ومستخدم تحت كـfallback فى الفرع الميت
+        // offline&&queued (هيتشال لاحقًا).
         const offlineTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
         const { error, offline, queued, data: insertedClient } = await window.__dbWrite({
-            type: 'INSERT', table: 'clients', data: { ...payload, _offlineTempId: offlineTempId }, returning: true,
+            type: 'INSERT', table: 'clients', data: payload, returning: true,
         });
         setSavingClient(false);
 
@@ -378,22 +380,16 @@ export function useClientActions(params: {
             } else if (linkedClientId && clientLinkTarget.type !== 'party' && clientLinkTarget.type !== 'sessionParty' && clientLinkTarget.type !== 'localParty') {
                 const table = clientLinkTarget.type === 'case' ? 'cases' : 'case_sessions';
                 const targetId = clientLinkTarget.type === 'case' ? clientLinkTarget.caseId : clientLinkTarget.sessionId;
-                // ⚡ NEW (Phase 2): لو القضية المستهدفة نفسها لسه تمبيد أوفلاين
-                // (clientLinkTarget.caseIsOfflineTemp)، لازم نبعت
-                // _offlineSelfTempId + _offlineSelfFallbackName كمان — بنفس
-                // نمط handleLinkExistingClient/handleAddAndLinkClient الأصليين
-                // — عشان دورة المزامنة تقدر تحل id القضية الحقيقي قبل تنفيذ
-                // الـ UPDATE ده (resolveOfflineSelfId في offlineQueue.ts).
-                const isTargetOfflineTempCase = clientLinkTarget.type === 'case' && clientLinkTarget.caseIsOfflineTemp;
+                // 🗑️ المرحلة 3 (إلغاء الأوفلاين فى الكتابة، 13 سبتمبر 2026):
+                // كان هنا إرسال شرطي لـ_offlineFkTempId/_offlineSelfTempId —
+                // اتشال. الكتابة بقت أونلاين دايمًا (المرحلة 1)، فـ
+                // linkedClientId/targetId هنا دايمًا id حقيقي، مفيش أي داعي
+                // لسنتينل حل لاحق.
                 const { error: linkErr } = await window.__dbWrite({
                     type: 'UPDATE',
                     table,
                     id: targetId,
-                    data: {
-                        client_id: linkedClientId,
-                        ...(isOfflineTemp ? { _offlineFkTempId: [{ field: 'client_id', tempId: offlineTempId, table: 'clients' as const, fallbackNameValue: form.full_name }] } : {}),
-                        ...(isTargetOfflineTempCase ? { _offlineSelfTempId: targetId, _offlineSelfFallbackName: clientLinkTarget.caseFallbackTitle } : {}),
-                    },
+                    data: { client_id: linkedClientId },
                 });
                 if (linkErr) {
                     const targetLabel = clientLinkTarget.type === 'case' ? 'بالقضية' : 'بالجلسة';
