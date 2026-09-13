@@ -243,6 +243,14 @@ function App() {
 
     const { darkMode, toggleTheme } = useThemeMode();
     const [country, setCountry] = useState('EG');
+    // ⚡ NEW (زرار "إدارة الموسوعة" في صفحة الموسوعة العادية — طلب Gemy):
+    // لما السوبر أدمن يدوس على الزرار في EncyclopediaBrowseSection، بنحط
+    // 'encyclopedia' هنا وننقّل لتاب 'admin' — AdminPanel بيقرأها كـ
+    // initialSection ويفتح القسم مباشرة (كرت الموسوعة اتشال من شبكة أقسام
+    // لوحة الإدارة نفسها). بترجع null تاني أول ما AdminPanel يستهلكها
+    // (onInitialSectionConsumed) عشان رجوع عادي لتاب الإدارة مايفتحش
+    // القسم ده تلقائيًا من غير الزرار.
+    const [adminInitialSection, setAdminInitialSection] = useState<'encyclopedia' | null>(null);
     const { dbOnline } = useDbConnectivity(profile);
 
     // ── تحميل الدولة من office_settings بعد ما الـ profile يتحمّل ──
@@ -719,6 +727,14 @@ function App() {
             onDownload: encyclopediaBrowse.handleDownloadForm,
             previewingFormId: encyclopediaBrowse.previewingFormId,
             onPreview: encyclopediaBrowse.handlePreviewForm,
+            // ⚡ NEW: زرار "إدارة الموسوعة" — بيظهر جوه المكوّن نفسه بس لو
+            // isAISuperAdmin (نفس حساب m.gemy4231@gmail.com المستخدم في
+            // AdminPanel.tsx وكل استخدام تاني للسوبر أدمن في الملف ده)،
+            // فبنبعت onManageEncyclopedia بس لصاحب الحساب ده — أي حد تاني
+            // مابيستلمش الـ prop دي أصلًا فمش بيشوف أي زرار.
+            onManageEncyclopedia: isAISuperAdmin
+                ? () => { setAdminInitialSection('encyclopedia'); nav.navigateTo('admin'); }
+                : undefined,
         })
     );
 
@@ -958,7 +974,7 @@ function App() {
                           React.createElement(I.Spin)
                       )
                   },
-                      React.createElement(AdminPanel, { profile, lawyers, clients: clientsWithExtras, fetchLawyers, country, onCountryChange: (c: string) => { setCountry(c); }, nav, casesTotal, clientsTotal })
+                      React.createElement(AdminPanel, { profile, lawyers, clients: clientsWithExtras, fetchLawyers, country, onCountryChange: (c: string) => { setCountry(c); }, nav, casesTotal, clientsTotal, initialSection: adminInitialSection, onInitialSectionConsumed: () => setAdminInitialSection(null) })
                   )
                 : React.createElement('div', { className: 'flex flex-col items-center justify-center pt-24 gap-3' },
                     React.createElement('div', { className: 'w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center' },
