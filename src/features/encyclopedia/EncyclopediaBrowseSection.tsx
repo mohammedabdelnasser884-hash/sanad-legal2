@@ -11,6 +11,11 @@ interface EncyclopediaBrowseSectionProps {
   onDownload: (form: EncyclopediaFormRow) => void;
   previewingFormId: string | null;
   onPreview: (form: EncyclopediaFormRow) => void;
+  // ⚡ NEW (زرار "إدارة الموسوعة" — طلب Gemy): لو موجودة، بتفتح نفس شاشة
+  // إدارة الموسوعة (لوحة الإدارة → قسم الموسوعة، بنفس المودالز والصلاحيات
+  // بالظبط). App.tsx مبعتهاش إلا لحساب السوبر أدمن الوحيد — لأي مستخدم
+  // تاني الـ prop دي مش موجودة أصلًا، فالزرار مابيتعرضش.
+  onManageEncyclopedia?: () => void;
 }
 
 // بطاقة نموذج (ملف) — نسخة عرض/تحميل بس، بدون تعديل/حذف (ده مقصور على
@@ -79,7 +84,7 @@ function FolderCard({ category, formsCount, onOpen }: {
 
 function EncyclopediaBrowseSection({
   loadingEncyclopedia, categories, forms, downloadingFormId, onDownload,
-  previewingFormId, onPreview,
+  previewingFormId, onPreview, onManageEncyclopedia,
 }: EncyclopediaBrowseSectionProps) {
   // مستويين بس — activeCategoryId يمثل المجلد المفتوح حاليًا (رئيسي أو فرعي)، null = القائمة الرئيسية
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
@@ -155,6 +160,13 @@ function EncyclopediaBrowseSection({
         'نماذج وصيغ قانونية جاهزة للتحميل، منظّمة في مجلدات.'
       )
     ),
+
+    // ── زرار "إدارة الموسوعة" — يظهر بس لحساب السوبر أدمن (onManageEncyclopedia
+    // بييجي من App.tsx بس لحسابه، شوف التعليق على الـ prop نفسها فوق). ──
+    onManageEncyclopedia && React.createElement('button', {
+      onClick: onManageEncyclopedia, 'data-testid': 'encyclopedia-manage-button',
+      className: 'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400 text-[11px] font-black active:scale-95 transition-transform',
+    }, React.createElement(I.Folder), 'إدارة الموسوعة'),
 
     // ── بحث خاص بالموسوعة — شغّال في أي وقت (مستوى جذري أو جوه مجلد)،
     // بيدوّر في كل النماذج مرة واحدة (مش محتاج تفتح المجلدات). ──
