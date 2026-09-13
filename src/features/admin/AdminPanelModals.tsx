@@ -9,11 +9,12 @@ import ClientPortalModal from './portal/ClientPortalModal';
 import LegalLibraryModal from './legal-library/LegalLibraryModal';
 import EncyclopediaCategoryModal from './encyclopedia/EncyclopediaCategoryModal';
 import EncyclopediaFormModal from './encyclopedia/EncyclopediaFormModal';
+import EncyclopediaBatchUploadModal from './encyclopedia/EncyclopediaBatchUploadModal';
 import type { ProfileRow, ClientRow, LawRow, LegalCategoryRow, EncyclopediaCategoryRow, EncyclopediaFormRow } from '../../types';
 import type { EditUserForm, AddUserForm, ChangePasswordPayload } from './users/hooks/useAdminUsers';
 import type { PortalAccessRow, PortalSaveForm } from './portal/hooks/useAdminPortal';
 import type { LawForm } from './legal-library/hooks/useAdminLegalLibrary';
-import type { EncyclopediaCategoryForm, EncyclopediaFormFormValues } from './encyclopedia/hooks/useAdminEncyclopedia';
+import type { EncyclopediaCategoryForm, EncyclopediaFormFormValues, EncyclopediaBatchFileResult } from './encyclopedia/hooks/useAdminEncyclopedia';
 
 // مودالز مستقلة عن قسم العرض الحالي (section) — بتتفتح فوق أي قسم أو من غير قسم مفتوح خالص.
 // اتنقلت هنا بنفس المنطق تمامًا من AdminPanel.tsx (صفر تغيير سلوك) عشان تخفيف حجم الملف الرئيسي.
@@ -97,6 +98,17 @@ interface AdminPanelModalsProps {
   confirmDeleteForm: EncyclopediaFormRow | null;
   setConfirmDeleteForm: (f: EncyclopediaFormRow | null) => void;
   handleDeleteForm: (form: EncyclopediaFormRow) => void;
+
+  // الرفع المتعدد للنماذج في الموسوعة القانونية
+  showBatchUploadModal: boolean;
+  setShowBatchUploadModal: (v: boolean) => void;
+  batchModalCategoryId: string | null;
+  setBatchModalCategoryId: (id: string | null) => void;
+  batchUploading: boolean;
+  batchProgress: { current: number; total: number } | null;
+  batchResults: EncyclopediaBatchFileResult[] | null;
+  setBatchResults: (r: EncyclopediaBatchFileResult[] | null) => void;
+  handleUploadBatch: (categoryId: string, items: { file: File; title: string }[]) => void;
 }
 
 export default function AdminPanelModals(props: AdminPanelModalsProps) {
@@ -115,6 +127,8 @@ export default function AdminPanelModals(props: AdminPanelModalsProps) {
     showFormModal, setShowFormModal, editingForm, setEditingForm,
     formModalCategoryId, setFormModalCategoryId, savingForm, handleSaveForm,
     confirmDeleteForm, setConfirmDeleteForm, handleDeleteForm,
+    showBatchUploadModal, setShowBatchUploadModal, batchModalCategoryId, setBatchModalCategoryId,
+    batchUploading, batchProgress, batchResults, setBatchResults, handleUploadBatch,
   } = props;
 
   return React.createElement(React.Fragment, null,
@@ -237,6 +251,17 @@ export default function AdminPanelModals(props: AdminPanelModalsProps) {
       inputTestId: 'admin-encyclopedia-form-delete-input',
       confirmTestId: 'admin-encyclopedia-form-delete-confirm',
       cancelTestId: 'admin-encyclopedia-form-delete-cancel'
-    }), document.body)
+    }), document.body),
+
+    // مودال الرفع المتعدد للنماذج في الموسوعة القانونية
+    showBatchUploadModal && React.createElement(EncyclopediaBatchUploadModal, {
+      categories: encyclopediaCategories,
+      defaultCategoryId: batchModalCategoryId,
+      uploading: batchUploading,
+      progress: batchProgress,
+      results: batchResults,
+      onUpload: handleUploadBatch,
+      onClose: () => { setShowBatchUploadModal(false); setBatchModalCategoryId(null); setBatchResults(null); }
+    })
   );
 }
