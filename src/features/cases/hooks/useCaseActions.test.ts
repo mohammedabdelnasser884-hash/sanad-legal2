@@ -343,27 +343,12 @@ describe('useCaseActions', () => {
       expect(params.setShowCaseModal).toHaveBeenCalledWith(false);
     });
 
-    it('offline/queued مع تاريخ جلسة → بيحفظ الجلسة في الطابور بـ _offlineCaseTitle، توست حفظ محلي، وتحديث تفاؤلي للـ state', async () => {
-      dbWriteMock().mockResolvedValue({
-        error: null, offline: true, queued: true,
-      });
-      const params = makeParams();
-      const { handleSaveCase } = useCaseActions(params);
-
-      await handleSaveCase({ title: 'قضية أوفلاين', date: '2026-08-03', session_time: 'صباحي' });
-
-      expect(dbWriteMock()).toHaveBeenCalledTimes(2);
-      expect(dbWriteMock()).toHaveBeenNthCalledWith(2, expect.objectContaining({
-        type: 'INSERT', table: 'case_sessions',
-        data: expect.objectContaining({ _offlineCaseTitle: 'قضية أوفلاين', case_id: null, session_date: '2026-08-03' }),
-      }));
-      expect(toast).toHaveBeenCalledWith('📥 محفوظة محلياً — ستُضاف فور عودة الإنترنت');
-      expect(params.setCases).toHaveBeenCalled();
-      // في حالة الأوفلاين مفيش تسجيل نشاط/تليجرام/fetchCases (مش نفس مسار النجاح الأونلاين)
-      expect(logActivity).not.toHaveBeenCalled();
-      expect(params.fetchCases).not.toHaveBeenCalled();
-    });
-
+    // 🗑️ FIX (المرحلة 4 — تنظيف الفرع الميت، 13 سبتمبر 2026): التست القديم
+    // هنا ("offline/queued مع تاريخ جلسة...") كان بيغطي فرع `if (offline &&
+    // queued)` فى useCaseCrudActions.ts اللي اتشال بالكامل — window.__dbWrite
+    // مبقاش يرجّع offline/queued بـtrue خالص بعد إلغاء الأوفلاين فى الكتابة
+    // (المرحلتين 1+2)، فالسيناريو ده بقى مستحيل الحدوث فعليًا. التست اتشال
+    // بدل ما يفضل بيفترض سلوك ملغي.
     it('فشل (error، من غير offline) → توست فشل، وقف فوري من غير استكمال أي خطوة تانية', async () => {
       dbWriteMock().mockResolvedValue({
         error: { message: 'insert failed' }, offline: false, queued: false,
@@ -746,20 +731,11 @@ describe('useCaseActions', () => {
       expect(params.fetchCases).not.toHaveBeenCalled();
     });
 
-    it('offline/queued → توست حفظ محلي، تحديث فوري للـ state المحلي بالفورم', async () => {
-      dbWriteMock().mockResolvedValue({
-        error: null, offline: true, queued: true, conflict: false,
-      });
-      const existingCase = makeCase({ id: 'case-1' });
-      const params = makeParams({ cases: [existingCase], selectedCase: existingCase });
-      const { handleUpdateCase } = useCaseActions(params);
-
-      await handleUpdateCase('case-1', { title: 'تعديل أوفلاين' });
-
-      expect(toast).toHaveBeenCalledWith('📥 التعديل محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-      expect(params.setCases).toHaveBeenCalled();
-      expect(params.setSelectedCase).toHaveBeenCalled();
-    });
+    // 🗑️ FIX (المرحلة 4 — تنظيف الفرع الميت، 13 سبتمبر 2026): التست القديم
+    // هنا ("offline/queued → توست حفظ محلي...") كان بيغطي فرع `if (offline &&
+    // queued)` فى مسار تعديل القضية داخل useCaseCrudActions.ts، اللي اتشال
+    // بالكامل لنفس السبب المذكور فوق فى تستات handleSaveCase (السيناريو بقى
+    // مستحيل الحدوث). التست اتشال بدل ما يفضل بيفترض سلوك ملغي.
 
     it('استثناء غير متوقع (مثلاً window.__dbWrite بترمي) → يتلقّط في catch، توست خطأ اتصال عام', async () => {
       dbWriteMock().mockRejectedValue(new Error('network down'));
