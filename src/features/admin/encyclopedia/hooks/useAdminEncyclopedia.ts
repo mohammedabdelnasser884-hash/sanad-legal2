@@ -19,6 +19,15 @@ export interface EncyclopediaFormFormValues {
   category_id: string;
 }
 
+// نتيجة رفع كل ملف على حدة في الرفع المتعدد — نفس الملف يفشل أو ينجح
+// لوحده من غير ما يوقف باقي الدفعة
+export interface EncyclopediaBatchFileResult {
+  fileName: string;
+  title: string;
+  status: 'success' | 'error';
+  error?: string;
+}
+
 const ENCYCLOPEDIA_FIELD_DIFF: FieldDiffMap = {
   name_ar: { label: 'اسم المجلد' },
 };
@@ -63,6 +72,13 @@ export function useAdminEncyclopedia(profile?: ProfileRow | null) {
   const [formModalCategoryId, setFormModalCategoryId] = useState<string | null>(null);
   const [confirmDeleteForm, setConfirmDeleteForm] = useState<EncyclopediaFormRow | null>(null);
   const [savingForm, setSavingForm] = useState(false);
+
+  // ── الرفع المتعدد (batch) — مجلد واحد لكل الدفعة، نفس uploadForm بس في لوب تسلسلي ──
+  const [showBatchUploadModal, setShowBatchUploadModal] = useState(false);
+  const [batchModalCategoryId, setBatchModalCategoryId] = useState<string | null>(null);
+  const [batchUploading, setBatchUploading] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [batchResults, setBatchResults] = useState<EncyclopediaBatchFileResult[] | null>(null);
 
   // ── جلب المجلدات + النماذج (قراءة مباشرة — RLS مفتوحة لأي authenticated) ──
   const fetchEncyclopedia = useCallback(async () => {
@@ -205,6 +221,54 @@ export function useAdminEncyclopedia(profile?: ProfileRow | null) {
     setSavingForm(false);
   };
 
+  // ── رفع دفعة ملفات مرة واحدة على نفس المجلد — واحد واحد بالتسلسل، نفس
+  //    action='uploadForm' الحالية بالظبط (مفيش فانكشن جديدة في السيرفر).
+  //    لو ملف فشل (حجم/نوع/أي خطأ سيرفر)، بيتسجّل فشله والباقي بيكمل عادي.
+  const handleUploadBatch = async (categoryId: string, items: { file: File; title: string }[]) => {
+    setBatchUploading(true);
+    setBatchResults(null);
+    const results: EncyclopediaBatchFileResult[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const { file, title } = items[i];
+      const finalTitle = title.trim() || file.name;
+      setBatchProgress({ current: i + 1, total: items.length });
+      try {
+        const ext = (file.name.split('.').pop() || '').toLowerCase();
+        if (!ENCYCLOPEDIA_ALLOWED_EXTENSIONS.includes(ext)) {
+          throw new Error('الصيغ المسموحة فقط: PDF أو Word (docx)');
+        }
+        if (file.size > ENCYCLOPEDIA_MAX_FILE_SIZE) {
+          throw new Error('حجم الملف أكبر من المسموح (2 ميجابايت كحد أقصى)');
+        }
+        const file_base64 = await fileToBase64(file);
+        await callEncyclopediaAction({
+          action: 'uploadForm', category_id: categoryId,
+          title: finalTitle, description: null,
+          file_name: file.name, file_type: ext, file_base64,
+        });
+        logActivity(db, 'إضافة نموذج للموسوعة القانونية', {
+          userName: _userName, entity_type: 'encyclopedia_form', details: finalTitle,
+        });
+        results.push({ fileName: file.name, title: finalTitle, status: 'success' });
+      } catch (e) {
+        results.push({
+          fileName: file.name, title: finalTitle, status: 'error',
+          error: e instanceof Error ? e.message : 'خطأ غير معروف',
+        });
+      }
+    }
+    setBatchResults(results);
+    setBatchProgress(null);
+    setBatchUploading(false);
+    fetchEncyclopedia();
+
+    const successCount = results.filter((r) => r.status === 'success').length;
+    if (successCount > 0) recordSuccess('encyclopedia_batch_upload');
+    if (successCount === results.length) toast(`✅ تم رفع ${successCount} نموذج بنجاح`);
+    else if (successCount === 0) toast('❌ فشل رفع كل الملفات، راجع التفاصيل', true);
+    else toast(`⚠️ تم رفع ${successCount} من ${results.length} — راجع القائمة لمعرفة الملفات الفاشلة`, true);
+  };
+
   return {
     categories, forms, loadingEncyclopedia, fetchEncyclopedia,
     showCategoryModal, setShowCategoryModal,
@@ -217,5 +281,9 @@ export function useAdminEncyclopedia(profile?: ProfileRow | null) {
     formModalCategoryId, setFormModalCategoryId,
     confirmDeleteForm, setConfirmDeleteForm,
     savingForm, handleSaveForm, handleDeleteForm,
+    showBatchUploadModal, setShowBatchUploadModal,
+    batchModalCategoryId, setBatchModalCategoryId,
+    batchUploading, batchProgress, batchResults, setBatchResults,
+    handleUploadBatch,
   };
 }
