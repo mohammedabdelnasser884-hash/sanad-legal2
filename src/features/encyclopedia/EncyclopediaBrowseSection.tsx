@@ -62,37 +62,53 @@ function FormCard({ form, downloading, onDownload, previewing, onPreview, catego
 }
 
 // بطاقة مجلد — للتنقل بس (فتح المجلد)، بدون تعديل/حذف. المجلد الرئيسي
-// شكله زي ما هو (كهرماني). المجلد الفرعي بقى متفرّق بشكل الكارت نفسه مش
-// باللون بس (اقتراح 2 اللي اتفقنا عليه): شريط بنفسجي على الحافة اليمين +
-// خلفية بتكسچر خفيف (repeating-linear-gradient) + badge "مجلد فرعي · N"
-// بدل سطر العدد العادي + أيقونة FolderStack (مجلدات فوق بعض) بدل أيقونة
-// المجلد العادية — كل ده يبان فورًا وانت بتتصفح إنك جوه مستوى فرعي، من
-// غير ما تحتاج تقرا breadcrumb.
+// شكله زي ما هو (كهرماني، صف واحد عادي). المجلد الفرعي بقى شكله مختلف
+// تمامًا (آخر اقتراح متفق عليه): شريط علوي بنفسجي غامق فيه كلمة "مجلد
+// فرعي" + جسم الكارت تحته مصبوغ بغسلة بنفسجية شفافة فوق نفس خلفية
+// الكارت الأساسية (مش لون محايد زي كارت PDF/DOC) + حدّ بنفسجي رفيع
+// حوالين الكارت كله يربط الشريط والجسم كوحدة واحدة. كده الكارت كله يبان
+// مختلف من بعيد، مش بس badge أو سطر نص.
 function FolderCard({ category, formsCount, onOpen }: {
   category: EncyclopediaCategoryRow;
   formsCount: number;
   onOpen: () => void;
 }) {
   const isSubFolder = category.parent_id !== null;
+
+  if (isSubFolder) {
+    return React.createElement('button', {
+      key: category.id, onClick: onOpen, 'data-testid': 'encyclopedia-folder-card',
+      className: 'w-full rounded-2xl overflow-hidden border border-violet-400/20 text-right active:scale-[0.98] transition-transform',
+    },
+      // ── الشريط العلوي: تصنيف "مجلد فرعي". ──
+      React.createElement('div', { className: 'bg-violet-400/20 px-3.5 py-1 flex items-center gap-1.5' },
+        React.createElement(I.FolderStack, { className: 'w-3 h-3 text-violet-300' }),
+        React.createElement('span', { className: 'text-[9px] font-bold text-violet-300' }, 'مجلد فرعي')
+      ),
+      // ── جسم الكارت: خلفية الكارت الأساسية + غسلة بنفسجية شفافة فوقها. ──
+      React.createElement('div', {
+        className: 'p-3.5 flex items-center gap-3 bg-premium-card',
+        style: { backgroundImage: 'linear-gradient(rgba(167,139,250,0.07), rgba(167,139,250,0.07))' },
+      },
+        React.createElement('div', { className: 'flex-1 min-w-0' },
+          React.createElement('p', { className: 'text-xs font-black text-white leading-tight truncate' }, category.name_ar),
+          React.createElement('p', { className: 'text-[9.5px] text-slate-400 mt-0.5' }, `${formsCount} نموذج`)
+        ),
+        React.createElement(I.ChevronLeft, { className: 'w-5 h-5 text-violet-300' })
+      )
+    );
+  }
+
   return React.createElement('button', {
     key: category.id, onClick: onOpen, 'data-testid': 'encyclopedia-folder-card',
-    className: `w-full rounded-2xl p-3.5 flex items-center gap-3 text-right active:scale-[0.98] transition-transform ${
-      isSubFolder
-        ? 'bg-premium-card border border-white/5 border-r-[3px] border-r-violet-400/70'
-        : 'bg-premium-card border border-white/5'
-    }`,
-    style: isSubFolder ? {
-      backgroundImage: 'repeating-linear-gradient(135deg, rgba(167,139,250,0.05) 0px, rgba(167,139,250,0.05) 6px, transparent 6px, transparent 12px)',
-    } : undefined,
+    className: 'w-full bg-premium-card border border-white/5 rounded-2xl p-3.5 flex items-center gap-3 text-right active:scale-[0.98] transition-transform',
   },
     React.createElement('div', {
-      className: `w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isSubFolder ? 'bg-violet-400/10 text-violet-400' : 'bg-amber-400/10 text-amber-400'}`,
-    }, isSubFolder ? React.createElement(I.FolderStack) : React.createElement(I.Folder)),
+      className: 'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-amber-400/10 text-amber-400',
+    }, React.createElement(I.Folder)),
     React.createElement('div', { className: 'flex-1 min-w-0' },
       React.createElement('p', { className: 'text-xs font-black text-white leading-tight truncate' }, category.name_ar),
-      isSubFolder
-        ? React.createElement('span', { className: 'inline-block text-[8.5px] font-bold px-1.5 py-0.5 rounded-md bg-violet-400/10 text-violet-400 mt-0.5' }, `مجلد فرعي · ${formsCount}`)
-        : React.createElement('p', { className: 'text-[9.5px] text-slate-500 mt-0.5' }, `${formsCount} نموذج`)
+      React.createElement('p', { className: 'text-[9.5px] text-slate-500 mt-0.5' }, `${formsCount} نموذج`)
     ),
     React.createElement(I.ChevronLeft)
   );
