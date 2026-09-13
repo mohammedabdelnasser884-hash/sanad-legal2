@@ -782,6 +782,72 @@ export interface Database {
         // هنا (محتاجة استعلام تاني على information_schema)، فسايبينها فاضية.
         Relationships: []
       },
+      encyclopedia_categories: {
+        Row: {
+          id: string
+          name_ar: string
+          parent_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name_ar: string
+          parent_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name_ar?: string
+          parent_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      },
+      encyclopedia_forms: {
+        Row: {
+          id: string
+          category_id: string
+          title: string
+          description: string | null
+          file_path: string
+          file_name: string
+          file_type: string
+          download_count: number
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          category_id: string
+          title: string
+          description?: string | null
+          file_path: string
+          file_name: string
+          file_type: string
+          download_count?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          category_id?: string
+          title?: string
+          description?: string | null
+          file_path?: string
+          file_name?: string
+          file_type?: string
+          download_count?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      },
       fee_payments: {
         Row: {
           id: string
