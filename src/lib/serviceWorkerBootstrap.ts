@@ -1,8 +1,7 @@
 // ══════════════════════════════════════════════════════════
 //  Service Worker Registration + PWA Install Prompt
 //  منقول من main.tsx (اتفصل بتاريخ 15 يوليو 2026 كجزء من خطة
-//  تخفيف main.tsx). لازم يتحمّل بعد offlineQueue.ts (اللي بيعرّف
-//  window.__syncOfflineQueue المستخدم هنا في مستمع رسائل الـ SW).
+//  تخفيف main.tsx).
 // ══════════════════════════════════════════════════════════
 
 // لازم export واحد على الأقل عشان تيبسكريبت يعامل الملف كموديول
@@ -61,11 +60,11 @@ if ('serviceWorker' in navigator) {
                 });
             });
 
-            navigator.serviceWorker.addEventListener('message', async (event: MessageEvent) => {
-                if (event.data?.type === 'SYNC_OFFLINE_QUEUE') {
-                    await window.__syncOfflineQueue?.();
-                }
-            });
+            // 🗑️ المرحلة 2 (إلغاء الأوفلاين في الكتابة، 13 سبتمبر 2026): مستمع
+            // رسالة SYNC_OFFLINE_QUEUE من الـService Worker اتشال — كان بينادي
+            // window.__syncOfflineQueue (اللي اتشالت بالكامل من offlineQueue.ts
+            // بعد حذف طابور الأوفلاين). الـService Worker (sw.js) نفسه بقى
+            // مبعتش الرسالة دي أصلاً بعد حذف Background Sync منه.
         } catch (err) {
             console.warn('[App] Service Worker registration failed:', err);
         }
