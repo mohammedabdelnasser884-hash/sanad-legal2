@@ -313,7 +313,7 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
         // المباشر — بيسيب السلوك الأونلاين زي ما هو بالظبط، وبيضيف تلقائيًا حفظ
         // في طابور IndexedDB لو النت مقطوع، بدل ما التذكير يتفقد بالكامل (نفس
         // الحماية الموجودة فعلاً لـ clients/cases/case_sessions).
-        const {error, offline, queued} = await window.__dbWrite({
+        const {error} = await window.__dbWrite({
             type: 'INSERT', table: 'reminders', data: {
                 title: form.title.trim(),
                 due_date: form.due_date,
@@ -323,11 +323,9 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
             }
         });
         setSaving(false);
-        if(offline && queued){
-            toast('📥 التذكير محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-            setShowForm(false); setForm({title:'',due_date:'',notes:''});
-            return;
-        }
+        // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): كان هنا
+        // `if(offline && queued){...}` — مستحيل يتحقق بعد المرحلة 1 (__dbWrite
+        // بترجع offline:false دايمًا)، اتشال بنفس منطق useCaseCrudActions.ts.
         if(error){
             // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل reminder_save
             // (الإضافة) لـtrackQueryOutcome — الكائن الخام من __dbWrite بيتمرر
@@ -360,13 +358,11 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
         // على نفس فحص التعارض (knownUpdatedAt) لما نكون أونلاين، وكمان بيقيّد
         // العملية في طابور الأوفلاين لو النت مقطوع (safeUpdate القديمة كانت
         // بترجع فشل صريح بس من غير أي حفظ محلي في الحالة دي).
-        const {error, offline, queued, conflict} = await window.__dbWrite({
+        const {error, conflict} = await window.__dbWrite({
             type: 'UPDATE', table: 'reminders', data: update, id: r.id, knownUpdatedAt: r.updated_at || null
         });
-        if(offline && queued){
-            toast('📥 التعديل محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-            return;
-        }
+        // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
+        // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
         if(conflict){
             toast('⚠️ هذا التذكير عدّله شخص آخر بعد ما فتحته — أعد المحاولة', true);
             return;
@@ -390,14 +386,12 @@ export function useRemindersTab(initialFilter?: string | null, profile: ProfileR
         // 🆕 المرحلة 6 (توسيع الأوفلاين — H-3): __dbWrite بدل db.from(...).delete()
         // المباشر — لو النت مقطوع، الحذف بيتقيّد في الطابور ويتنفذ وقت المزامنة
         // بدل ما يفشل ويرجع المستخدم يحاول تاني لما النت يرجع.
-        const {error, offline, queued} = await window.__dbWrite({
+        const {error} = await window.__dbWrite({
             type: 'DELETE', table: 'reminders', id,
             data: deletedReminder ? { title: deletedReminder.title, due_date: deletedReminder.due_date } : undefined,
         });
-        if(offline && queued){
-            toast('📥 الحذف محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-            return;
-        }
+        // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
+        // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
         if(error){
             // ⚡ FIX (خطة "تصنيف الرسائل" — دفعة تحويل ٢-ج-٣): تحويل reminder_save (الحذف).
             reportWriteFailure('reminder_save', error, {label:'حذف التذكيرات', message:'تعذّر حذف التذكير. تحقق من الاتصال بالإنترنت.'});
