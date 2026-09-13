@@ -14,6 +14,8 @@ interface EncyclopediaSectionProps {
   setFormModalCategoryId: React.Dispatch<React.SetStateAction<string | null>>;
   setShowFormModal: React.Dispatch<React.SetStateAction<boolean>>;
   setConfirmDeleteForm: React.Dispatch<React.SetStateAction<EncyclopediaFormRow | null>>;
+  setBatchModalCategoryId: React.Dispatch<React.SetStateAction<string | null>>;
+  setShowBatchUploadModal: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 // بطاقة نموذج (ملف) — بتتكرر جوه أي مجلد (رئيسي أو فرعي)
@@ -92,6 +94,7 @@ function EncyclopediaSection({
   loadingEncyclopedia, categories, forms,
   setEditingCategory, setCategoryParentForNew, setShowCategoryModal, setConfirmDeleteCategory,
   setEditingForm, setFormModalCategoryId, setShowFormModal, setConfirmDeleteForm,
+  setBatchModalCategoryId, setShowBatchUploadModal,
 }: EncyclopediaSectionProps) {
   // مستويين بس — activeCategoryId يمثل المجلد المفتوح حاليًا (رئيسي أو فرعي)، null = القائمة الرئيسية
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
@@ -139,23 +142,35 @@ function EncyclopediaSection({
       React.createElement('span', { className: 'text-teal-400' }, activeCategory.name_ar)
     ),
 
-    // ── أزرار الإضافة الخاصة بالمستوى الحالي ──
-    React.createElement('div', { className: 'flex items-center gap-2' },
-      !activeCategory && React.createElement('button', {
-        onClick: () => { setEditingCategory(null); setCategoryParentForNew(null); setShowCategoryModal(true); },
-        'data-testid': 'admin-encyclopedia-new-folder',
-        className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400 text-[11px] font-black active:scale-95 transition-transform',
-      }, React.createElement(I.Plus), 'مجلد رئيسي جديد'),
-      activeCategory && !activeCategory.parent_id && React.createElement('button', {
-        onClick: () => { setEditingCategory(null); setCategoryParentForNew(activeCategory.id); setShowCategoryModal(true); },
-        'data-testid': 'admin-encyclopedia-new-subfolder',
-        className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400 text-[11px] font-black active:scale-95 transition-transform',
-      }, React.createElement(I.Plus), 'مجلد فرعي جديد'),
-      activeCategory && React.createElement('button', {
-        onClick: () => { setEditingForm(null); setFormModalCategoryId(activeCategory.id); setShowFormModal(true); },
-        'data-testid': 'admin-encyclopedia-new-form',
-        className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-teal-400/10 border border-teal-400/20 text-teal-400 text-[11px] font-black active:scale-95 transition-transform',
-      }, React.createElement(I.Plus), 'نموذج جديد')
+    // ── أزرار الإضافة ──
+    // زرار المجلد (رئيسي/فرعي) بيتغيّر حسب المستوى الحالي زي ما كان.
+    // "نموذج جديد" و"رفع متعدد" بقوا ظاهرين دايمًا (حتى في القائمة الرئيسية
+    // برة أي مجلد) — اختيار المجلد بقى بيتم من جوه المودال نفسه.
+    React.createElement('div', { className: 'space-y-2' },
+      (!activeCategory || !activeCategory.parent_id) && React.createElement('div', { className: 'flex' },
+        !activeCategory && React.createElement('button', {
+          onClick: () => { setEditingCategory(null); setCategoryParentForNew(null); setShowCategoryModal(true); },
+          'data-testid': 'admin-encyclopedia-new-folder',
+          className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400 text-[11px] font-black active:scale-95 transition-transform',
+        }, React.createElement(I.Plus), 'مجلد رئيسي جديد'),
+        activeCategory && !activeCategory.parent_id && React.createElement('button', {
+          onClick: () => { setEditingCategory(null); setCategoryParentForNew(activeCategory.id); setShowCategoryModal(true); },
+          'data-testid': 'admin-encyclopedia-new-subfolder',
+          className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400 text-[11px] font-black active:scale-95 transition-transform',
+        }, React.createElement(I.Plus), 'مجلد فرعي جديد')
+      ),
+      React.createElement('div', { className: 'flex items-center gap-2' },
+        React.createElement('button', {
+          onClick: () => { setEditingForm(null); setFormModalCategoryId(activeCategory?.id || null); setShowFormModal(true); },
+          'data-testid': 'admin-encyclopedia-new-form',
+          className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-teal-400/10 border border-teal-400/20 text-teal-400 text-[11px] font-black active:scale-95 transition-transform',
+        }, React.createElement(I.Plus), 'نموذج جديد'),
+        React.createElement('button', {
+          onClick: () => { setBatchModalCategoryId(activeCategory?.id || null); setShowBatchUploadModal(true); },
+          'data-testid': 'admin-encyclopedia-new-batch',
+          className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-indigo-400/10 border border-indigo-400/20 text-indigo-400 text-[11px] font-black active:scale-95 transition-transform',
+        }, React.createElement(I.Doc), 'رفع متعدد')
+      )
     ),
 
     // ── المستوى الجذري: المجلدات الرئيسية ──
