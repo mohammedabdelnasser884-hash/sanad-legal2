@@ -763,7 +763,7 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
             // قسم 6.5، 11 سبتمبر 2026): canDeleteCase (محسوبة أصلاً فوق
             // لزرار حذف القضية) بتتمرر هنا كـcanDeleteDocument — حذف
             // مستند القضية بيتبع نفس صلاحية حذف القضية نفسها بالقرار.
-            activeSection === 'docs' && React.createElement(DocsSection, { fileInputRef, handleFileSelect, showDocForm, setShowDocForm, pendingFile, setPendingFile, docLabel, setDocLabel, docCategory, setDocCategory, handleUploadDoc, uploadingDoc, docs, docSearch, setDocSearch, loadingSessions, setViewingDoc, setConfirmDeleteDoc, deletingDocId, canDeleteDocument: canDeleteCase }),
+            activeSection === 'docs' && React.createElement(DocsSection, { fileInputRef, handleFileSelect, showDocForm, setShowDocForm, pendingFile, setPendingFile, docLabel, setDocLabel, docCategory, setDocCategory, handleUploadDoc, uploadingDoc, docs, docSearch, setDocSearch, loadingSessions, setViewingDoc, setConfirmDeleteDoc, deletingDocId, canDeleteDocument: canDeleteCase, canUploadDocument: canEditCase }),
 
             // ═══ البيانات ═══
             activeSection === 'info' && React.createElement(InfoSection, {
@@ -774,35 +774,40 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
                 // ومش بتوصّل لـInfoSection — بنمررها هنا عشان كارت
                 // "— الموكلين —" الجديد يعرض كل الموكلين المرتبطين فعليًا.
                 linkedClients,
-                onLinkClient: async (clientId: string) => {
+                // 🔒 NEW (فصل صلاحيات المشاهد عن وضع المشاهدة الجماعي، 13 سبتمبر
+                // 2026): كل زراير ربط/فك الربط تحت بقت محكومة بـcanEditCase —
+                // نفس مفتاح تعديل القضية، مفيش مفتاح مستقل. مررناها هنا بدل ما
+                // نعدّل InfoSection نفسها، لأنها أصلاً بتخفي كل زرار لو الـ
+                // callback بتاعه undefined — فبنكتفي بعدم تمرير الـcallback.
+                onLinkClient: canEditCase ? async (clientId: string) => {
                     if (!onLinkClient) return;
                     setLinkingClient(true);
                     try { await onLinkClient(caseData.id, clientId); }
                     finally { setLinkingClient(false); }
-                },
+                } : undefined,
                 // ⚡ NEW (Phase 3 — 4 أغسطس 2026): مرآة لـ onLinkClient فوق بس
                 // لطرف بعينه — onAfterLink بتنادي fetchSessions() تاني عشان
                 // caseParties (والوسم/الزرار الخاص بالطرف ده) تتحدّث فورًا،
                 // بنفس نمط onCreateAndLinkClientForParty تحت بالظبط.
-                onLinkClientForParty: onLinkClientForParty
+                onLinkClientForParty: canEditCase && onLinkClientForParty
                     ? async (partyId: string, clientId: string, isPrimaryParty: boolean, knownUpdatedAt: string | null) => {
                         setLinkingClient(true);
                         try { await onLinkClientForParty(caseData.id, partyId, clientId, isPrimaryParty, knownUpdatedAt, () => fetchSessions()); }
                         finally { setLinkingClient(false); }
                       }
                     : undefined,
-                onCreateAndLinkClient: onCreateAndLinkClient
+                onCreateAndLinkClient: canEditCase && onCreateAndLinkClient
                     ? () => onCreateAndLinkClient(caseData.id, caseData.plaintiff || '', caseData.plaintiff_national_id, caseData.plaintiff_power_of_attorney, caseData.plaintiff_address)
                     : undefined,
                 // ⚡ NEW (مرحلة 13.1): onAfterLink بتنادي fetchSessions تاني —
                 // caseParties (وبالتبعية الوسم/الزرار الخاص بالطرف ده) بتتحدّث
                 // فورًا من غير ما نستنى إعادة فتح تفاصيل القضية.
-                onCreateAndLinkClientForParty: onCreateAndLinkClientForParty
+                onCreateAndLinkClientForParty: canEditCase && onCreateAndLinkClientForParty
                     ? (party: CasePartyRow, isPrimaryParty: boolean) =>
                         onCreateAndLinkClientForParty(caseData.id, party, isPrimaryParty, () => fetchSessions())
                     : undefined,
                 unlinkingClient,
-                onUnlinkClient: onUnlinkClient ? async () => {
+                onUnlinkClient: canEditCase && onUnlinkClient ? async () => {
                     setUnlinkingClient(true);
                     try { await onUnlinkClient(caseData.id); }
                     finally { setUnlinkingClient(false); }
@@ -811,7 +816,7 @@ function CaseDetailView({caseData, client, clients=[], onEnsureClientsLoaded, on
                 // بس لطرف بعينه — onAfterLink بتنادي fetchSessions() تاني عشان
                 // caseParties (والوسم/الزرار الخاص بالطرف ده) تتحدّث فورًا،
                 // بنفس نمط onLinkClientForParty فوق بالظبط.
-                onUnlinkClientForParty: onUnlinkClientForParty
+                onUnlinkClientForParty: canEditCase && onUnlinkClientForParty
                     ? async (partyId: string, isPrimaryParty: boolean, knownUpdatedAt: string | null) => {
                         setUnlinkingClient(true);
                         try { await onUnlinkClientForParty(caseData.id, partyId, isPrimaryParty, knownUpdatedAt, () => fetchSessions()); }
