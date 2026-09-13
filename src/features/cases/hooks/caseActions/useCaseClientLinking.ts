@@ -45,15 +45,11 @@ export function createCaseClientLinking(
         // الموكل" السابقة). دلوقتي بنحدّث client_id بس؛ لا يوجد أي مكان
         // في الواجهة بيعرض الأعمدة دي مباشرة بعد مراحل B.1-B.4 (كلها
         // بتقرا من case_parties)، فمفيش داعي نكتبها هنا خالص.
-        const { error, offline, queued, conflict, data: writtenRow } = await window.__dbWrite({
+        // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
+        // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
+        const { error, conflict, data: writtenRow } = await window.__dbWrite({
             type: 'UPDATE', table: 'cases', data: { client_id: clientId }, id: caseId, knownUpdatedAt
         });
-        if (offline && queued) {
-            toast('📥 الربط محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-            setCases((prev) => prev.map((c) => c.id === caseId ? { ...c, client_id: clientId } : c));
-            if (selectedCase?.id === caseId) setSelectedCase((p) => p ? { ...p, client_id: clientId } : p);
-            return;
-        }
         if (conflict) {
             toast('⚠️ هذه القضية عدّلها شخص آخر بعد ما فتحتها — أعد فتحها وحاول الربط مرة أخرى', true);
             return;
@@ -206,16 +202,11 @@ export function createCaseClientLinking(
         const unlinkedClientId = existingCase?.client_id
             || (selectedCase?.id === caseId ? selectedCase?.client_id : null)
             || null;
-        const { error, offline, queued, conflict, data: writtenRow } = await window.__dbWrite({
+        // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
+        // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
+        const { error, conflict, data: writtenRow } = await window.__dbWrite({
             type: 'UPDATE', table: 'cases', data: { client_id: null }, id: caseId, knownUpdatedAt
         });
-        if (offline && queued) {
-            toast('📥 فك الربط محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-            setCases((prev) => prev.map((c) => c.id === caseId ? { ...c, client_id: null } : c));
-            if (selectedCase?.id === caseId) setSelectedCase((p) => p ? { ...p, client_id: null } : p);
-            await syncUnlinkedPrimaryParty(caseId, unlinkedClientId);
-            return;
-        }
         if (conflict) {
             toast('⚠️ هذه القضية عدّلها شخص آخر بعد ما فتحتها — أعد فتحها وحاول فك الربط مرة أخرى', true);
             return;
