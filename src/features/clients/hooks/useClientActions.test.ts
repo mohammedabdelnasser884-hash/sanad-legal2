@@ -435,7 +435,13 @@ describe('useClientActions', () => {
       expect(onClientLinked).toHaveBeenCalledWith({ type: 'case', caseId: 'case-real-1' }, 'new-client-1');
     });
 
-    it('clientLinkTarget من نوع case مع caseIsOfflineTemp=true (القضية نفسها لسه تمبيد) → UPDATE:cases بيحمل _offlineSelfTempId/_offlineSelfFallbackName كمان', async () => {
+    // 🗑️ (تحديث بعد المرحلة 3 — تقرير إلغاء الأوفلاين، 13 سبتمبر 2026):
+    // isOfflineTemp/isTargetOfflineTempCase مستحيل يبقوا true بعد المرحلة 1
+    // (الكتابة أونلاين دايمًا)، فالـspreadين الشرطيين لـ_offlineFkTempId/
+    // _offlineSelfTempId اتشالوا نهائيًا من useClientActions.ts — كانوا
+    // دايمًا بيرجعوا {} عمليًا. UPDATE:cases بقى بيحمل client_id بس، حتى
+    // مع caseIsOfflineTemp=true.
+    it('clientLinkTarget من نوع case مع caseIsOfflineTemp=true (القضية نفسها لسه تمبيد) → UPDATE:cases بيحمل client_id بس (الـsentinel اتشال في المرحلة 3)', async () => {
       dbWriteMock().mockImplementation(async (op: { type: string; table: string }) => {
         if (op.type === 'INSERT' && op.table === 'clients') return { error: null, offline: false, queued: false, data: { id: 'new-client-2' } };
         return { error: null, offline: false, queued: false };
@@ -449,14 +455,11 @@ describe('useClientActions', () => {
 
       expect(dbWriteMock()).toHaveBeenCalledWith(expect.objectContaining({
         type: 'UPDATE', table: 'cases', id: 'tmp-case-1',
-        data: {
-          client_id: 'new-client-2',
-          _offlineSelfTempId: 'tmp-case-1', _offlineSelfFallbackName: 'قضية أوفلاين',
-        },
+        data: { client_id: 'new-client-2' },
       }));
     });
 
-    it('clientLinkTarget مع caseIsOfflineTemp=true والموكل نفسه أوفلاين (queued) → UPDATE:cases بيحمل الاتنين: _offlineFkTempId (للموكل) و_offlineSelfTempId/_offlineSelfFallbackName (للقضية) مع بعض', async () => {
+    it('clientLinkTarget مع caseIsOfflineTemp=true والموكل نفسه أوفلاين (queued) → UPDATE:cases بيحمل client_id بس (الـsentinel اتشال في المرحلة 3)', async () => {
       dbWriteMock().mockImplementation(async (op: { type: string; table: string }) => {
         if (op.type === 'INSERT' && op.table === 'clients') return { error: null, offline: true, queued: true };
         return { error: null, offline: true, queued: true };
@@ -475,11 +478,7 @@ describe('useClientActions', () => {
       ) as { data: Record<string, unknown> };
       const clientTempId = updateCall.data.client_id as string;
       expect(clientTempId).toMatch(/^tmp-/);
-      expect(updateCall.data).toEqual({
-        client_id: clientTempId,
-        _offlineFkTempId: [{ field: 'client_id', tempId: clientTempId, table: 'clients', fallbackNameValue: 'موكل أوفلاين جديد' }],
-        _offlineSelfTempId: 'tmp-case-2', _offlineSelfFallbackName: 'قضية أوفلاين د',
-      });
+      expect(updateCall.data).toEqual({ client_id: clientTempId });
     });
 
     it('clientLinkTarget من نوع session → UPDATE:case_sessions بـ client_id، من غير أي sentinel أوفلاين للقضية (مش مطلوب لجلسات)', async () => {
