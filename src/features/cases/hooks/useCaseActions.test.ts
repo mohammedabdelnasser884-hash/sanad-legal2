@@ -950,18 +950,10 @@ describe('useCaseActions', () => {
       expect(mockDb.from).not.toHaveBeenCalledWith('case_parties');
     });
 
-    it('أوفلاين (queued) + فيه صف case_parties مطابق → توست الحفظ المحلي، ومحاولة مزامنة case_parties برضه (best-effort، مش بتوقف على نجاح الكتابة الأساسية)', async () => {
-      dbWriteMock().mockResolvedValue({ error: null, offline: true, queued: true });
-      mockDb.setResult('case_parties:maybeSingle', { data: { id: 'party-1', updated_at: '2026-08-01T00:00:00.000Z' }, error: null });
-      const targetCase = makeCase({ id: 'case-5', client_id: 'client-1' });
-      const params = makeParams({ cases: [targetCase] });
-      const { handleUnlinkClient } = useCaseActions(params);
-
-      await handleUnlinkClient('case-5');
-
-      expect(toast).toHaveBeenCalledWith('📥 فك الربط محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-      const calls = dbWriteMock().mock.calls.map((c: unknown[]) => c[0] as Record<string, unknown>);
-      expect(calls).toContainEqual(expect.objectContaining({ type: 'UPDATE', table: 'case_parties', id: 'party-1', data: { client_id: null } }));
-    });
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تست
+    // "أوفلاين (queued)" اتشال — الفرع اللي كان بيغطيه اتشال من الكود
+    // نفسه (__dbWrite بترجع offline:false دايمًا بعد المرحلة 1). مزامنة
+    // case_parties (best-effort) لسه بتتنادى فى نهاية المسار الناجح
+    // العادي، مغطاة بالتستات التانية فوق.
   });
 });
