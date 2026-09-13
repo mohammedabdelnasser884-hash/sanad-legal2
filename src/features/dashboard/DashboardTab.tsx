@@ -8,6 +8,7 @@ import type { MappedCase, MappedClient } from '../../hooks/useAppData';
 import type { SessionFeedItem, TaskFeedItem, SessionCaseEmbed } from '@/shared/hooks/useDashboardFeed';
 import type { CaseSessionRow } from '../../types';
 import type { TabName } from '../../useNavigation';
+import { checkPermission } from '../../shared/lib/permissions';
 // ⚡ PERF (خطة تحسين الأداء، المرحلة 2 — 6 سبتمبر 2026): كان static import
 // رغم إن المودال بيتعرض بس لما standaloneTarget يتحدد (شرط `&&` تحت) —
 // يعني كان بيتحمّل مع تاب الداشبورد كله حتى لو المودال متفتحش خالص. حوّلناه
@@ -94,6 +95,16 @@ function DashboardTab({
   onOpenClientProfile, clientProfileOpen,
   countryCourts, countryCaseTypes,
 }: DashboardTabProps) {
+
+    // 🔒 NEW (فصل صلاحيات المشاهد عن وضع المشاهدة الجماعي، 13 سبتمبر
+    // 2026): زراير "الإجراءات السريعة" (إضافة جلسة/تقييد قضية/إضافة
+    // موكل) تحت كانت من غير أي فحص صلاحية. can_edit_sessions هنا تحديدًا
+    // لأن الجلسة المضافة من هنا مستقلة (case_id فاضي) — نفس تعريف
+    // can_edit_sessions الموثّق في permissions.ts (بيتحكم في الجلسات
+    // المستقلة بس، مش جلسات القضايا).
+    const canAddStandaloneSession = checkPermission(profile, 'can_edit_sessions');
+    const canAddCase = checkPermission(profile, 'can_add_cases');
+    const canAddClientQuick = checkPermission(profile, 'can_add_clients');
 
     // ── جلسة مستقلة مفتوحة حالياً (لعرض المودال) ──
     const [standaloneTarget, setStandaloneTarget] = useState<SessionFeedItem | null>(null);
@@ -363,7 +374,7 @@ function DashboardTab({
         // الديسكتوب مستغلة بزيادة المسافات/الحشو/حجم الأيقونة والخط بس عبر
         // lg:). صفر تغيير على أي data-testid أو onClick أو منطق.
         React.createElement('div',{className:"grid grid-cols-4 gap-2 lg:gap-4"},
-            React.createElement('button',{
+            canAddStandaloneSession && React.createElement('button',{
                 onClick:()=>setShowNewSessionModal(true),
                 'data-testid':'dashboard-quick-add-session',
                 className:"flex flex-col items-center gap-1.5 py-3 lg:py-5 rounded-2xl active:scale-95 transition-all",
@@ -374,7 +385,7 @@ function DashboardTab({
                 ),
                 React.createElement('span',{className:"text-[9px] lg:text-xs font-black text-sky-400"},"إضافة جلسة")
             ),
-            React.createElement('button',{
+            canAddCase && React.createElement('button',{
                 onClick:()=>setShowCaseModal(true),
                 'data-testid':'dashboard-quick-add-case',
                 className:"flex flex-col items-center gap-1.5 py-3 lg:py-5 rounded-2xl active:scale-95 transition-all",
@@ -385,7 +396,7 @@ function DashboardTab({
                 ),
                 React.createElement('span',{className:"text-[9px] lg:text-xs font-black",style:{color:'var(--gold)'}},"تقييد قضية")
             ),
-            React.createElement('button',{
+            canAddClientQuick && React.createElement('button',{
                 onClick:()=>setShowClientModal(true),
                 'data-testid':'dashboard-quick-add-client',
                 className:"flex flex-col items-center gap-1.5 py-3 lg:py-5 rounded-2xl active:scale-95 transition-all",
