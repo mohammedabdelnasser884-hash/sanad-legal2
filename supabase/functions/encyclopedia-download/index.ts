@@ -11,7 +11,11 @@
 //  encyclopedia-admin (صفر تعديل عليها) — صلاحية مختلفة كليًا
 //  (أي مستخدم فعّال، مش سوبر أدمن بس).
 //
-//  الإدخال: { form_id: string }
+//  الإدخال: { form_id: string, mode?: 'download' | 'view' }
+//  mode='view' (زرار "معاينة" الجديد): نفس رابط التحميل الموقّع بالظبط،
+//  الفرق الوحيد إنه ميزودش download_count (المعاينة مش تحميل فعلي).
+//  الافتراضي (مفيش mode أو أي قيمة غير 'view') بيفضل زي ما كان: يزوّد
+//  العداد (سلوك زرار "تحميل" الأصلي، صفر تغيير عليه).
 //  الخرج: { ok:true, url, file_name } أو { error: "..." }
 //  (دايمًا status 200 لحالات الخطأ المعروفة، 401/403/500 لحالات
 //  الجلسة/الحساب/الخطأ غير المتوقع — نفس اتفاقية encyclopedia-admin)
@@ -105,6 +109,7 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json().catch(() => ({}));
     const formId = String(body.form_id || '');
+    const isPreviewMode = body.mode === 'view';
 
     const callerUser = await getCaller(req);
     if (!callerUser) return json({ error: 'الجلسة منتهية، سجّل الدخول من جديد' }, 401);
@@ -122,13 +127,16 @@ Deno.serve(async (req: Request) => {
     const url = await signStorageUrl(form.file_path);
     if (!url) return json({ error: 'تعذر توليد رابط التحميل، حاول مرة أخرى' });
 
-    // عداد التحميلات — best-effort، فشله ميمنعش التحميل نفسه من النجاح
-    try {
-      await rest(`encyclopedia_forms?id=eq.${formId}`, 'PATCH', {
-        download_count: (form.download_count || 0) + 1,
-      });
-    } catch (e) {
-      console.error('[encyclopedia-download:incrementCount]', e instanceof Error ? e.message : String(e));
+    // عداد التحميلات — best-effort، فشله ميمنعش التحميل نفسه من النجاح.
+    // مبيتزودش خالص في وضع المعاينة (mode='view') — المعاينة مش تحميل.
+    if (!isPreviewMode) {
+      try {
+        await rest(`encyclopedia_forms?id=eq.${formId}`, 'PATCH', {
+          download_count: (form.download_count || 0) + 1,
+        });
+      } catch (e) {
+        console.error('[encyclopedia-download:incrementCount]', e instanceof Error ? e.message : String(e));
+      }
     }
 
     return json({ ok: true, url, file_name: form.file_name });
