@@ -96,8 +96,13 @@ function ViewReminderModal({
             // أزرار التحكم
             React.createElement('div',{className:"flex gap-2 mt-5"},
                 // تأشير منجز / إلغاء
-                React.createElement('button',{
+                // ⚡ FIX (بند 1 — مراجعة المستخدم المشاهد، 13 سبتمبر 2026): كان
+                // بيظهر دايمًا بلا فحص canEdit، رغم إنه نفس فئة "تعديل" زي زرار
+                // التعديل جنبه (اللي كان بيختفي صح). بيختفي كليًا دلوقتي لمن
+                // ليس له can_edit_reminders، بنفس نمط زرار التعديل/الحذف تحت.
+                canEdit && React.createElement('button',{
                     onClick: () => { handleToggleDone(viewTarget); setViewTarget(null); },
+                    'data-testid': 'view-reminder-toggle-done',
                     className:`flex-1 py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-transform ${viewTarget.done ? 'bg-white/8 text-slate-300' : 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400'}`
                 },
                     viewTarget.done
