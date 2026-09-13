@@ -75,6 +75,36 @@ export async function callAdminAction(payload: AdminActionPayload) {
   return data;
 }
 
+// استدعاء Edge Function encyclopedia-download — لتحميل نموذج من "الموسوعة
+// القانونية". منفصلة تمامًا عن callEncyclopediaAction فوق: متاحة لأي
+// مستخدم مسجّل دخول (مش سوبر أدمن بس)، وشكل payload/رد مختلف كليًا
+// (form_id فقط → رابط تحميل موقّع).
+const ENCYCLOPEDIA_DOWNLOAD_GENERIC_MSG = 'تعذّر تحميل النموذج. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.';
+
+export async function callEncyclopediaDownload(formId: string): Promise<{ url: string; file_name: string }> {
+  const { data, error } = await db.functions.invoke('encyclopedia-download', { body: { form_id: formId } });
+  if (error) {
+    const serverMessage = await getEdgeFunctionErrorMessage(error as EdgeFunctionError);
+    const errorForTracking = {
+      message: (error as { message?: string })?.message,
+      code: (error as { code?: string })?.code,
+    };
+    if (looksArabicUserMessage(serverMessage)) {
+      await trackQueryOutcome('generic_operation', errorForTracking, {
+        label: 'الموسوعة القانونية', message: serverMessage as string,
+      });
+      throw new Error(serverMessage as string);
+    }
+    await trackQueryOutcome('generic_operation', errorForTracking, {
+      label: 'الموسوعة القانونية', message: ENCYCLOPEDIA_DOWNLOAD_GENERIC_MSG,
+    });
+    throw new Error(ENCYCLOPEDIA_DOWNLOAD_GENERIC_MSG);
+  }
+  if (data?.error) throw new Error(data.error);
+  recordSuccess('generic_operation');
+  return data;
+}
+
 // شكل الـ payload لعمليات قسم "الموسوعة القانونية" (Edge Function
 // encyclopedia-admin) — راجع تقرير التنفيذ (مرحلة 2). نفس فكرة
 // AdminActionPayload فوق: union صريح بدل Record<string, any> عشان أي
