@@ -36,7 +36,12 @@ function NotesSection({
   canEditNote = false, canDeleteNote = false,
 }: NotesSectionProps) {
   return React.createElement('div', {className: "space-y-4 fade-in"},
-                React.createElement('button', {
+                // 🔒 FIX (فصل صلاحيات المشاهد عن وضع المشاهدة الجماعي، 13
+                // سبتمبر 2026): زرار "إضافة ملاحظة" كان بيظهر لأي مستخدم
+                // من غير أي فحص صلاحية — نفس نمط canUploadDocument في
+                // DocsSection. بيتحكم فيه canEditNote (نفس صلاحية تعديل
+                // القضية، زي باقي زراير الملاحظات).
+                canEditNote && React.createElement('button', {
                     onClick: () => setShowAddNote(!showAddNote),
                     'data-testid': 'note-add-toggle',
                     className: "w-full py-3 border border-dashed border-blue-500/30 rounded-2xl flex items-center justify-center gap-2 text-blue-400 text-xs font-black hover:bg-blue-500/5 transition-all active:scale-[0.98]"
@@ -44,7 +49,7 @@ function NotesSection({
                     React.createElement(I.Plus), "إضافة ملاحظة"
                 ),
 
-                showAddNote && React.createElement('div', {className: "bg-premium-card border border-blue-500/20 rounded-2xl p-4 space-y-3 slide-up"},
+                showAddNote && canEditNote && React.createElement('div', {className: "bg-premium-card border border-blue-500/20 rounded-2xl p-4 space-y-3 slide-up"},
                     React.createElement('textarea', {
                         value: noteText,
                         onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => setNoteText(e.target.value),
