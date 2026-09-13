@@ -4,11 +4,8 @@ import App from './App';
 import './index.css';
 import { installGlobalErrorWatcher } from './systemHealth';
 import ErrorBoundary from './ErrorBoundary';
-// ⚠️ ترتيب الاستيراد هنا مقصود: offlineQueue.ts لازم يتحمّل قبل
-// serviceWorkerBootstrap.ts لأن مستمع رسائل الـ Service Worker
-// (SYNC_OFFLINE_QUEUE) بينادي window.__syncOfflineQueue المُعرّف
-// في offlineQueue.ts. الاستيرادات دي كلها side-effect فقط (بتسجّل
-// دوال على window وبتضيف event listeners)، مفيش exports مستخدمة هنا.
+// ⚠️ الاستيرادات دي كلها side-effect فقط (بتسجّل دوال على window وبتضيف
+// event listeners)، مفيش exports مستخدمة هنا.
 import './lib/offlineQueue';
 import './lib/serviceWorkerBootstrap';
 import './lib/heartbeat';
