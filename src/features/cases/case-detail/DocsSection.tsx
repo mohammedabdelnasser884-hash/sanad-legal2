@@ -31,13 +31,18 @@ interface DocsSectionProps {
   // مايكسرش أي استدعاء قديم لـDocsSection من غير الـprop ده — بيتعامل
   // زي "مفيش صلاحية" (false) فى الحالة دي، أأمن افتراضي.
   canDeleteDocument?: boolean;
+  // 🔒 NEW (فصل صلاحيات المشاهد عن وضع المشاهدة الجماعي، 13 سبتمبر 2026):
+  // بتتحكم فى ظهور زرار "رفع مستند جديد" فوق — نفس صلاحية تعديل القضية
+  // (can_edit_cases)، مفيش مفتاح مستقل. اختياري وbatch يتعامل زي
+  // canDeleteDocument فوق — مفيش صلاحية = false، أأمن افتراضي.
+  canUploadDocument?: boolean;
 }
 
 function DocsSection({
   fileInputRef, handleFileSelect, showDocForm, setShowDocForm, pendingFile, setPendingFile,
   docLabel, setDocLabel, docCategory, setDocCategory, handleUploadDoc, uploadingDoc,
   docs, docSearch, setDocSearch, loadingSessions, setViewingDoc, setConfirmDeleteDoc, deletingDocId,
-  canDeleteDocument = false,
+  canDeleteDocument = false, canUploadDocument = false,
 }: DocsSectionProps) {
   return React.createElement('div', {className: "space-y-4 fade-in"},
 
@@ -58,7 +63,7 @@ function DocsSection({
                 }),
 
                 // زر الرفع
-                !showDocForm && React.createElement('div', {className: "grid grid-cols-1 gap-3"},
+                !showDocForm && canUploadDocument && React.createElement('div', {className: "grid grid-cols-1 gap-3"},
                     React.createElement('button', {
                         'data-testid': 'doc-upload-toggle',
                         onClick: () => fileInputRef.current && fileInputRef.current.click(),
@@ -154,7 +159,7 @@ function DocsSection({
                         ? React.createElement('div', {'data-testid': 'docs-empty', className: "text-center py-14 space-y-3"},
                             React.createElement('div', {className: "w-16 h-16 rounded-2xl bg-purple-500/10 flex items-center justify-center text-3xl mx-auto"}, "📁"),
                             React.createElement('p', {className: "text-white/60 font-black text-sm"}, "لا توجد مستندات"),
-                            React.createElement('p', {className: "text-slate-500 text-xs"}, "ارفع مستندات القضية من الزر أعلاه")
+                            React.createElement('p', {className: "text-slate-500 text-xs"}, canUploadDocument ? "ارفع مستندات القضية من الزر أعلاه" : "لا تملك صلاحية رفع مستندات")
                           )
                         : React.createElement('div', {className: "space-y-3"},
                             (docSearch.trim()
