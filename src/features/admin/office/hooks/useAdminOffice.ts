@@ -3,7 +3,7 @@ import { toast } from '../../../../shared/lib/notifications';
 import { validateUploadFile, resolveStorageUrl } from '../../../../shared/lib/storage';
 import { logActivity, buildFieldDiff, type FieldDiffMap } from '../../../../shared/lib/dataAccess';
 import { db } from '../../../../supabaseClient';
-import { showErrorToast } from '../../../../shared/lib/errorReporting';
+import { showErrorToast, lockErrorIfNoRowsAffected } from '../../../../shared/lib/errorReporting';
 import { recordSuccess } from '../../../../systemHealth';
 import { invalidateOfficeCache } from '../../../../constants';
 import type { ProfileRow } from '../../../../types';
@@ -167,7 +167,14 @@ export function useAdminOffice(tenantId: string | null, profile?: ProfileRow | n
       };
       let saveError;
       if (existing?.id) {
-        ({ error: saveError } = await db.from('office_settings').update(payload).eq('id', existing.id));
+        // 🔒 FIX (توحيد رسائل المنع — المرحلة 4، 13 سبتمبر 2026): office_settings
+        // محكوم بـRESTRICTIVE policy فعلي (tenant_write_allowed_office_settings_*)،
+        // لكن UPDATE من غير .select() كان بيرجع نجاح صامت (صفر error، صفر صف
+        // اتأثر فعليًا) لمكتب مقفول — نفس فئة باگ useAdminArchive.ts (اختبار F1
+        // اليدوي، 10 سبتمبر). .select('id') + lockErrorIfNoRowsAffected بيحوّلوا
+        // "صفر صفوف" لخطأ مكتشف يوصل showErrorToast فيفتح مودال القفل الصح.
+        const { error: rawSaveError, data: savedRows } = await db.from('office_settings').update(payload).eq('id', existing.id).select('id');
+        saveError = lockErrorIfNoRowsAffected(rawSaveError, savedRows);
       } else {
         ({ error: saveError } = await db.from('office_settings').insert({ ...payload, tenant_id: tenantId }));
       }
