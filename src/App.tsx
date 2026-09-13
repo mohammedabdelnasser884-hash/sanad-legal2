@@ -573,6 +573,12 @@ function App() {
     // يفضل متوافق تلقائيًا لو القرار ده اتغيّر يومًا ما (has_permission()
     // على القاعدة هو المرجع الحقيقي دايمًا).
     const canViewFees = checkPermission(profile, 'can_view_fees');
+    // 🔒 NEW (فصل صلاحيات المشاهد عن وضع المشاهدة الجماعي، 13 سبتمبر
+    // 2026): زرار "⚡ إضافة جلسة" جوه تاب "📅 الجلسات" (شوف tab ===
+    // 'calendar' تحت) كان من غير أي فحص صلاحية — الجلسة المضافة من هنا
+    // مستقلة (case_id فاضي)، فنفس can_edit_sessions المستخدم أصلًا لباقي
+    // الجلسات المستقلة (StandaloneSessionDetailModal/EditStandaloneModal).
+    const canAddStandaloneSession = checkPermission(profile, 'can_edit_sessions');
 
     // ── Initial data fetch + إعادة تحميل بعد المزامنة الأوفلاين ──
     useInitialDataSync({
@@ -893,7 +899,7 @@ function App() {
             tab === 'calendar'   && React.createElement('div', { className: 'space-y-4 fade-in' },
                 React.createElement('div', { className: 'flex items-center justify-between' },
                     React.createElement('h3', { className: 'text-xl font-black text-white' }, '📅 الجلسات'),
-                    React.createElement('button', {
+                    canAddStandaloneSession && React.createElement('button', {
                         onClick: () => setShowNewSessionModal(true),
                         'data-testid': 'calendar-new-session-button',
                         className: 'flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-black text-premium-bg transition-all active:scale-95',
