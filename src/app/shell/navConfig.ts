@@ -56,6 +56,9 @@ export const primaryNavItems: NavItem[] = [
 export const moreNavItems: NavItem[] = [
     { tab: 'clients',   icon: I.Person, label: 'الموكلين',    testId: 'nav-more-clients' },
     { tab: 'documents', icon: I.Folder, label: 'المستندات',   testId: 'nav-more-documents' },
+    // ⚡ NEW (تصفح "الموسوعة القانونية" لكل المستخدمين، مرحلة 4): متاح
+    // للكل عمدًا (بدون adminOnly) — نفس القرار المطبّق في CommandDock.tsx.
+    { tab: 'encyclopedia', icon: I.Scale, label: 'الموسوعة القانونية', testId: 'nav-more-encyclopedia' },
     { tab: 'fees',      icon: I.Money,  label: 'الأتعاب',     testId: 'nav-more-fees', adminOnly: true },
     { tab: 'admin',     icon: I.Shield, label: 'لوحة الإدارة', testId: 'nav-more-admin', adminOnly: true },
 ];
