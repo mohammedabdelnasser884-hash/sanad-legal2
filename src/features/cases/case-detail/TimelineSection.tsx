@@ -290,9 +290,9 @@ function TimelineSection({
                                             )
                                           )
                                         : React.createElement('div', {
-                                            className: `flex-1 bg-premium-card border rounded-2xl p-4 mb-1 transition-all active:scale-[0.99] ${i === 0 ? 'border-premium-gold/25 shadow-neon-gold' : 'border-white/5'} ${i === 0 && caseStatus !== 'منتهية' && s.is_judgment_reserved !== true ? 'cursor-pointer' : ''}`,
+                                            className: `flex-1 bg-premium-card border rounded-2xl p-4 mb-1 transition-all active:scale-[0.99] ${i === 0 ? 'border-premium-gold/25 shadow-neon-gold' : 'border-white/5'} ${canEditCase && i === 0 && caseStatus !== 'منتهية' && s.is_judgment_reserved !== true ? 'cursor-pointer' : ''}`,
                                             'data-testid': 'session-card',
-                                            onClick: () => (i === 0 && caseStatus !== 'منتهية' && s.is_judgment_reserved !== true) ? setSessionUpdateTarget(s) : null
+                                            onClick: () => (canEditCase && i === 0 && caseStatus !== 'منتهية' && s.is_judgment_reserved !== true) ? setSessionUpdateTarget(s) : null
                                           },
                                             // التاريخ + أزرار
                                             React.createElement('div', {className: "flex items-center justify-between mb-3"},
@@ -387,7 +387,10 @@ function TimelineSection({
                                             // إجراء على الجلسة دي (نهائي/تمهيدي/تأجيل) طول ما هي محجوزة للحكم؛
                                             // "⚡ تحديث" العادي كان بيفتح نفس مودال SessionUpdateModal اللي مش
                                             // مصمم لمسارات الحكم دي.
-                                            i === 0 && caseStatus !== 'منتهية' && s.is_judgment_reserved !== true && React.createElement('button', {
+                                            // 🔒 NEW (فصل صلاحيات المشاهد عن وضع المشاهدة الجماعي، 13 سبتمبر
+                                            // 2026): "⚡ تحديث" هي الطريقة الوحيدة لإضافة/تحديث جلسة دلوقتي
+                                            // (بعد إلغاء زرار "إضافة جلسة" المستقل)، فمحكومة بـcanEditCase.
+                                            canEditCase && i === 0 && caseStatus !== 'منتهية' && s.is_judgment_reserved !== true && React.createElement('button', {
                                                 onClick: (e: React.MouseEvent) => { e.stopPropagation(); setSessionUpdateTarget(s); },
                                                 'data-testid': 'session-update-trigger',
                                                 className: "w-full py-2.5 rounded-xl text-[10px] font-black active:scale-[0.98] transition-all",
