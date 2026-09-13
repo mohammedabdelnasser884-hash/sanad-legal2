@@ -10,6 +10,7 @@ import LegalLibraryModal from './legal-library/LegalLibraryModal';
 import EncyclopediaCategoryModal from './encyclopedia/EncyclopediaCategoryModal';
 import EncyclopediaFormModal from './encyclopedia/EncyclopediaFormModal';
 import EncyclopediaBatchUploadModal from './encyclopedia/EncyclopediaBatchUploadModal';
+import EncyclopediaBulkMoveModal from './encyclopedia/EncyclopediaBulkMoveModal';
 import type { ProfileRow, ClientRow, LawRow, LegalCategoryRow, EncyclopediaCategoryRow, EncyclopediaFormRow } from '../../types';
 import type { EditUserForm, AddUserForm, ChangePasswordPayload } from './users/hooks/useAdminUsers';
 import type { PortalAccessRow, PortalSaveForm } from './portal/hooks/useAdminPortal';
@@ -109,6 +110,18 @@ interface AdminPanelModalsProps {
   batchResults: EncyclopediaBatchFileResult[] | null;
   setBatchResults: (r: EncyclopediaBatchFileResult[] | null) => void;
   handleUploadBatch: (categoryId: string, items: { file: File; title: string }[]) => void;
+
+  // تأكيد حذف جماعي للنماذج في الموسوعة القانونية
+  confirmBulkDeleteForms: EncyclopediaFormRow[] | null;
+  setConfirmBulkDeleteForms: (f: EncyclopediaFormRow[] | null) => void;
+  bulkDeleting: boolean;
+  handleBulkDeleteForms: (forms: EncyclopediaFormRow[]) => void;
+
+  // نقل جماعي للنماذج في الموسوعة القانونية
+  bulkMoveForms: EncyclopediaFormRow[] | null;
+  setBulkMoveForms: (f: EncyclopediaFormRow[] | null) => void;
+  bulkMoving: boolean;
+  handleBulkMoveForms: (forms: EncyclopediaFormRow[], targetCategoryId: string) => void;
 }
 
 export default function AdminPanelModals(props: AdminPanelModalsProps) {
@@ -129,6 +142,8 @@ export default function AdminPanelModals(props: AdminPanelModalsProps) {
     confirmDeleteForm, setConfirmDeleteForm, handleDeleteForm,
     showBatchUploadModal, setShowBatchUploadModal, batchModalCategoryId, setBatchModalCategoryId,
     batchUploading, batchProgress, batchResults, setBatchResults, handleUploadBatch,
+    confirmBulkDeleteForms, setConfirmBulkDeleteForms, bulkDeleting, handleBulkDeleteForms,
+    bulkMoveForms, setBulkMoveForms, bulkMoving, handleBulkMoveForms,
   } = props;
 
   return React.createElement(React.Fragment, null,
@@ -262,6 +277,37 @@ export default function AdminPanelModals(props: AdminPanelModalsProps) {
       results: batchResults,
       onUpload: handleUploadBatch,
       onClose: () => { setShowBatchUploadModal(false); setBatchModalCategoryId(null); setBatchResults(null); }
+    }),
+
+    // تأكيد حذف جماعي للنماذج المحددة في الموسوعة القانونية — نفس مودال
+    // تأكيد حذف نموذج واحد (DeleteConfirmModal بنمط 'delete')، بس itemName هنا
+    // نص عدّاد ثابت ("3 نماذج") لازم المستخدم يكتبه بالظبط للتأكيد، بدل اسم
+    // نموذج واحد. الحذف الفعلي بيحصل تسلسليًا (handleBulkDeleteForms).
+    confirmBulkDeleteForms && createPortal(React.createElement(DeleteConfirmModal, {
+      title: "حذف الملفات المحددة؟",
+      itemName: `${confirmBulkDeleteForms.length} ${confirmBulkDeleteForms.length === 1 ? 'ملف' : 'ملفات'}`,
+      itemType: "الملفات المحددة",
+      mode: "delete",
+      loading: bulkDeleting,
+      deleteConsequences: [
+        `سيُحذف ${confirmBulkDeleteForms.length} ${confirmBulkDeleteForms.length === 1 ? 'ملف' : 'ملفات'} نهائياً من التخزين والقاعدة`,
+        "لا يمكن استعادة الملفات بعد الحذف",
+      ],
+      onConfirm: () => handleBulkDeleteForms(confirmBulkDeleteForms),
+      onCancel: () => setConfirmBulkDeleteForms(null),
+      inputTestId: 'admin-encyclopedia-bulk-delete-input',
+      confirmTestId: 'admin-encyclopedia-bulk-delete-confirm',
+      cancelTestId: 'admin-encyclopedia-bulk-delete-cancel'
+    }), document.body),
+
+    // مودال نقل جماعي للنماذج المحددة في الموسوعة القانونية — اختيار مجلد
+    // وجهة واحد، ثم النقل الفعلي تسلسليًا (handleBulkMoveForms)
+    bulkMoveForms && React.createElement(EncyclopediaBulkMoveModal, {
+      forms: bulkMoveForms,
+      categories: encyclopediaCategories,
+      moving: bulkMoving,
+      onMove: handleBulkMoveForms,
+      onClose: () => setBulkMoveForms(null),
     })
   );
 }
