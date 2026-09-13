@@ -209,10 +209,12 @@ describe('useClientLinking', () => {
         type: 'INSERT', table: 'cases',
         data: expect.objectContaining({
           case_number_official: '10 لسنة 2026', case_type: 'مدني', status: 'نشطة',
-          _offlineTempId: expect.stringMatching(/^tmp-/),
         }),
         returning: true,
       }));
+      // 🗑️ (تحديث بعد المرحلة 3 — 13 سبتمبر 2026): buildCaseInsertData
+      // مبقتش بتكتب _offlineTempId خالص (اتشال، مفيش قارئ له).
+      expect(dbWrite.callsFor('INSERT:cases')[0].data).not.toHaveProperty('_offlineTempId');
       // F.3 (6 أغسطس 2026): buildCaseInsertData (المستخدمة هنا جوه handleLinkCase)
       // بقت مابتكتبش عمود plaintiff (ولا أي عمود legacy تاني) خالص
       expect(dbWrite.callsFor('INSERT:cases')[0].data).not.toHaveProperty('plaintiff');
@@ -312,7 +314,7 @@ describe('useClientLinking', () => {
       expect(recalcNextHearing).not.toHaveBeenCalled();
     });
 
-    it('🆕 (المرحلة 2) أوفلاين بالكامل: إنشاء القضية بيترجع queued من غير id حقيقي → createdCaseId بيتخزّن كتمبيد، وUPDATE الجلسة بيتبعت بـ _offlineFkTempId، ومفيش recalcNextHearing (هتتحسب بعد المزامنة)', async () => {
+    it('🆕 (المرحلة 2) أوفلاين بالكامل: إنشاء القضية بيترجع queued من غير id حقيقي → createdCaseId بيتخزّن كتمبيد، وUPDATE الجلسة بيتبعت بـ case_id بس (الـsentinel اتشال في المرحلة 3)، ومفيش recalcNextHearing (هتتحسب بعد المزامنة)', async () => {
       dbWrite.setResult('INSERT:cases', { error: null, offline: true, queued: true });
       mockDb.setResult('clients:select', { data: [], error: null });
       const saved = makeSavedFormData({ title: 'قضية أوفلاين' }, { sessionId: 'session-offline-1' });
@@ -325,9 +327,10 @@ describe('useClientLinking', () => {
       const sessionUpdateCall = dbWrite.callsFor('UPDATE:case_sessions')[0];
       expect(sessionUpdateCall.id).toBe('session-offline-1');
       expect(sessionUpdateCall.data?.case_id).toBe(result.current.createdCaseId);
-      expect(sessionUpdateCall.data?._offlineFkTempId).toEqual([
-        { field: 'case_id', tempId: result.current.createdCaseId, table: 'cases', fallbackNameValue: 'قضية أوفلاين' },
-      ]);
+      // 🗑️ (تحديث بعد المرحلة 3 — 13 سبتمبر 2026): withFkOfflineSentinel
+      // بقت passthrough، فمفيش _offlineFkTempId في الناتج حتى في هذا
+      // السيناريو (dbWrite بيرجع offline/queued=true يدويًا هنا بالموك بس).
+      expect(sessionUpdateCall.data).toEqual({ case_id: result.current.createdCaseId });
       expect(recalcNextHearing).not.toHaveBeenCalled();
     });
   });
@@ -357,7 +360,7 @@ describe('useClientLinking', () => {
       expect(result.current.linkingToCase).toBe(false);
     });
 
-    it('🆕 المرحلة 3-1: createdCaseId لسه تمبيد (القضية اتقيدت أوفلاين في handleLinkCase) → __dbWrite بـ _offlineSelfTempId + _offlineSelfFallbackName (عنوان القضية)، وتوست "محفوظ محلياً" لو رجع queued', async () => {
+    it('🆕 المرحلة 3-1: createdCaseId لسه تمبيد (القضية اتقيدت أوفلاين في handleLinkCase) → __dbWrite بـ client_id بس من غير sentinel (اتشال في المرحلة 3)، وتوست "محفوظ محلياً" لو رجع queued', async () => {
       dbWrite.setResult('INSERT:cases', { error: null, offline: true, queued: true });
       dbWrite.setResult('UPDATE:cases', { error: null, offline: true, queued: true });
       mockDb.setResult('clients:select', { data: [{ id: 'client-found-offline', full_name: 'أحمد محمد' }], error: null });
@@ -369,9 +372,12 @@ describe('useClientLinking', () => {
 
       await act(async () => { await result.current.handleLinkExistingClient(); });
 
+      // 🗑️ (تحديث بعد المرحلة 3 — 13 سبتمبر 2026): withCaseSelfOfflineSentinel
+      // بقت passthrough، فمفيش _offlineSelfTempId/_offlineSelfFallbackName
+      // في الناتج حتى مع createdCaseId بصيغة تمبيد.
       expect(dbWrite.callsFor('UPDATE:cases')[0]).toEqual({
         type: 'UPDATE', table: 'cases', id: tempCaseId,
-        data: { client_id: 'client-found-offline', _offlineSelfTempId: tempCaseId, _offlineSelfFallbackName: 'قضية أوفلاين للربط' },
+        data: { client_id: 'client-found-offline' },
       });
       expect(toast).toHaveBeenCalledWith('📥 الربط محفوظ محلياً — سيُزامن عند عودة الإنترنت');
       expect(result.current.clientStep).toBe('done');
