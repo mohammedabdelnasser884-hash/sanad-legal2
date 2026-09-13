@@ -37,9 +37,15 @@ function ReminderCard({ r, todayStr, onToggleDone, onView, onEdit, onDelete, can
         'data-testid': `reminder-card-${r.id}`
     },
         React.createElement('div',{className:"flex items-center gap-2.5"},
-            // زر التأشير
-            React.createElement('button',{
+            // زر التأشير (تحديد منجز/مؤجل/إلغاء الإنجاز) — كان الزر الوحيد في
+            // الكارت اللي بيتحكم في حالة التذكير بلا فحص canEdit، رغم إنه نفس
+            // فئة "تعديل" زي زرار Edit جنبه (بند 1 — مراجعة المستخدم المشاهد،
+            // 13 سبتمبر 2026). بيختفي كليًا لمن ليس له can_edit_reminders، بنفس
+            // نمط زرار التعديل والحذف تحت — الحالة نفسها لسه ظاهرة للمشاهد عن
+            // طريق الـbadge النصي (✅ منجز / تاريخ الإنجاز) على يمينه.
+            canEdit && React.createElement('button',{
                 onClick: (e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); onToggleDone(r); },
+                'data-testid': `reminder-toggle-done-btn-${r.id}`,
                 className:`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all active:scale-90 ${r.done?'bg-emerald-500 border-emerald-500 text-white':isOverdue?'border-rose-400 hover:bg-rose-400/20':'border-white/20 hover:border-premium-gold'}`
             }, r.done && React.createElement(I.Check,{className:"w-3 h-3"})),
 
