@@ -17,19 +17,39 @@ interface EncyclopediaSectionProps {
   setConfirmDeleteForm: React.Dispatch<React.SetStateAction<EncyclopediaFormRow | null>>;
   setBatchModalCategoryId: React.Dispatch<React.SetStateAction<string | null>>;
   setShowBatchUploadModal: React.Dispatch<React.SetStateAction<boolean>>;
+  // وضع "تحديد" + حذف/نقل جماعي — نفس فكرة الرفع المتعدد، بس بيستخدم
+  // deleteForm/updateForm الحاليين تسلسليًا (راجع useAdminEncyclopedia)
+  selectMode: boolean;
+  toggleSelectMode: () => void;
+  selectedFormIds: Set<string>;
+  toggleFormSelected: (id: string) => void;
+  clearSelection: () => void;
+  setConfirmBulkDeleteForms: React.Dispatch<React.SetStateAction<EncyclopediaFormRow[] | null>>;
+  setBulkMoveForms: React.Dispatch<React.SetStateAction<EncyclopediaFormRow[] | null>>;
 }
 
 // بطاقة نموذج (ملف) — بتتكرر جوه أي مجلد (رئيسي أو فرعي)
-function FormCard({ form, onEdit, onDelete }: {
+// جوه وضع التحديد: كل البطاقة بتبقى زرار تحديد (checkbox) بدل زراري تعديل/حذف
+function FormCard({ form, onEdit, onDelete, selectMode, selected, onToggleSelect }: {
   form: EncyclopediaFormRow;
   onEdit: () => void;
   onDelete: () => void;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   return React.createElement('div', {
     key: form.id, 'data-testid': 'admin-encyclopedia-form-card',
-    className: 'bg-premium-card border border-white/5 rounded-2xl p-3.5 space-y-2',
+    className: `bg-premium-card border rounded-2xl p-3.5 space-y-2 transition-colors ${selectMode && selected ? 'border-teal-400/40 bg-teal-500/5' : 'border-white/5'}`,
   },
-    React.createElement('div', { className: 'flex items-start gap-2.5' },
+    React.createElement('div', {
+      className: `flex items-start gap-2.5 ${selectMode ? 'cursor-pointer' : ''}`,
+      onClick: selectMode ? onToggleSelect : undefined,
+    },
+      selectMode && React.createElement('div', {
+        'data-testid': 'admin-encyclopedia-form-checkbox',
+        className: `w-5 h-5 rounded-md border shrink-0 flex items-center justify-center mt-1 ${selected ? 'bg-teal-400 border-teal-400 text-premium-bg' : 'border-white/20 text-transparent'}`,
+      }, React.createElement(I.Check)),
       React.createElement('div', { className: 'w-8 h-8 rounded-xl bg-teal-500/10 flex items-center justify-center text-teal-400 shrink-0' },
         React.createElement(I.Doc)
       ),
@@ -42,7 +62,7 @@ function FormCard({ form, onEdit, onDelete }: {
         )
       )
     ),
-    React.createElement('div', { className: 'flex items-center gap-2 pt-1' },
+    !selectMode && React.createElement('div', { className: 'flex items-center gap-2 pt-1' },
       React.createElement('button', {
         onClick: onEdit, 'data-testid': 'admin-encyclopedia-form-edit',
         className: 'flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-300 text-[11px] font-bold active:scale-95 transition-transform',
@@ -96,6 +116,8 @@ function EncyclopediaSection({
   setEditingCategory, setCategoryParentForNew, setShowCategoryModal, setConfirmDeleteCategory,
   setEditingForm, setFormModalCategoryId, setShowFormModal, setConfirmDeleteForm,
   setBatchModalCategoryId, setShowBatchUploadModal,
+  selectMode, toggleSelectMode, selectedFormIds, toggleFormSelected, clearSelection,
+  setConfirmBulkDeleteForms, setBulkMoveForms,
 }: EncyclopediaSectionProps) {
   // مستويين بس — activeCategoryId يمثل المجلد المفتوح حاليًا (رئيسي أو فرعي)، null = القائمة الرئيسية
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
@@ -106,6 +128,22 @@ function EncyclopediaSection({
   const formsOf = (categoryId: string) => forms.filter((f) => f.category_id === categoryId);
   const formsCountIncludingChildren = (categoryId: string) =>
     formsOf(categoryId).length + subCategoriesOf(categoryId).reduce((sum, c) => sum + formsOf(c.id).length, 0);
+
+  // ── وضع "تحديد" — بيشتغل بس على نماذج المجلد المفتوح حاليًا (زي متطلب
+  //    "تحدد أكتر من ملف مع بعض جوه أي مجلد"). أي تنقّل بين المجلدات
+  //    بيصفّر التحديد تلقائيًا عشان مايفضلش فيه ids محددة لملفات مش ظاهرة.
+  React.useEffect(() => {
+    clearSelection();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCategoryId]);
+
+  const visibleForms = activeCategory ? formsOf(activeCategory.id) : [];
+  const selectedForms = visibleForms.filter((f) => selectedFormIds.has(f.id));
+  const allVisibleSelected = visibleForms.length > 0 && selectedForms.length === visibleForms.length;
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) { visibleForms.forEach((f) => { if (selectedFormIds.has(f.id)) toggleFormSelected(f.id); }); }
+    else { visibleForms.forEach((f) => { if (!selectedFormIds.has(f.id)) toggleFormSelected(f.id); }); }
+  };
 
   // ⚡ NEW (فيكس زر الرجوع الفعلي بالموبايل جوه إدارة الموسوعة — طلب Gemy):
   // نفس آلية useNestedModalBackButton المستخدمة أصلاً في نسخة التصفح
@@ -160,8 +198,9 @@ function EncyclopediaSection({
     // ── أزرار الإضافة ──
     // زرار المجلد (رئيسي/فرعي) بيتغيّر حسب المستوى الحالي زي ما كان.
     // "نموذج جديد" و"رفع متعدد" بقوا ظاهرين دايمًا (حتى في القائمة الرئيسية
-    // برة أي مجلد) — اختيار المجلد بقى بيتم من جوه المودال نفسه.
-    React.createElement('div', { className: 'space-y-2' },
+    // برة أي مجلد) — اختيار المجلد بقى بيتم من جوه المودال نفسه. مش بتظهر
+    // في وضع "تحديد" — مكانها بيبقى شريط التحديد الجماعي بدلاً منها.
+    !selectMode && React.createElement('div', { className: 'space-y-2' },
       (!activeCategory || !activeCategory.parent_id) && React.createElement('div', { className: 'flex' },
         !activeCategory && React.createElement('button', {
           onClick: () => { setEditingCategory(null); setCategoryParentForNew(null); setShowCategoryModal(true); },
@@ -185,6 +224,43 @@ function EncyclopediaSection({
           'data-testid': 'admin-encyclopedia-new-batch',
           className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-indigo-400/10 border border-indigo-400/20 text-indigo-400 text-[11px] font-black active:scale-95 transition-transform',
         }, React.createElement(I.Doc), 'رفع متعدد')
+      ),
+      // زرار الدخول في وضع "تحديد" — بيظهر بس جوه مجلد فيه نماذج (مفيش داعي له في القائمة الرئيسية للمجلدات)
+      activeCategory && visibleForms.length > 0 && React.createElement('button', {
+        onClick: toggleSelectMode,
+        'data-testid': 'admin-encyclopedia-select-mode-toggle',
+        className: 'w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-white/5 border border-white/10 text-slate-300 text-[11px] font-bold active:scale-95 transition-transform',
+      }, React.createElement(I.Check), 'تحديد')
+    ),
+
+    // ── شريط التحديد الجماعي — بيظهر بدل أزرار الإضافة وهو وضع "تحديد" شغّال ──
+    selectMode && React.createElement('div', { className: 'space-y-2', 'data-testid': 'admin-encyclopedia-bulk-toolbar' },
+      React.createElement('div', { className: 'flex items-center justify-between' },
+        React.createElement('button', {
+          onClick: toggleSelectAllVisible,
+          'data-testid': 'admin-encyclopedia-select-all',
+          className: 'text-[11px] font-bold text-teal-400',
+        }, allVisibleSelected ? 'إلغاء تحديد الكل' : 'تحديد الكل'),
+        React.createElement('p', { className: 'text-[10.5px] text-slate-400 font-bold' }, `${selectedForms.length} محدد`),
+        React.createElement('button', {
+          onClick: clearSelection,
+          'data-testid': 'admin-encyclopedia-select-cancel',
+          className: 'text-[11px] font-bold text-slate-500',
+        }, 'إلغاء')
+      ),
+      React.createElement('div', { className: 'flex items-center gap-2' },
+        React.createElement('button', {
+          disabled: selectedForms.length === 0,
+          onClick: () => setBulkMoveForms(selectedForms),
+          'data-testid': 'admin-encyclopedia-bulk-move',
+          className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-indigo-400/10 border border-indigo-400/20 text-indigo-400 text-[11px] font-black active:scale-95 transition-transform disabled:opacity-40',
+        }, React.createElement(I.Folder), `نقل المحدد (${selectedForms.length})`),
+        React.createElement('button', {
+          disabled: selectedForms.length === 0,
+          onClick: () => setConfirmBulkDeleteForms(selectedForms),
+          'data-testid': 'admin-encyclopedia-bulk-delete',
+          className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] font-black active:scale-95 transition-transform disabled:opacity-40',
+        }, React.createElement(I.Trash), `حذف المحدد (${selectedForms.length})`)
       )
     ),
 
@@ -212,6 +288,7 @@ function EncyclopediaSection({
         key: form.id, form,
         onEdit: () => { setEditingForm(form); setFormModalCategoryId(null); setShowFormModal(true); },
         onDelete: () => setConfirmDeleteForm(form),
+        selectMode, selected: selectedFormIds.has(form.id), onToggleSelect: () => toggleFormSelected(form.id),
       })),
       subCategoriesOf(activeCategory.id).length === 0 && formsOf(activeCategory.id).length === 0 &&
         React.createElement('div', { 'data-testid': 'admin-encyclopedia-empty', className: 'bg-premium-card border border-white/5 rounded-xl p-10 text-center text-slate-500 text-xs' }, 'المجلد فارغ حاليًا')
@@ -225,6 +302,7 @@ function EncyclopediaSection({
             key: form.id, form,
             onEdit: () => { setEditingForm(form); setFormModalCategoryId(null); setShowFormModal(true); },
             onDelete: () => setConfirmDeleteForm(form),
+            selectMode, selected: selectedFormIds.has(form.id), onToggleSelect: () => toggleFormSelected(form.id),
           }))
     )
   );
