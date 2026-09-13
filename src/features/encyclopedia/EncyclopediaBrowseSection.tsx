@@ -19,8 +19,11 @@ interface EncyclopediaBrowseSectionProps {
 }
 
 // بطاقة نموذج (ملف) — نسخة عرض/تحميل بس، بدون تعديل/حذف (ده مقصور على
-// EncyclopediaSection.tsx بتاعة لوحة الإدارة). زرارين: معاينة (يفتح
-// الملف للعرض بس، من غير ما يزوّد عداد التحميلات) وتحميل (زي ما كان).
+// EncyclopediaSection.tsx بتاعة لوحة الإدارة). الكارت نفسه بلا أي onClick
+// (مقصود) — أيقونتين صغيرتين فوق على الشمال (معاينة/تحميل) هما بس اللي
+// شغالين، مش زرارين عريضين بالعرض زي الأول. badge الأيقونة الرئيسية بقى
+// بلون + حرف مختلف حسب نوع الملف (أحمر "PDF" / أزرق "DOC") عشان يتميّز
+// بصريًا عن أيقونة المجلد الكهرمانية بشكل واضح، مش بس شكل الأيقونة.
 // categoryLabel اختياري — بيتحط بس في نتائج البحث المسطّحة (context
 // عن مكان النموذج، لأن نتيجة البحث بتظهر من غير التنقل جوه المجلدات).
 function FormCard({ form, downloading, onDownload, previewing, onPreview, categoryLabel }: {
@@ -31,14 +34,29 @@ function FormCard({ form, downloading, onDownload, previewing, onPreview, catego
   onPreview: () => void;
   categoryLabel?: string;
 }) {
+  const isPdf = form.file_type === 'pdf';
   return React.createElement('div', {
     key: form.id, 'data-testid': 'encyclopedia-form-card',
-    className: 'bg-premium-card border border-white/5 rounded-2xl p-3.5 space-y-2',
+    className: 'relative bg-premium-card border border-white/5 rounded-2xl p-3.5 pt-11',
   },
+    // ── أيقونتا الإجراء — دايرتين صغيرين فوق على الشمال، مستقلتين تمامًا
+    // عن جسم الكارت (الكارت مالوش onClick خالص). ──
+    React.createElement('div', { className: 'absolute top-2.5 left-2.5 flex items-center gap-1.5' },
+      React.createElement('button', {
+        onClick: onPreview, disabled: previewing || downloading, 'data-testid': 'encyclopedia-form-preview',
+        'aria-label': 'معاينة', title: 'معاينة',
+        className: 'w-7 h-7 rounded-full bg-white/5 border border-white/10 text-slate-300 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50',
+      }, previewing ? React.createElement(I.Spin) : React.createElement(I.Eye)),
+      React.createElement('button', {
+        onClick: onDownload, disabled: downloading || previewing, 'data-testid': 'encyclopedia-form-download',
+        'aria-label': 'تحميل', title: 'تحميل',
+        className: 'w-7 h-7 rounded-full bg-teal-400/10 border border-teal-400/20 text-teal-400 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50',
+      }, downloading ? React.createElement(I.Spin) : React.createElement(I.Download))
+    ),
     React.createElement('div', { className: 'flex items-start gap-2.5' },
-      React.createElement('div', { className: 'w-8 h-8 rounded-xl bg-teal-500/10 flex items-center justify-center text-teal-400 shrink-0' },
-        React.createElement(I.Doc)
-      ),
+      React.createElement('div', {
+        className: `w-8 h-8 rounded-xl flex items-center justify-center shrink-0 font-black text-[8.5px] tracking-tight ${isPdf ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'}`,
+      }, isPdf ? 'PDF' : 'DOC'),
       React.createElement('div', { className: 'flex-1 min-w-0' },
         React.createElement('p', { className: 'text-xs font-black text-white leading-snug' }, form.title),
         form.description && React.createElement('p', { className: 'text-[10px] text-slate-500 mt-0.5 leading-relaxed' }, form.description),
@@ -47,16 +65,6 @@ function FormCard({ form, downloading, onDownload, previewing, onPreview, catego
           categoryLabel && React.createElement('span', { 'data-testid': 'encyclopedia-search-result-category', className: 'inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-400/10 text-amber-400' }, categoryLabel)
         )
       )
-    ),
-    React.createElement('div', { className: 'flex items-center gap-2' },
-      React.createElement('button', {
-        onClick: onPreview, disabled: previewing || downloading, 'data-testid': 'encyclopedia-form-preview',
-        className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-slate-300 text-[11px] font-black active:scale-95 transition-transform disabled:opacity-50',
-      }, previewing ? React.createElement(I.Spin) : React.createElement(I.Eye), previewing ? 'جاري الفتح...' : 'معاينة'),
-      React.createElement('button', {
-        onClick: onDownload, disabled: downloading || previewing, 'data-testid': 'encyclopedia-form-download',
-        className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-teal-400/10 border border-teal-400/20 text-teal-400 text-[11px] font-black active:scale-95 transition-transform disabled:opacity-50',
-      }, downloading ? React.createElement(I.Spin) : React.createElement(I.Download), downloading ? 'جاري التحميل...' : 'تحميل')
     )
   );
 }
