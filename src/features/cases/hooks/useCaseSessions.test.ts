@@ -205,16 +205,9 @@ describe('useCaseSessions — handleDeleteSession', () => {
     expect(refetchAll).toHaveBeenCalled();
   });
 
-  it('أوفلاين ومتقيّدة → توست "الحذف محفوظ محلياً"، من غير إعادة حساب أو تسجيل نشاط', async () => {
-    dbWriteMock().mockResolvedValue({ error: null, offline: true, queued: true });
-    const { result, refetchAll } = renderSessionsHook();
-    await act(async () => { await result.current.handleDeleteSession('sess-1'); });
-
-    expect(toast).toHaveBeenCalledWith('📥 الحذف محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-    expect(mockDb.updateSpy).not.toHaveBeenCalled();
-    expect(logActivity).not.toHaveBeenCalled();
-    expect(refetchAll).not.toHaveBeenCalled();
-  });
+  // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تست
+  // "أوفلاين ومتقيّدة" اتشال — الفرع اللي كان بيغطيه اتشال من الكود نفسه
+  // (__dbWrite بترجع offline:false دايمًا بعد المرحلة 1).
 
   it('فشل الحذف → توست فشل بس، من غير إعادة حساب أو تسجيل نشاط', async () => {
     dbWriteMock().mockResolvedValue({ error: { message: 'delete failed' } });
@@ -248,15 +241,8 @@ describe('useCaseSessions — handleUpdateSession', () => {
     expect(refetchAll).not.toHaveBeenCalled();
   });
 
-  it('أوفلاين ومتقيّدة → توست "التعديل محفوظ محلياً"، من غير إعادة حساب أو تسجيل نشاط', async () => {
-    dbWriteMock().mockResolvedValue({ error: null, offline: true, queued: true });
-    const { result, refetchAll } = renderSessionsHook();
-    await act(async () => { await result.current.handleUpdateSession('sess-1', { date: '2026-08-01' }); });
-
-    expect(toast).toHaveBeenCalledWith('📥 التعديل محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-    expect(logActivity).not.toHaveBeenCalled();
-    expect(refetchAll).not.toHaveBeenCalled();
-  });
+  // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تست
+  // "أوفلاين ومتقيّدة" اتشال بنفس السبب.
 
   it('الجلسة مش موجودة في الـ state المحلي (sessions فاضية) → __dbWrite بيتنادى بـ knownUpdatedAt: null', async () => {
     dbWriteMock().mockResolvedValue({ error: null });
@@ -598,18 +584,10 @@ describe('useCaseSessions — handleCancelJudgmentReservation', () => {
     expect(refetchAll).not.toHaveBeenCalled();
   });
 
-  it('أوفلاين ومتقيّدة → توست "الإلغاء محفوظ محليًا"، من غير تسجيل نشاط، مع refetchAll', async () => {
-    dbWriteMock().mockResolvedValue({ error: null, offline: true, queued: true });
-    const { result, refetchAll } = renderSessionsHook();
-
-    await act(async () => {
-      await result.current.handleCancelJudgmentReservation('sess-1');
-    });
-
-    expect(toast).toHaveBeenCalledWith('📥 تم حفظ إلغاء الحجز محليًا — سيُزامن عند عودة الإنترنت');
-    expect(logActivity).not.toHaveBeenCalled();
-    expect(refetchAll).toHaveBeenCalled();
-  });
+  // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تست
+  // "أوفلاين ومتقيّدة" اتشال — الفرع اللي كان بيغطيه اتشال من الكود نفسه.
+  // refetchAll لسه بتتنادى فى نهاية المسار الناجح العادي دايمًا (مغطاة
+  // بتستات تانية فى نفس الوصف).
 
   it('cancelingReservationId بيتحط على id الجلسة وقت التنفيذ ويرجع null بعدها', async () => {
     let resolveWrite: (v: { error: null }) => void;
