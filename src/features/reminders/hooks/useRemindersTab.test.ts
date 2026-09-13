@@ -406,18 +406,9 @@ describe('useRemindersTab', () => {
       expect(result.current.form).toEqual({ title: '', due_date: '', notes: '' });
     });
 
-    it('أوفلاين (queued) → توست حفظ محلي، إغلاق الفورم وتصفيره، من غير logActivity — سلوك أوفلاين حقيقي (مرحلة 6)', async () => {
-      dbWriteMock().mockResolvedValue({ error: null, offline: true, queued: true });
-      const { result } = await renderReady();
-      act(() => { result.current.setForm({ title: 'تذكير أوفلاين', due_date: '2026-08-01', notes: '' }); });
-
-      await act(async () => { await result.current.handleSave(); });
-
-      expect(toast).toHaveBeenCalledWith('📥 التذكير محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-      expect(result.current.showForm).toBe(false);
-      expect(result.current.form).toEqual({ title: '', due_date: '', notes: '' });
-      expect(logActivity).not.toHaveBeenCalled();
-    });
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تست
+    // "أوفلاين (queued)" اتشال — الفرع اللي كان بيغطيه اتشال من الكود
+    // نفسه (__dbWrite بترجع offline:false دايمًا بعد المرحلة 1).
 
     it('فشل الإدخال → recordWriteFailure بمفتاح reminder_save، توست فشل، من غير logActivity أو إغلاق الفورم', async () => {
       dbWriteMock().mockResolvedValue({ error: { message: 'insert failed' }, offline: false, queued: false });
@@ -463,16 +454,8 @@ describe('useRemindersTab', () => {
       expect(toast).toHaveBeenCalledWith('↩️ تم إلغاء الإنجاز');
     });
 
-    it('أوفلاين (queued) → توست حفظ محلي، من غير توست نجاح/فشل', async () => {
-      dbWriteMock().mockResolvedValue({ error: null, offline: true, queued: true });
-      const { result } = await renderReady();
-      const reminder = makeReminder({ id: 'rem-toggle-offline' });
-
-      await act(async () => { await result.current.handleToggleDone(reminder); });
-
-      expect(toast).toHaveBeenCalledWith('📥 التعديل محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-      expect(toast).not.toHaveBeenCalledWith('✅ تم تسجيل الإنجاز');
-    });
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تست
+    // "أوفلاين (queued)" اتشال بنفس السبب.
 
     it('تعارض (conflict:true) → توست تعارض صريح، من غير توست نجاح/فشل', async () => {
       dbWriteMock().mockResolvedValue({ error: null, offline: false, queued: false, conflict: true });
@@ -511,15 +494,8 @@ describe('useRemindersTab', () => {
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'حذف تذكير', expect.objectContaining({ entity_type: 'reminder', entity_id: 'rem-del-1' }));
     });
 
-    it('أوفلاين (queued) → توست حفظ محلي، من غير logActivity — سلوك أوفلاين حقيقي (مرحلة 6)', async () => {
-      dbWriteMock().mockResolvedValue({ error: null, offline: true, queued: true });
-      const { result } = await renderReady();
-
-      await act(async () => { await result.current.handleDelete('rem-del-offline'); });
-
-      expect(toast).toHaveBeenCalledWith('📥 الحذف محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-      expect(logActivity).not.toHaveBeenCalled();
-    });
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تست
+    // "أوفلاين (queued)" اتشال بنفس السبب.
 
     it('فشل الحذف → recordWriteFailure، توست فشل، من غير logActivity', async () => {
       dbWriteMock().mockResolvedValue({ error: { message: 'delete failed' }, offline: false, queued: false });
