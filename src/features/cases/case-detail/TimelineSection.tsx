@@ -327,7 +327,12 @@ function TimelineSection({
                                                     // (setConfirmDeleteJudgment/setFinalJudgmentTarget) عشان
                                                     // يحدّث حالة القضية صح.
                                                     i === 0 && React.createElement('span', {className: "text-[9px] px-2 py-0.5 bg-premium-gold/10 text-premium-gold rounded-full font-bold"}, "آخر جلسة"),
-                                                    i === 0 && s.is_judgment_reserved !== true && React.createElement(React.Fragment, null,
+                                                    // 🔒 FIX (فصل صلاحيات المشاهد عن وضع المشاهدة الجماعي، 13
+                                    // سبتمبر 2026): زراري تعديل/حذف الجلسة كانا بيظهروا لأي
+                                    // مستخدم من غير أي فحص canEditCase — بعكس زرار "⚡ تحديث"
+                                    // جوه نفس الكارت اللي اتقفل فعلاً (شوف الشرط تحت في نفس
+                                    // الملف). بقيا محكومين بنفس canEditCase.
+                                    canEditCase && i === 0 && s.is_judgment_reserved !== true && React.createElement(React.Fragment, null,
                                                         React.createElement('button', {
                                                             onClick: (e: React.MouseEvent) => { e.stopPropagation(); setEditingSession({id:s.id, date:s.session_date||'', time_period:s.session_time||'صباحي', location_floor:s.session_floor||'', location_hall:s.session_hall||'', description:s.description||'', result:s.result||'', next_action:s.next_action||''}); },
                                                             'data-testid': 'session-edit-trigger',
