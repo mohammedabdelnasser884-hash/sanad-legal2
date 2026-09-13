@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { I } from '../../../constants';
+import { useNestedModalBackButton } from '../../../shared/lib/useNestedModalBackButton';
 import type { EncyclopediaCategoryRow, EncyclopediaFormRow } from '../../../types';
 
 interface EncyclopediaSectionProps {
@@ -105,6 +106,20 @@ function EncyclopediaSection({
   const formsOf = (categoryId: string) => forms.filter((f) => f.category_id === categoryId);
   const formsCountIncludingChildren = (categoryId: string) =>
     formsOf(categoryId).length + subCategoriesOf(categoryId).reduce((sum, c) => sum + formsOf(c.id).length, 0);
+
+  // ⚡ NEW (فيكس زر الرجوع الفعلي بالموبايل جوه إدارة الموسوعة — طلب Gemy):
+  // نفس آلية useNestedModalBackButton المستخدمة أصلاً في نسخة التصفح
+  // العادية (EncyclopediaBrowseSection.tsx، قسم 11 في التقرير) — قبل كده
+  // مكانش فيه أي تسجيل هنا خالص، فزر الرجوع الفعلي وهو داخل مجلد كان
+  // بيقفز لـpopstate الافتراضي (يقفل تاب الإدارة كله لأصل dashboard) بدل
+  // ما يرجع خطوة واحدة جوه المجلدات. مستويين مستقلين زي الأصل بالظبط:
+  // "داخل أي مجلد" و"داخل فرعي تحديدًا".
+  const isInsideAnyFolder = activeCategory !== null;
+  const isInsideSubFolder = activeCategory !== null && activeCategory.parent_id !== null;
+  useNestedModalBackButton(isInsideAnyFolder, () => setActiveCategoryId(null));
+  useNestedModalBackButton(isInsideSubFolder, () => {
+    if (activeCategory?.parent_id) setActiveCategoryId(activeCategory.parent_id);
+  });
 
   if (loadingEncyclopedia) {
     return React.createElement('div', { className: 'bg-premium-card border border-white/5 rounded-xl p-10 text-center text-slate-500 text-xs' },
