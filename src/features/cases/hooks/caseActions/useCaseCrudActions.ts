@@ -158,7 +158,6 @@ export function createCaseCrudActions(
             // مستقبلًا استدعاء INSERT من سياق مفيهوش auth.uid() سليم.
             tenant_id: profile?.tenant_id || null,
         };
-        const offlineId = 'offline-' + Date.now();
 
         // ⚡ NEW (مرحلة 4.2 — خطة تعدد الأطراف): بيكتب صف في case_parties لكل
         // طرف في form.parties، بنداءات __dbWrite منفصلة (قرار قسم 8 — خيار أ:
@@ -216,57 +215,20 @@ export function createCaseCrudActions(
             return allOk ? { ok: true } : { ok: false, reason: 'write' };
         };
 
-        const { error, offline, queued, data: insertedCase } = await window.__dbWrite({
+        // 🗑️ المرحلة 4 (تنظيف الفرع الميت — 13 سبتمبر 2026): الفرع القديم
+        // `if (offline && queued) { ... }` اللي كان بيتعامل مع "القضية اتقيّدت
+        // في طابور أوفلاين" اتشال بالكامل — بعد المرحلتين 1+2 (إلغاء الأوفلاين
+        // في الكتابة)، window.__dbWrite مبقاش يرجّع offline/queued بـtrue خالص
+        // (شوف تعليق المرحلة 1 جوه __dbWrite في offlineQueue.ts)، فالفرع ده
+        // كان كود ميت 100% مستحيل يتنفذ. معاه اتشال offlineId (كان مستخدم
+        // جواه بس) ومتغيرا offline/queued من الـdestructuring تحت (بقوا مالهمش
+        // لازمة). ⚠️ تعديل مصاحب إجباري: تست حي في useCaseActions.test.ts كان
+        // بيغطي بالظبط الفرع ده (mock بيرجّع offline:true,queued:true) — اتحذف/
+        // اتحدّث فى نفس التسليم، وإلا كان هيفشل فورًا فى CI.
+        const { error, data: insertedCase } = await window.__dbWrite({
             type: 'INSERT', table: 'cases', data: payload, returning: true
         });
-        if (offline && queued) {
-            // BUG-20 FIX: لو فيه تاريخ جلسة، نحفظها في الـ queue مع _offlineCaseTempId
-            // (+ _offlineCaseTitle كـ fallback) عشان الـ sync handler يقدر يربطها
-            // بالـ id الحقيقي بعد ما القضية تتزامن
-            if (form.date) {
-                await window.__dbWrite({
-                    type: 'INSERT',
-                    table: 'case_sessions',
-                    data: {
-                        _offlineCaseTempId: offlineTempId, // مطابقة أساسية دقيقة
-                        _offlineCaseTitle: form.title,     // fallback لو التشغيلة مختلفة
-                        case_id: null,                   // هيتملى وقت المزامنة
-                        session_date: form.date,
-                        session_time: form.session_time || 'صباحي',
-                        // 🔒 FIX (باگ "قاعة الجلسة الأولى بتتسجل فاضية" — 12
-                        // أغسطس 2026): كان بيتكتب هنا form.court_floor/
-                        // form.court_hall — حقول قديمة اتلغت من الواجهة
-                        // تمامًا وقت "توحيد منطق مكان الجلسة" (session_hall
-                        // بقى المصدر الوحيد في الفورم)، فكانت دايمًا فاضية
-                        // ('') مهما كتب المستخدم في "الطابق وقاعة الجلسة" —
-                        // الجلسة الأولى كانت بتتسجل بقاعة فاضية دايمًا رغم
-                        // إن cases.session_hall نفسه كان بيتكتب صح.
-                        session_floor: null,
-                        session_hall: form.session_hall || null,
-                        description: 'الجلسة الأولى',
-                        result: null,
-                        next_action: null,
-                    },
-                });
-            }
-            toast('📥 محفوظة محلياً — ستُضاف فور عودة الإنترنت');
-            // الأطراف بتتقيّد هي كمان في نفس طابور الأوفلاين — بتتحل تلقائيًا
-            // بالـ case_id الحقيقي وقت المزامنة (_offlineFkTempId فوق).
-            const offlinePartiesResult = await insertCaseParties(null, true, true);
-            // ⚡ NEW (4.3): القضية نفسها اتقيّدت أوفلاين بنجاح (توست فوق)،
-            // لكن لو فحص الأطراف فشل (نادر جدًا — يعني state الفورم اتلاعب
-            // فيه برمجيًا بعد فاليديشن الفورم)، لازم نعلم المستخدم إن أطراف
-            // الدعوى مانضافتش رغم إن القضية اتقيّدت، بدل ما نسكت عن الفشل.
-            if (!offlinePartiesResult.ok) {
-                toast(
-                    offlinePartiesResult.reason === 'validation'
-                        ? offlinePartiesResult.message
-                        : '⚠️ القضية اتقيّدت محليًا، لكن حصل خطأ في حفظ بعض أطراف الدعوى الإضافية — راجعها بعد المزامنة',
-                    true
-                );
-            }
-            setCases((prev) => [{ ...payload, id: offlineId, ...form, status: 'نشطة', date: form.date || '—' } as unknown as MappedCase, ...prev]);
-        } else if (error) {
+        if (error) {
             // 🔒 FIX (تقرير الموثوقية — نتيجة 3): خط دفاع أخير — راجع
             // التعليق المماثل في useClientActions.ts.
             if ((error as { code?: string }).code === '23505') {
@@ -709,30 +671,16 @@ export function createCaseCrudActions(
                 || (selectedCase?.id === caseId ? selectedCase?.updated_at : null)
                 || null;
 
-            const { error, offline, queued, conflict, data: writtenRow } = await window.__dbWrite({
+            // 🗑️ المرحلة 4 (تنظيف الفرع الميت — 13 سبتمبر 2026): نفس فئة الفرع
+            // الميت اللي اتشال من handleSaveCase (إنشاء قضية) فوق فى الملف ده —
+            // window.__dbWrite مبقاش يرجّع offline/queued بـtrue خالص، فالفرع
+            // ده كان مستحيل التنفيذ فعليًا. ⚠️ تعديل مصاحب إجباري: تستات حية فى
+            // useCaseActions.test.ts وuseCaseDetailActions.test.ts كانت بتغطي
+            // بالظبط الفرع ده — اتحذفت/اتحدّثت فى نفس التسليم.
+            const { error, conflict, data: writtenRow } = await window.__dbWrite({
                 type: 'UPDATE', table: 'cases', data: payload, id: caseId, knownUpdatedAt
             });
-            if (offline && queued) {
-                toast('📥 التعديل محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-                // تحديث فوري في الـ state المحلي
-                setCases((prev) => prev.map((c) => c.id === caseId ? { ...c, ...form } : c));
-                if (selectedCase?.id === caseId) setSelectedCase((p) => p ? { ...p, ...form } : p);
-                // ⚡ NEW (5.2): القضية اتقيّدت أوفلاين — نفس مبدأ 4.3، نزامن
-                // أطراف الدعوى (حذف/تعديل/إضافة) في نفس الطابور، ونعلم
-                // المستخدم لو فيه فشل فاليديشن/كتابة من غير ما نمنع نجاح
-                // تعديل القضية نفسها.
-                const offlinePartiesResult = await syncCaseParties(caseId);
-                if (!offlinePartiesResult.ok) {
-                    toast(
-                        offlinePartiesResult.reason === 'validation'
-                            ? offlinePartiesResult.message
-                            : offlinePartiesResult.reason === 'conflict'
-                            ? `⚠️ الأطراف التالية عدّلها شخص آخر بعد ما فتحت القضية: ${offlinePartiesResult.conflictNames.join('، ')} — راجعها بعد المزامنة`
-                            : '⚠️ التعديل اتحفظ محليًا، لكن حصل خطأ في مزامنة بعض أطراف الدعوى — راجعها بعد المزامنة',
-                        true
-                    );
-                }
-            } else if (conflict) {
+            if (conflict) {
                 // 💥 حد تاني عدّل نفس القضية بعد ما إحنا فتحناها — منرفضش نكتب
                 // فوق تعديله بصمت. بنسيب البيانات المعروضة زي ما هي ونطلب من
                 // المستخدم يفتح القضية تاني عشان يشوف آخر نسخة قبل ما يعدّل.
