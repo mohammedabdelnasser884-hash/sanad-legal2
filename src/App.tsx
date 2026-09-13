@@ -753,14 +753,20 @@ function App() {
     // casesFilter، loadingCases: casesLoading) من غير أي تعديل عليهم.
     return React.createElement(React.Fragment, null,
         // ⚡ NEW (E1 — خطة المرحلة 15، 8 سبتمبر 2026): بانر تذكير الاشتراك،
-        // للأدمن بس (نفس نطاق مسؤولية تجديد/تأكيد الدفع)، وبس في حالات
-        // trial_viewer/grace/readonly — TenantSubscriptionBanner نفسه
-        // بيرجّع null لأي حالة تانية. برّه AppShell عمدًا (sticky
+        // في حالات trial_viewer/grace/readonly بس — TenantSubscriptionBanner
+        // نفسه بيرجّع null لأي حالة تانية. برّه AppShell عمدًا (sticky
         // positioning — بيحجز مساحته الحقيقية فى التخطيط بدل ما يتراكب
         // فوق المحتوى، فيكس 9 سبتمبر 2026 بعد ملاحظة إن رسالة grace
         // الطويلة كانت بتغطي الأزرار تحتها وقت لفّها لأكتر من سطر) عشان
         // يفضل ظاهر فوق كل التابات بدون ما يتلف بمنطق تخطيط AppShell/main.
-        isAdmin && React.createElement(TenantSubscriptionBanner, {
+        // 🔓 CHANGED (فصل صلاحيات المشاهد عن وضع المشاهدة الجماعي، 13
+        // سبتمبر 2026): شيلنا قيد `isAdmin &&` — قرار صريح إن كل مستخدمي
+        // المكتب (مش الأدمن بس) لازم يشوفوا إن الحساب بقى في وضع مشاهدة
+        // بشكل استباقي، مش يكتشفوا بس لما يحاولوا يكتبوا ويترفضوا (موديل
+        // SubscriptionLimitModal تحت). زرار "تواصل معانا"/"رقّي الباقة"
+        // بيفتح ContactChooserModal بس (قنوات تواصل عامة) — مفيش أي إجراء
+        // أدمن-فقط جواه، فآمن يظهر لأي دور.
+        React.createElement(TenantSubscriptionBanner, {
             lockState: subscriptionLockState,
             countdownDays: subscriptionCountdownDays,
         }),
