@@ -80,6 +80,37 @@ export function useAdminEncyclopedia(profile?: ProfileRow | null) {
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [batchResults, setBatchResults] = useState<EncyclopediaBatchFileResult[] | null>(null);
 
+  // ── وضع "تحديد" + حذف/نقل جماعي — بيشتغل جوه أي مجلد مفتوح، نفس فكرة
+  //    الرفع المتعدد فوق بالظبط: صفر action جديدة في السيرفر، بس بيتكرر
+  //    deleteForm/updateForm الحاليين تسلسليًا على كل ملف محدد. selectMode
+  //    وselectedFormIds هنا (مش جوه EncyclopediaSection) عشان نقدر نصفّرهم
+  //    تلقائيًا بعد نجاح أي عملية جماعية من غير ما نحتاج تنسيق إضافي بين
+  //    الهوك والمكوّن.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedFormIds, setSelectedFormIds] = useState<Set<string>>(new Set());
+  const [confirmBulkDeleteForms, setConfirmBulkDeleteForms] = useState<EncyclopediaFormRow[] | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkMoveForms, setBulkMoveForms] = useState<EncyclopediaFormRow[] | null>(null);
+  const [bulkMoving, setBulkMoving] = useState(false);
+
+  const toggleSelectMode = useCallback(() => {
+    setSelectMode((v) => !v);
+    setSelectedFormIds(new Set());
+  }, []);
+
+  const toggleFormSelected = useCallback((id: string) => {
+    setSelectedFormIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectMode(false);
+    setSelectedFormIds(new Set());
+  }, []);
+
   // ── جلب المجلدات + النماذج (قراءة مباشرة — RLS مفتوحة لأي authenticated) ──
   const fetchEncyclopedia = useCallback(async () => {
     setLoadingEncyclopedia(true);
@@ -221,6 +252,62 @@ export function useAdminEncyclopedia(profile?: ProfileRow | null) {
     setSavingForm(false);
   };
 
+  // ── حذف جماعي — نفس action='deleteForm' الحالية بالظبط، بتتكرر تسلسليًا
+  //    على كل ملف من الملفات المحددة. ملف بيفشل حذفه (مثلاً اتحذف من جلسة
+  //    تانية قبل كده) مبيوقفش الباقي، وفي الآخر بيظهر توست بملخص النتيجة.
+  const handleBulkDeleteForms = async (formsToDelete: EncyclopediaFormRow[]) => {
+    if (formsToDelete.length === 0) return;
+    setBulkDeleting(true);
+    let successCount = 0;
+    for (const form of formsToDelete) {
+      try {
+        await callEncyclopediaAction({ action: 'deleteForm', id: form.id });
+        logActivity(db, 'حذف نموذج من الموسوعة القانونية', {
+          userName: _userName, entity_type: 'encyclopedia_form', entity_id: form.id, details: form.title,
+        });
+        successCount++;
+      } catch (e) {
+        console.error('[encyclopedia:bulkDelete]', form.title, e instanceof Error ? e.message : e);
+      }
+    }
+    setConfirmBulkDeleteForms(null);
+    clearSelection();
+    fetchEncyclopedia();
+    setBulkDeleting(false);
+    if (successCount > 0) recordSuccess('encyclopedia_bulk_delete_form');
+    if (successCount === formsToDelete.length) toast(`🗑️ تم حذف ${successCount} نموذج`);
+    else if (successCount === 0) toast('❌ فشل حذف كل الملفات المحددة، حاول مرة أخرى', true);
+    else toast(`⚠️ تم حذف ${successCount} من ${formsToDelete.length} — حاول تاني مع الباقي`, true);
+  };
+
+  // ── نقل جماعي — عمليًا مجرد تغيير category_id، فبيستخدم نفس
+  //    action='updateForm' الحالية (من غير أي file_base64) بالظبط، تسلسليًا
+  //    على كل ملف محدد. صفر migration وصفر action جديدة في السيرفر.
+  const handleBulkMoveForms = async (formsToMove: EncyclopediaFormRow[], targetCategoryId: string) => {
+    if (formsToMove.length === 0 || !targetCategoryId) return;
+    setBulkMoving(true);
+    let successCount = 0;
+    for (const form of formsToMove) {
+      try {
+        await callEncyclopediaAction({ action: 'updateForm', id: form.id, category_id: targetCategoryId });
+        logActivity(db, 'نقل نموذج في الموسوعة القانونية', {
+          userName: _userName, entity_type: 'encyclopedia_form', entity_id: form.id, details: form.title,
+        });
+        successCount++;
+      } catch (e) {
+        console.error('[encyclopedia:bulkMove]', form.title, e instanceof Error ? e.message : e);
+      }
+    }
+    setBulkMoveForms(null);
+    clearSelection();
+    fetchEncyclopedia();
+    setBulkMoving(false);
+    if (successCount > 0) recordSuccess('encyclopedia_bulk_move_form');
+    if (successCount === formsToMove.length) toast(`📁 تم نقل ${successCount} نموذج`);
+    else if (successCount === 0) toast('❌ فشل نقل كل الملفات المحددة، حاول مرة أخرى', true);
+    else toast(`⚠️ تم نقل ${successCount} من ${formsToMove.length} — حاول تاني مع الباقي`, true);
+  };
+
   // ── رفع دفعة ملفات مرة واحدة على نفس المجلد — واحد واحد بالتسلسل، نفس
   //    action='uploadForm' الحالية بالظبط (مفيش فانكشن جديدة في السيرفر).
   //    لو ملف فشل (حجم/نوع/أي خطأ سيرفر)، بيتسجّل فشله والباقي بيكمل عادي.
@@ -285,5 +372,8 @@ export function useAdminEncyclopedia(profile?: ProfileRow | null) {
     batchModalCategoryId, setBatchModalCategoryId,
     batchUploading, batchProgress, batchResults, setBatchResults,
     handleUploadBatch,
+    selectMode, toggleSelectMode, selectedFormIds, toggleFormSelected, clearSelection,
+    confirmBulkDeleteForms, setConfirmBulkDeleteForms, bulkDeleting, handleBulkDeleteForms,
+    bulkMoveForms, setBulkMoveForms, bulkMoving, handleBulkMoveForms,
   };
 }
