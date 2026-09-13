@@ -143,24 +143,6 @@ async function cacheFirstWithNetwork(request) {
 }
 
 // ══════════════════════════════════════════
-//  BACKGROUND SYNC — مزامنة الـ Offline Queue
-// ══════════════════════════════════════════
-self.addEventListener('sync', event => {
-  console.log('[SW] Background Sync triggered:', event.tag);
-  if (event.tag === 'sync-offline-queue') {
-    event.waitUntil(syncOfflineQueue());
-  }
-});
-
-async function syncOfflineQueue() {
-  // نبعت رسالة للـ app عشان يعمل المزامنة
-  const clients = await self.clients.matchAll({ includeUncontrolled: true });
-  clients.forEach(client => {
-    client.postMessage({ type: 'SYNC_OFFLINE_QUEUE' });
-  });
-}
-
-// ══════════════════════════════════════════
 //  PUSH NOTIFICATIONS — استقبال الإشعارات
 // ══════════════════════════════════════════
 self.addEventListener('push', event => {
