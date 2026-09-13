@@ -717,6 +717,8 @@ function App() {
             forms: encyclopediaBrowse.forms,
             downloadingFormId: encyclopediaBrowse.downloadingFormId,
             onDownload: encyclopediaBrowse.handleDownloadForm,
+            previewingFormId: encyclopediaBrowse.previewingFormId,
+            onPreview: encyclopediaBrowse.handlePreviewForm,
         })
     );
 
