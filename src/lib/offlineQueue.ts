@@ -158,15 +158,12 @@ declare global {
       id?: string;
       knownUpdatedAt?: string | null;
       returning?: boolean;
-      // 🆕 FIX (باگ "الحكم النهائي بيتسجل جزئي"، طلب جيمي 12 سبتمبر 2026):
-      // زي `forceQueueForSelfTempId` تحت بالظبط بس بيتحكم فيه الكولر نفسه
-      // (مش مشتق تلقائيًا من شكل الـdata) — لاستخدامه في أي عملية "مزدوجة"
-      // (كتابتين لازم يتحلوا مع بعض كوحدة واحدة، زي handleFinalJudgment:
-      // تحديث الجلسة + تحديث حالة القضية) لما الكتابة الأولى منهم اتقيّدت
-      // أوفلاين فعلاً — بيجبر الكتابة الثانية تتقيّد في نفس الطابور بدل ما
-      // تحاول تنجح أونلاين لوحدها وتسبق الأولى، وده اللي كان بيسبب القضية
-      // تتقفل ("منتهية") فعليًا قبل ما منطوق الحكم نفسه يتسجل فعلاً.
-      forceQueue?: boolean;
+      // 🗑️ المرحلة 1 (إلغاء الأوفلاين في الكتابة، 13 سبتمبر 2026): `forceQueue`
+      // اتشالت. كانت بتجبر عملية تتقيّد في طابور IndexedDB حتى وهي أونلاين
+      // (عشان تتحل بعد عملية سابقة اتقيّدت أوفلاين — زي handleFinalJudgment).
+      // بعد إلغاء الطابور بالكامل من مسار الكتابة، مفيش طابور تتقيّد فيه أصلاً،
+      // فالباراميتر بقى بلا معنى. تأكّد (بحث شامل في المشروع كله) إن مفيش أي
+      // نداء فعلي كان بيبعتها بقيمة true من الأساس.
     }) => Promise<{
       error: unknown;
       offline?: boolean;
@@ -360,149 +357,95 @@ window.addEventListener('load', () => { __runOfflineSyncIfNeeded(); });
 //    (يغطي حالات نادرة زي رجوع النت من غير ما يطلق حدث 'online' بشكل موثوق)
 setInterval(() => { __runOfflineSyncIfNeeded(); }, 60000);
 
-window.__dbWrite = async function <T extends DbWriteTable>({ type, table, data, id, knownUpdatedAt, returning, forceQueue }: {
+window.__dbWrite = async function <T extends DbWriteTable>({ type, table, data, id, knownUpdatedAt, returning }: {
     type: 'INSERT' | 'UPDATE' | 'DELETE';
     table: T;
     data?: Record<string, unknown>;
     id?: string;
     knownUpdatedAt?: string | null;
     returning?: boolean;
-    forceQueue?: boolean;
 }) {
-    // 🆕 المرحلة 3-1: لو العملية معاها `_offlineSelfTempId` (يعني الـ id
-    // المستهدف بالـ UPDATE هو نفسه لسه تمبيد — مثال: `handleLinkExistingClient`
-    // بيحاول يربط موكل بقضية اتعملت في `handleLinkCase` قبلها وهي أوفلاين)،
-    // لازم نقيّد العملية في الطابور دايمًا حتى لو `navigator.onLine === true`
-    // فعليًا دلوقتي. السبب: القضية نفسها ممكن تكون لسه معلّقة في الطابور
-    // (رجع النت بس دورة المزامنة التلقائية لسه ما اشتغلتش)، فلو حاولنا
-    // نبعت UPDATE مباشر أونلاين بـ `.eq('id', tempId)`، Supabase هيرجّع
-    // نجاح صامت (صفر صفوف متأثرة، من غير error) لأن مفيش صف حقيقي بالـ id
-    // ده — يعني المستخدم هيشوف "تم الربط" رغم إن الربط ما حصلش خالص. القيد
-    // الإجباري هنا بيضمن إن العملية تتحل صح وقت المزامنة (نفس الدورة أو
-    // اللي بعدها) عن طريق resolveOfflineSelfId فوق.
-    const forceQueueForSelfTempId = type === 'UPDATE' && !!data?._offlineSelfTempId;
-    if (navigator.onLine && !forceQueueForSelfTempId && !forceQueue) {
-        try {
-            let error = null;
-            let insertedRow: Partial<Database['public']['Tables'][T]['Row']> | null = null;
-            let updatedRow: Partial<Database['public']['Tables'][T]['Row']> | null = null;
-            if (type === 'INSERT') {
-                // 🔒 FIX: `data` ممكن يحمل حقول sentinel مؤقتة (_offlineTempId...)
-                // متبعتة دايمًا من useCaseActions.ts بغض النظر عن أونلاين/أوفلاين
-                // (عشان لو الاتصال قطع فجأة أثناء المحاولة، يبقى معاها بيانات
-                // كافية للربط وقت المزامنة اللاحقة). مش أعمدة حقيقية، فلازم
-                // تتشال هنا قبل أي INSERT حقيقي أونلاين وإلا Supabase هيرفض
-                // العملية بخطأ "column does not exist".
-                const cleanData = stripOfflineSentinels(data);
-                if (returning) {
-                    // بنرجّع الصف المُدرج فعليًا (بدل ما نسيب الكولر يخمّن الـ id
-                    // بإعادة استعلام بالعنوان/التاريخ — ده كان بيسبب ربط غلط
-                    // في حالات نادرة زي إدخال قضيتين بنفس العنوان في نفس اللحظة)
-                    const res = await dbFrom(table).insert([cleanData as Database['public']['Tables']['cases']['Insert']]).select().single();
-                    error = res.error;
-                    insertedRow = res.data as unknown as Partial<Database['public']['Tables'][T]['Row']> | null;
-                } else {
-                    ({ error } = await dbFrom(table).insert([cleanData as Database['public']['Tables']['cases']['Insert']]));
-                }
-            } else if (type === 'UPDATE') {
-                // Optimistic Locking — online
-                if (knownUpdatedAt) {
-                    const { data: current, error: fetchErr } = await dbFrom(table).select('updated_at').eq('id', id as string).single();
+    // 🗑️ المرحلة 1 (إلغاء الأوفلاين في الكتابة، 13 سبتمبر 2026): الشرط القديم
+    // كان `if (navigator.onLine && !forceQueueForSelfTempId && !forceQueue)`
+    // — أي كتابة كانت بتتقيّد في طابور IndexedDB لو النت مقطوع (أو
+    // forceQueue/forceQueueForSelfTempId مضبوطة). القرار المرجعي الجديد:
+    // الكتابة تتطلب اتصال دايمًا، الأوفلاين يفضل للقراءة بس. دلوقتي بنحاول
+    // التنفيذ المباشر دايمًا — مفيش فرع بديل ولا تقييد محلي خالص.
+    try {
+        let error = null;
+        let insertedRow: Partial<Database['public']['Tables'][T]['Row']> | null = null;
+        let updatedRow: Partial<Database['public']['Tables'][T]['Row']> | null = null;
+        if (type === 'INSERT') {
+            // 🔒 FIX: `data` ممكن يحمل حقول sentinel مؤقتة (_offlineTempId...)
+            // متبعتة دايمًا من useCaseActions.ts بغض النظر عن أونلاين/أوفلاين
+            // (عشان لو الاتصال قطع فجأة أثناء المحاولة، يبقى معاها بيانات
+            // كافية للربط وقت المزامنة اللاحقة). مش أعمدة حقيقية، فلازم
+            // تتشال هنا قبل أي INSERT حقيقي أونلاين وإلا Supabase هيرفض
+            // العملية بخطأ "column does not exist".
+            const cleanData = stripOfflineSentinels(data);
+            if (returning) {
+                // بنرجّع الصف المُدرج فعليًا (بدل ما نسيب الكولر يخمّن الـ id
+                // بإعادة استعلام بالعنوان/التاريخ — ده كان بيسبب ربط غلط
+                // في حالات نادرة زي إدخال قضيتين بنفس العنوان في نفس اللحظة)
+                const res = await dbFrom(table).insert([cleanData as Database['public']['Tables']['cases']['Insert']]).select().single();
+                error = res.error;
+                insertedRow = res.data as unknown as Partial<Database['public']['Tables'][T]['Row']> | null;
+            } else {
+                ({ error } = await dbFrom(table).insert([cleanData as Database['public']['Tables']['cases']['Insert']]));
+            }
+        } else if (type === 'UPDATE') {
+            // Optimistic Locking — online
+            if (knownUpdatedAt) {
+                const { data: current, error: fetchErr } = await dbFrom(table).select('updated_at').eq('id', id as string).single();
 
-                    if (!fetchErr && current && current.updated_at) {
-                        const serverTime = new Date(current.updated_at).getTime();
-                        const clientTime = new Date(knownUpdatedAt).getTime();
-                        if (serverTime > clientTime) {
-                            return { error: { message: 'conflict' }, conflict: true, offline: false };
-                        }
+                if (!fetchErr && current && current.updated_at) {
+                    const serverTime = new Date(current.updated_at).getTime();
+                    const clientTime = new Date(knownUpdatedAt).getTime();
+                    if (serverTime > clientTime) {
+                        return { error: { message: 'conflict' }, conflict: true, offline: false };
                     }
                 }
-                // FIX: بنرجّع updated_at الجديد بعد التحديث (بدل ما نسيب الكولر
-                // فاكر updated_at القديم اللي جابها هو). من غير ده، أي تعديل
-                // تاني على نفس السجل بعد التعديل الأول مباشرة كان هيتكشف غلط
-                // كـ"تعارض" مع نفسه (لأن آخر updated_at محفوظة عنده محليًا
-                // هتفضل أقدم من اللي فعليًا في السيرفر بعد أول تعديل ناجح).
-                // 🆕 المرحلة 1: بنشيل أي حقل sentinel (_offline...) قبل الإرسال
-                // الفعلي هنا — كانت من غير تنظيف قبل كده (بعكس مسار INSERT فوق
-                // اللي عنده stripOfflineSentinels من الأول). ما كانش ده بيسبب
-                // مشكلة فعلية لحد دلوقتي لأن مفيش caller بيبعت sentinel مع
-                // UPDATE وهو أونلاين، لكن مع _offlineFkTempId الجديدة (المفروض
-                // تتبعت بغض النظر عن حالة الاتصال، زي _offlineCaseTempId)، لازم
-                // تتشال هنا كمان وإلا Supabase هيرفض العملية.
-                // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): كان بينادي
-                // .select('updated_at').single() — لو RESTRICTIVE RLS
-                // (tenant_write_allowed_*) رفضت الصف بصمت (مكتب readonly)،
-                // .single() بيرمي خطأ "no rows returned" (PGRST116) — نص
-                // تقني عام مالوش أي علاقة بـtenant_write_allowed، فمودال
-                // القفل المخصص معندهوش حاجة يكتشفها ويظهر توست عام مضلّل
-                // بدل رسالة القفل الصح. الحل: .select() array بدل .single()،
-                // وlockErrorIfNoRowsAffected بتحوّل "صفر صفوف" لرسالة
-                // مكتشفة (بدل الاعتماد على نص PostgREST الخام).
-                const cleanUpdateData = stripOfflineSentinels(data);
-                const res = await dbFrom(table).update(cleanUpdateData as Database['public']['Tables']['cases']['Update']).eq('id', id as string).select('updated_at');
-                error = lockErrorIfNoRowsAffected(res.error, res.data) as typeof res.error;
-                updatedRow = (res.data?.[0] as unknown as Partial<Database['public']['Tables'][T]['Row']> | undefined) ?? null;
-            } else if (type === 'DELETE') {
-                // 🔒 FIX (نفس فيكس UPDATE فوق بالحرف — 10 سبتمبر 2026):
-                // بدون .select()، DELETE مرفوضة بصمت من RESTRICTIVE RLS
-                // كانت بترجع نجاح (صفر صفوف، صفر error) — أي كولر لـ
-                // __dbWrite (جلسات، أطراف دعوى، إلخ) كان بيفتكر إن الحذف
-                // نجح فعلاً وهو ماحصلش خالص.
-                const res = await dbFrom(table).delete().eq('id', id as string).select('id');
-                error = lockErrorIfNoRowsAffected(res.error, res.data) as typeof res.error;
             }
-            return { error, offline: false, data: insertedRow || updatedRow };
-        } catch {
-            // الشبكة بتقول أونلاين بس الطلب فشل فعليًا — نحاول نحفظ محليًا
-            // 🐛 FIX (تشخيص أوفلاين — نسخة 3، 26 يوليو 2026): كان بيتبعت
-            // `{ type, table, data, id, knownUpdatedAt }` بالـ shorthand
-            // دايمًا — يعني في عمليات INSERT (id === undefined)، الخاصية
-            // `id` كانت لسه موجودة كـ "own property" بقيمة undefined بدل
-            // ما تكون غائبة تمامًا. IndexedDB بيفرّق بين الاتنين: خاصية
-            // غائبة = يولّد autoIncrement، خاصية موجودة بقيمة undefined =
-            // `DataError: ...key path yielded a value that is not a valid
-            // key`. ده كان بيكسر أي INSERT أوفلاين فعليًا (مش بس في
-            // التستات) لأن __offlineEnqueue كان بيرجع false دايمًا في
-            // الحالة دي. الفيكس: منضيفش `id` للـ object أصلاً لو undefined.
-            const opToQueue: Record<string, unknown> = { type, table, data, knownUpdatedAt };
-            if (id !== undefined) opToQueue.id = id;
-            const saved = await window.__offlineEnqueue(opToQueue);
-            if (!saved) {
-                // BUG FIX: قبل كان بيرجع queued:true دايمًا حتى لو فشل الحفظ في
-                // IndexedDB، فالمستخدم يشوف "محفوظة محلياً" والبيانات ضايعة فعليًا.
-                return { error: { message: 'فشل الاتصال بالسيرفر، وفشل الحفظ المحلي أيضاً — يرجى المحاولة مرة أخرى' }, offline: true, queued: false };
-            }
-            return { error: null, offline: true, queued: true };
+            // FIX: بنرجّع updated_at الجديد بعد التحديث (بدل ما نسيب الكولر
+            // فاكر updated_at القديم اللي جابها هو). من غير ده، أي تعديل
+            // تاني على نفس السجل بعد التعديل الأول مباشرة كان هيتكشف غلط
+            // كـ"تعارض" مع نفسه (لأن آخر updated_at محفوظة عنده محليًا
+            // هتفضل أقدم من اللي فعليًا في السيرفر بعد أول تعديل ناجح).
+            // 🆕 المرحلة 1: بنشيل أي حقل sentinel (_offline...) قبل الإرسال
+            // الفعلي هنا — كانت من غير تنظيف قبل كده (بعكس مسار INSERT فوق
+            // اللي عنده stripOfflineSentinels من الأول). ما كانش ده بيسبب
+            // مشكلة فعلية لحد دلوقتي لأن مفيش caller بيبعت sentinel مع
+            // UPDATE وهو أونلاين، لكن مع _offlineFkTempId الجديدة (المفروض
+            // تتبعت بغض النظر عن حالة الاتصال، زي _offlineCaseTempId)، لازم
+            // تتشال هنا كمان وإلا Supabase هيرفض العملية.
+            // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): كان بينادي
+            // .select('updated_at').single() — لو RESTRICTIVE RLS
+            // (tenant_write_allowed_*) رفضت الصف بصمت (مكتب readonly)،
+            // .single() بيرمي خطأ "no rows returned" (PGRST116) — نص
+            // تقني عام مالوش أي علاقة بـtenant_write_allowed، فمودال
+            // القفل المخصص معندهوش حاجة يكتشفها ويظهر توست عام مضلّل
+            // بدل رسالة القفل الصح. الحل: .select() array بدل .single()،
+            // وlockErrorIfNoRowsAffected بتحوّل "صفر صفوف" لرسالة
+            // مكتشفة (بدل الاعتماد على نص PostgREST الخام).
+            const cleanUpdateData = stripOfflineSentinels(data);
+            const res = await dbFrom(table).update(cleanUpdateData as Database['public']['Tables']['cases']['Update']).eq('id', id as string).select('updated_at');
+            error = lockErrorIfNoRowsAffected(res.error, res.data) as typeof res.error;
+            updatedRow = (res.data?.[0] as unknown as Partial<Database['public']['Tables'][T]['Row']> | undefined) ?? null;
+        } else if (type === 'DELETE') {
+            // 🔒 FIX (نفس فيكس UPDATE فوق بالحرف — 10 سبتمبر 2026):
+            // بدون .select()، DELETE مرفوضة بصمت من RESTRICTIVE RLS
+            // كانت بترجع نجاح (صفر صفوف، صفر error) — أي كولر لـ
+            // __dbWrite (جلسات، أطراف دعوى، إلخ) كان بيفتكر إن الحذف
+            // نجح فعلاً وهو ماحصلش خالص.
+            const res = await dbFrom(table).delete().eq('id', id as string).select('id');
+            error = lockErrorIfNoRowsAffected(res.error, res.data) as typeof res.error;
         }
-    } else {
-        // نحفظ knownUpdatedAt في الـ Queue عشان نستخدمه وقت المزامنة
-        // 🐛 FIX (زي أعلاه بالظبط): نفس المشكلة، وده هو المسار اللي فعليًا
-        // بيتنفّذ في تستات الأوفلاين (context.setOffline(true) → navigator.onLine
-        // false مباشرة) — ده كان السبب الحقيقي الوحيد لكل فشل التستات دي.
-        const opToQueue: Record<string, unknown> = { type, table, data, knownUpdatedAt };
-        if (id !== undefined) opToQueue.id = id;
-        const saved = await window.__offlineEnqueue(opToQueue);
-        if (!saved) {
-            // BUG FIX: نفس المشكلة — هنا كانت أوضح، لأن المستخدم فعليًا offline
-            // وملوش طريقة تانية يحفظ بيها، فلو IndexedDB فشلت (مساحة تخزين ممتلئة،
-            // متصفح Private/Incognito، أو خطأ غير متوقع) كانت البيانات تتفقد بصمت
-            // والمستخدم يفتكر إنها "محفوظة محلياً" زي ما الرسالة كانت بتقوله.
-            return { error: { message: 'فشل الحفظ محلياً — تأكد من توفر مساحة تخزين كافية في المتصفح، أو إنك مش في وضع التصفح الخفي (Private/Incognito)' }, offline: true, queued: false };
-        }
-        // 🆕 المرحلة 3-1: لو الوصول للفرع ده كان بسبب forceQueueForSelfTempId
-        // (يعني إحنا أونلاين فعليًا، بس مضطرين نقيّد لحد ما القضية تتزامن)،
-        // منعرضش بانر "أوفلاين" المضلل (المستخدم مش أوفلاين فعليًا)، وبدل ما
-        // نستنى دورة المزامنة الدورية (كل دقيقة) أو حدث 'online' (مش هيتفعّل
-        // لأننا already أونلاين)، بنحاول مزامنة فورية دلوقتي (best-effort،
-        // fire-and-forget) — لو القضية اتزامنت خلاص من دورة سابقة، العملية
-        // دي هتتحل وتتنفذ في نفس اللحظة تقريبًا بدل ما تستنى لحد 60 ثانية.
-        if (navigator.onLine && (forceQueueForSelfTempId || forceQueue)) {
-            window.__syncOfflineQueue?.();
-        } else {
-            const count = await window.__getOfflineQueueCount?.() || 0;
-            showOfflineBanner(count);
-        }
-        return { error: null, offline: true, queued: true };
+        return { error, offline: false, data: insertedRow || updatedRow };
+    } catch {
+        // 🗑️ المرحلة 1: قبل كده، فشل الطلب هنا (النت "شكله" متاح بس الطلب
+        // فشل فعليًا) كان بيتقيّد في IndexedDB. دلوقتي بيرجّع خطأ واضح
+        // للمستخدم بدل ما يختفي بصمت في طابور محلي.
+        return { error: { message: 'تعذّر الاتصال بالسيرفر، يرجى التأكد من الاتصال بالإنترنت والمحاولة مرة أخرى' }, offline: false };
     }
 };
 
