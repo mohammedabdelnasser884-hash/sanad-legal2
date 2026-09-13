@@ -108,15 +108,15 @@ export function createCaseCrudActions(
             return false;
         }
         if (caseDup.duplicate) { toast(caseDup.message!, true); creatingCaseGuard = false; setSavingCase(false); return false; }
-        // 🔒 FIX (تتبع زر "إضافة قضية" — 18 يوليو 2026): معرّف مؤقت client-side
-        // فريد لكل عملية إضافة قضية أوفلاين. بيتبعت مع القضية نفسها (وبيتشال
-        // قبل أي INSERT حقيقي — شوف stripOfflineSentinels في offlineQueue.ts)،
-        // وبيتبعت تاني مع الجلسة الأولى بتاعتها كـ _offlineCaseTempId. وقت
-        // المزامنة، الجلسة بتتربط بالـ id الحقيقي للقضية عن طريق مطابقة
-        // المعرّف المؤقت ده (مطابقة مضمونة 100%) بدل البحث بالعنوان (اللي كان
-        // ممكن يربط غلط لو فيه قضيتين اتضافوا أوفلاين بنفس العنوان بالظبط).
-        // العنوان لسه متبعت (fallback) للحالة النادرة اللي القضية بتاعتها
-        // اتزامنت في تشغيلة سابقة قبل ما الجلسة توصلها الدور.
+        // 🔒 FIX قديم (تتبع زر "إضافة قضية" — 18 يوليو 2026)، معدَّل فى المرحلة 3
+        // (إلغاء الأوفلاين فى الكتابة، 13 سبتمبر 2026): كان معرّف مؤقت
+        // client-side بيتبعت مع القضية (_offlineTempId) ومع الجلسة الأولى
+        // (_offlineCaseTempId) عشان دورة المزامنة القديمة تربطهم ببعض بعد
+        // رجوع النت. بعد المرحلة 1 (الكتابة أونلاين دايمًا، مفيش طابور)
+        // الحقلين اتشالوا من الـpayload الفعلي. offlineTempId فضل هنا بس
+        // كـtempId argument لـwithFkOfflineSentinel (بقت passthrough بسيطة —
+        // راجع caseSessionLinkingShared.ts) وجوه الفرع الميت offline&&queued
+        // تحت (هيتشال بالكامل مع باقي بنية الأوفلاين فى مرحلة لاحقة).
         const offlineTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
         const payload = {
             case_number_official: form.number || null,
@@ -157,7 +157,6 @@ export function createCaseCrudActions(
             // القيمة هنا صراحةً مش إصلاح باج — هي طبقة حماية إضافية لو حصل
             // مستقبلًا استدعاء INSERT من سياق مفيهوش auth.uid() سليم.
             tenant_id: profile?.tenant_id || null,
-            _offlineTempId: offlineTempId,
         };
         const offlineId = 'offline-' + Date.now();
 
