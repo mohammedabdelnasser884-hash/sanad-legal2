@@ -116,7 +116,7 @@ export function useAdminEncyclopedia(profile?: ProfileRow | null) {
     setLoadingEncyclopedia(true);
     try {
       const [{ data: cats }, { data: frms }] = await Promise.all([
-        db.from('encyclopedia_categories').select('*').order('name_ar'),
+        db.from('encyclopedia_categories').select('*').order('sort_order').order('name_ar'),
         db.from('encyclopedia_forms').select('*').order('title'),
       ]);
       if (cats) setCategories(cats);
