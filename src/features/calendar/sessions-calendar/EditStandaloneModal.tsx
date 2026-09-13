@@ -533,7 +533,7 @@ function EditStandaloneModalForm({ session, db, onClose, onSaved, linkedClient =
         // كنسخة احتياطية على الأعمدة القديمة (تحت + في مزامنة السلاسل) —
         // اتشالت الكتابتين الاتنين. partyFields.legalTitles لسه لازمة
         // كمدخل فاليديشن بس في syncSessionParties تحت.
-        const { error, offline, queued, conflict } = await window.__dbWrite({
+        const { error, conflict } = await window.__dbWrite({
             type: 'UPDATE', table: 'case_sessions', id: session.id,
             data: {
                 court: form.court || null,
@@ -560,10 +560,8 @@ function EditStandaloneModalForm({ session, db, onClose, onSaved, linkedClient =
         });
         // 🔒 FIX (تقرير الموثوقية — القسم 12، Concurrent Editing): توست بدل السكوت التام.
         if (conflict) { setSaving(false); toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
-        // ⚠️ `error` هنا بيبقى null في حالة النجاح أونلاين *وكمان* في حالة
-        // التقييد الناجح في طابور الأوفلاين (offline && queued) — __dbWrite
-        // بيرجّع error حقيقي بس لو فشل الاتصال أونلاين، أو لو فشل الحفظ محليًا
-        // في IndexedDB نفسها وقت الأوفلاين. يعني الفحص ده وحده كافي للحالتين.
+        // ⚠️ `error` هنا بيبقى null فى حالة النجاح أونلاين بس — مفيش تقييد
+        // أوفلاين تانى بعد المرحلة 1، فأي فشل اتصال هيرجع error حقيقي.
         if (error) {
             setSaving(false);
             showErrorToast('session_save', error, 'تعذّر حفظ الجلسة. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'حفظ الجلسة');
@@ -618,10 +616,9 @@ function EditStandaloneModalForm({ session, db, onClose, onSaved, linkedClient =
                 true
             );
         }
-        // 🆕 (توحيد الأوفلاين): توست مختلف لو التعديل الأساسي اتقيّد في
-        // الطابور بدل ما يوصل السيرفر فورًا — نفس صياغة handleUpdateSession
-        // في useCaseSessions.ts.
-        toast(offline && queued ? '📥 تعديل الجلسة محفوظ محلياً — سيُزامن عند عودة الإنترنت' : '✅ تم تعديل الجلسة');
+        // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): كان هنا
+        // توست شرطي (offline && queued) — التعديل دايمًا أونلاين دلوقتي.
+        toast('✅ تم تعديل الجلسة');
         onSaved();
         onClose();
     };
