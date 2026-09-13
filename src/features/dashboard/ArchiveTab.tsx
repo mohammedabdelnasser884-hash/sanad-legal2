@@ -8,7 +8,7 @@ import { Inp } from '@/shared/ui/Inp';
 import { Sel } from '@/shared/ui/Sel';
 import { db } from '../../supabaseClient';
 import { I, getCurrentTenantId } from '../../constants';
-import { showErrorToast } from '../../shared/lib/errorReporting';
+import { showErrorToast, lockErrorIfNoRowsAffected } from '../../shared/lib/errorReporting';
 import { createPortal } from 'react-dom';
 import PdfViewerModal from '@/shared/modals/PdfViewerModal';
 import DeleteConfirmModal from '@/shared/modals/DeleteConfirmModal';
@@ -296,7 +296,14 @@ function ArchiveTab({cases, clients, nav, profile}: ArchiveTabProps){
         setDeletingId(doc.id);
         const { error: storageErr } = await db.storage.from('case-docs').remove([doc.storage_path as string]);
         if (storageErr) { setDeletingId(null); toast('❌ فشل حذف الملف من التخزين', true); return; }
-        const { error: dbErr } = await db.from('case_documents').delete().eq('id', doc.id);
+        // 🔒 FIX (توحيد رسائل المنع — المرحلة 4، 13 سبتمبر 2026): case_documents
+        // محكوم بـRESTRICTIVE policy فعلي (tenant_write_allowed_case_documents_*)،
+        // لكن DELETE من غير .select() كان بيرجع نجاح صامت (صفر error، صفر صف
+        // اتأثر فعليًا) لمكتب مقفول — تكرار غير متسق لنفس فئة باگ
+        // useCaseDocuments.ts (المحمي أصلًا). .select('id') + lockErrorIfNoRowsAffected
+        // بيحوّلوا "صفر صفوف" لخطأ مكتشف يوصل showErrorToast فيفتح مودال القفل الصح.
+        const { error: rawDbErr, data: deletedRows } = await db.from('case_documents').delete().eq('id', doc.id).select('id');
+        const dbErr = lockErrorIfNoRowsAffected(rawDbErr, deletedRows);
         setDeletingId(null);
         if (dbErr) { showErrorToast('document_archive_delete_db', dbErr, 'فشل تحديث قاعدة البيانات', 'حذف مستند (أرشيف)'); return; }
         toast('🗑 تم حذف المستند من الأرشيف');
