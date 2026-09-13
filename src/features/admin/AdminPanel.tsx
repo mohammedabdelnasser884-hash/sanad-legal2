@@ -62,13 +62,22 @@ interface AdminPanelProps {
     nav: NavigationState;
     casesTotal: number;
     clientsTotal: number;
+    // ⚡ NEW (زرار "إدارة الموسوعة" في صفحة الموسوعة العادية): لو موجودة،
+    // بتفتح القسم ده تلقائيًا فور دخول لوحة الإدارة، من غير ما يمر
+    // المستخدم على شبكة الأقسام أصلاً (الكرت بتاعها اتشال منها عمدًا —
+    // شوف التعليق فوق مكانه القديم). القيمة الوحيدة المستخدمة فعليًا
+    // دلوقتي هي 'encyclopedia'. onInitialSectionConsumed بترجّع الحالة في
+    // App.tsx لـ null بعد أول استهلاك، عشان لو المستخدم رجع لتاب الإدارة
+    // تاني بشكل عادي (مش عن طريق الزرار) مايتفتحش القسم ده تلقائيًا تاني.
+    initialSection?: 'encyclopedia' | null;
+    onInitialSectionConsumed?: () => void;
 }
 
 // ⚠️ حساب السوبر أدمن الوحيد المسموح له برؤية/فتح "المكتبة القانونية" و"بوابة إدارة المكاتب"
 // أي تعديل هنا لازم يكون مقصودًا — ده الحاجز الوحيد اللي بيمنع باقي المكاتب من رؤية القسمين دول
 const SUPER_ADMIN_EMAIL = 'm.gemy4231@gmail.com';
 
-export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, country, onCountryChange, nav, casesTotal, clientsTotal }: AdminPanelProps) {
+export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, country, onCountryChange, nav, casesTotal, clientsTotal, initialSection, onInitialSectionConsumed }: AdminPanelProps) {
   const [section, setSection] = useState<SectionId>(null);
   const isSuperAdminUser = (profile?.email || '').trim().toLowerCase() === SUPER_ADMIN_EMAIL;
 
@@ -76,6 +85,18 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
   useEffect(() => {
     if (!isSuperAdminUser && (section === 'legal_library' || section === 'encyclopedia')) setSection(null);
   }, [isSuperAdminUser, section]);
+
+  // ⚡ NEW (زرار "إدارة الموسوعة" في صفحة الموسوعة العادية): فتح القسم
+  // مباشرة لو initialSection جاي من App.tsx (بدل ما يفضل المستخدم يمر على
+  // شبكة الأقسام اللي مبقاش فيها كرت للموسوعة أصلاً). isSuperAdminUser هنا
+  // حماية إضافية بس — الحماية الحقيقية في الـ useEffect اللي فوق وفي شرط
+  // الرندر الفعلي للقسم تحت (زي ما كانت بالظبط قبل أي تعديل).
+  useEffect(() => {
+    if (initialSection && isSuperAdminUser) {
+      setSection(initialSection);
+      onInitialSectionConsumed?.();
+    }
+  }, [initialSection, isSuperAdminUser, onInitialSectionConsumed]);
 
   // ── قفل الـ scroll ──
   useEffect(() => {
@@ -508,48 +529,16 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
           width:'5px', height:'5px', borderRadius:'50%',
           background:'#2dd4bf', boxShadow:'0 0 8px rgba(45,212,191,0.8)',
         }})
-      ),
-
-      // صف 6: الموسوعة القانونية — عريض (مقصورة على السوبر أدمن فقط)
-      isSuperAdminUser && React.createElement('button',{
-        key:'encyclopedia',
-        onClick:()=>setSection('encyclopedia'),
-        'data-testid': 'admin-section-encyclopedia',
-        className:'active:scale-[0.97] transition-all text-right',
-        style:{
-          gridColumn:'span 2',
-          background: section==='encyclopedia' ? 'rgba(245,158,11,0.06)' : 'rgba(255,255,255,0.02)',
-          border:`1px solid ${section==='encyclopedia' ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.04)'}`,
-          borderRadius:'16px', padding:'14px',
-          display:'flex', flexDirection:'row', alignItems:'center', gap:'14px',
-          height:'78px', position:'relative', overflow:'hidden', cursor:'pointer',
-        }
-      },
-        React.createElement('div',{style:{
-          position:'absolute', top:0, right:0, left:0,
-          height:'2px', background:'#f59e0b', opacity: section==='encyclopedia' ? 1 : 0.5,
-        }}),
-        React.createElement('div',{style:{
-          width:'34px', height:'34px', borderRadius:'12px', flexShrink:0,
-          display:'flex', alignItems:'center', justifyContent:'center',
-          background:'rgba(245,158,11,0.12)', color:'#f59e0b',
-        }},
-          React.createElement('div',{className:'w-5 h-5'}, React.createElement(I.Folder))
-        ),
-        React.createElement('div',{style:{flex:1}},
-          React.createElement('p',{className:'text-xs font-black text-white leading-tight'},'الموسوعة القانونية'),
-          React.createElement('p',{className:'text-[9.5px] text-slate-500 mt-0.5 font-medium'},'مجلدات ونماذج جاهزة للتحميل')
-        ),
-        React.createElement('span',{
-          className:'text-[11px] font-black px-2 py-0.5 rounded-lg',
-          style:{background:'rgba(245,158,11,0.12)', color:'#f59e0b'}
-        }, String(encyclopediaForms.length)),
-        section==='encyclopedia' && React.createElement('div',{style:{
-          position:'absolute', bottom:'10px', left:'12px',
-          width:'5px', height:'5px', borderRadius:'50%',
-          background:'#f59e0b', boxShadow:'0 0 8px rgba(245,158,11,0.8)',
-        }})
       )
+      // ⚡ REMOVED (فصل إدارة الموسوعة عن شبكة أقسام لوحة الإدارة — طلب
+      // Gemy): كرت "الموسوعة القانونية" اتشال من هنا بالكامل. القسم نفسه
+      // (EncyclopediaSection + الهوك + كل المودالز) لسه موجود بالأسفل بلا
+      // أي تغيير، ودلوقتي بيتفتح بس عن طريق زرار "إدارة الموسوعة" الجديد
+      // في صفحة الموسوعة العادية (EncyclopediaBrowseSection → onManageEncyclopedia
+      // → initialSection prop تحت) — مش من كرت هنا. isSuperAdminUser guard
+      // في الرندر الفعلي للقسم (تحت) وفي الـ useEffect اللي بيقفل القسم
+      // لغير السوبر أدمن (فوق) لسه هما نفس خط الدفاع الحقيقي، زي ما كانوا
+      // بالظبط قبل الحذف ده.
     ),
 
     // ── بوابة إدارة المكاتب المشتركة (مقصورة على السوبر أدمن فقط) ──
