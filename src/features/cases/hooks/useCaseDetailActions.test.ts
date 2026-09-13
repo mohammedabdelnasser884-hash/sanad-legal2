@@ -190,17 +190,9 @@ describe('useCaseDetailActions', () => {
       expect(result.current.showAddNote).toBe(false);
     });
 
-    it('أوفلاين ومتقيّدة → توست "محفوظة محلياً"، تصفير الفورم، من غير تسجيل نشاط', async () => {
-      dbWriteMock().mockResolvedValue({ error: null, offline: true, queued: true });
-      const { result } = await renderDetailHook();
-      act(() => { result.current.setNoteText('ملاحظة أوفلاين'); });
-      await act(async () => { await result.current.handleAddNote(); });
-
-      expect(toast).toHaveBeenCalledWith('📥 الملاحظة محفوظة محلياً — ستُزامن عند عودة الإنترنت');
-      expect(logActivity).not.toHaveBeenCalled();
-      expect(result.current.noteText).toBe('');
-      expect(result.current.showAddNote).toBe(false);
-    });
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تست
+    // "أوفلاين ومتقيّدة" اتشال — الفرع اللي كان بيغطيه اتشال من الكود
+    // نفسه (__dbWrite بترجع offline:false دايمًا بعد المرحلة 1).
 
     it('فشل الإدخال → توست فشل، من غير تسجيل نشاط', async () => {
       dbWriteMock().mockResolvedValue({ error: { message: 'insert failed' } });
@@ -224,14 +216,8 @@ describe('useCaseDetailActions', () => {
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'حذف ملاحظة', expect.objectContaining({ entity_id: 'note-del-1' }));
     });
 
-    it('أوفلاين ومتقيّدة → توست "الحذف محفوظ محلياً"، من غير تسجيل نشاط', async () => {
-      dbWriteMock().mockResolvedValue({ error: null, offline: true, queued: true });
-      const { result } = await renderDetailHook();
-      await act(async () => { await result.current.handleDeleteNote('note-del-1'); });
-
-      expect(toast).toHaveBeenCalledWith('📥 الحذف محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-      expect(logActivity).not.toHaveBeenCalled();
-    });
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تست
+    // "أوفلاين ومتقيّدة" اتشال بنفس السبب.
 
     it('فشل الحذف → توست فشل، من غير تسجيل نشاط', async () => {
       dbWriteMock().mockResolvedValue({ error: { message: 'delete failed' } });
@@ -258,15 +244,8 @@ describe('useCaseDetailActions', () => {
       expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تعديل ملاحظة', expect.objectContaining({ entity_id: 'note-1' }));
     });
 
-    it('أوفلاين ومتقيّدة → توست "التعديل محفوظ محلياً"، من غير تسجيل نشاط', async () => {
-      dbWriteMock().mockResolvedValue({ error: null, offline: true, queued: true });
-      const { result } = await renderDetailHook();
-
-      await act(async () => { await result.current.handleUpdateNote('note-1', 'نص أوفلاين'); });
-
-      expect(toast).toHaveBeenCalledWith('📥 التعديل محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-      expect(logActivity).not.toHaveBeenCalled();
-    });
+    // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تست
+    // "أوفلاين ومتقيّدة" اتشال بنفس السبب.
 
     it('تعارض (conflict:true) → توست تعارض صريح، من غير توست نجاح أو تسجيل نشاط', async () => {
       dbWriteMock().mockResolvedValue({ error: null, conflict: true });
