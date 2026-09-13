@@ -19,14 +19,12 @@ interface EncyclopediaBrowseSectionProps {
 }
 
 // بطاقة نموذج (ملف) — نسخة عرض/تحميل بس، بدون تعديل/حذف (ده مقصور على
-// EncyclopediaSection.tsx بتاعة لوحة الإدارة). الكارت نفسه بلا أي onClick
-// (مقصود) — سطرين بس: السطر الأول badge النوع (PDF/DOC) بنفس حجم/مكان
-// أيقونة المجلد بالظبط (على اليمين) + اسم النموذج جنبه، والسطر التاني
-// context البحث على اليمين + أيقونتا الإجراء (معاينة/تحميل) على الشمال.
-// badge النوع بلون مختلف حسب الملف (أحمر "PDF" / أزرق "DOC") عشان يتميّز
-// بصريًا عن أيقونة المجلد الكهرمانية/البنفسجي من أول نظرة.
-// categoryLabel اختياري — بيتحط بس في نتائج البحث المسطّحة (context
-// عن مكان النموذج، لأن نتيجة البحث بتظهر من غير التنقل جوه المجلدات).
+// EncyclopediaSection.tsx بتاعة لوحة الإدارة). ✏️ بقت بنفس هيكل/حجم
+// FolderCard بالظبط (row واحد، p-3.5، rounded-2xl): شعار النوع (PDF/DOC)
+// على اليمين وسط الكارت رأسيًا، واسم النموذج (+الوصف لو موجود) جنبه على
+// الشمال في نفس المنتصف الرأسي بتاع الشعار (flex items-center بيظبط ده
+// تلقائيًا). أيقونتا الإجراء (معاينة/تحميل) بقيا مكان سهم الفتح بتاع
+// كارت المجلد، وcategoryLabel (لنتائج البحث) بقى badge صغير تحت الاسم.
 function FormCard({ form, downloading, onDownload, previewing, onPreview, categoryLabel }: {
   form: EncyclopediaFormRow;
   downloading: boolean;
@@ -38,45 +36,38 @@ function FormCard({ form, downloading, onDownload, previewing, onPreview, catego
   const isPdf = form.file_type === 'pdf';
   return React.createElement('div', {
     key: form.id, 'data-testid': 'encyclopedia-form-card',
-    className: 'bg-premium-card border border-white/5 rounded-xl p-2.5 space-y-1.5',
+    className: 'w-full bg-premium-card border border-white/5 rounded-2xl p-3.5 flex items-center gap-3',
   },
-    // ── السطر الأول: badge النوع (نفس حجم أيقونة المجلد) + الاسم (+ الوصف
-    // لو موجود). ──
-    React.createElement('div', { className: 'flex items-center gap-2.5' },
-      React.createElement('div', {
-        className: `w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-black text-[8.5px] ${isPdf ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'}`,
-      }, isPdf ? 'PDF' : 'DOC'),
-      React.createElement('div', { className: 'flex-1 min-w-0' },
-        React.createElement('p', { className: 'text-xs font-black text-white leading-tight truncate' }, form.title),
-        form.description && React.createElement('p', { className: 'text-[9.5px] text-slate-500 leading-snug line-clamp-1' }, form.description)
-      )
+    React.createElement('div', {
+      className: `w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-black text-[8.5px] ${isPdf ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'}`,
+    }, isPdf ? 'PDF' : 'DOC'),
+    React.createElement('div', { className: 'flex-1 min-w-0' },
+      React.createElement('p', { className: 'text-xs font-black text-white leading-tight truncate' }, form.title),
+      form.description && !categoryLabel && React.createElement('p', { className: 'text-[9.5px] text-slate-500 leading-snug line-clamp-1 mt-0.5' }, form.description),
+      categoryLabel && React.createElement('span', { 'data-testid': 'encyclopedia-search-result-category', className: 'inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-400/10 text-amber-400 mt-0.5' }, categoryLabel)
     ),
-
-    // ── السطر التاني: context البحث على اليمين، أيقونتا الإجراء على الشمال. ──
-    React.createElement('div', { className: 'flex items-center justify-between gap-2' },
-      React.createElement('div', { className: 'flex items-center gap-1.5 flex-wrap min-w-0' },
-        categoryLabel && React.createElement('span', { 'data-testid': 'encyclopedia-search-result-category', className: 'inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-400/10 text-amber-400' }, categoryLabel)
-      ),
-      React.createElement('div', { className: 'flex items-center gap-1.5 shrink-0' },
-        React.createElement('button', {
-          onClick: onPreview, disabled: previewing || downloading, 'data-testid': 'encyclopedia-form-preview',
-          'aria-label': 'معاينة', title: 'معاينة',
-          className: 'w-6 h-6 rounded-full bg-white/5 border border-white/10 text-slate-300 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50',
-        }, previewing ? React.createElement(I.Spin) : React.createElement(I.Eye)),
-        React.createElement('button', {
-          onClick: onDownload, disabled: downloading || previewing, 'data-testid': 'encyclopedia-form-download',
-          'aria-label': 'تحميل', title: 'تحميل',
-          className: 'w-6 h-6 rounded-full bg-teal-400/10 border border-teal-400/20 text-teal-400 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50',
-        }, downloading ? React.createElement(I.Spin) : React.createElement(I.Download))
-      )
+    React.createElement('div', { className: 'flex items-center gap-1.5 shrink-0' },
+      React.createElement('button', {
+        onClick: onPreview, disabled: previewing || downloading, 'data-testid': 'encyclopedia-form-preview',
+        'aria-label': 'معاينة', title: 'معاينة',
+        className: 'w-6 h-6 rounded-full bg-white/5 border border-white/10 text-slate-300 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50',
+      }, previewing ? React.createElement(I.Spin) : React.createElement(I.Eye)),
+      React.createElement('button', {
+        onClick: onDownload, disabled: downloading || previewing, 'data-testid': 'encyclopedia-form-download',
+        'aria-label': 'تحميل', title: 'تحميل',
+        className: 'w-6 h-6 rounded-full bg-teal-400/10 border border-teal-400/20 text-teal-400 flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50',
+      }, downloading ? React.createElement(I.Spin) : React.createElement(I.Download))
     )
   );
 }
 
-// بطاقة مجلد — للتنقل بس (فتح المجلد)، بدون تعديل/حذف. لون الأيقونة
-// بيتغيّر حسب المستوى: كهرماني للمجلد الرئيسي، بنفسجي للمجلد الفرعي —
-// عشان يتضح فورًا وانت بتتصفح إنك جوه مستوى فرعي، من غير ما تحتاج تقرا
-// breadcrumb.
+// بطاقة مجلد — للتنقل بس (فتح المجلد)، بدون تعديل/حذف. المجلد الرئيسي
+// شكله زي ما هو (كهرماني). المجلد الفرعي بقى متفرّق بشكل الكارت نفسه مش
+// باللون بس (اقتراح 2 اللي اتفقنا عليه): شريط بنفسجي على الحافة اليمين +
+// خلفية بتكسچر خفيف (repeating-linear-gradient) + badge "مجلد فرعي · N"
+// بدل سطر العدد العادي + أيقونة FolderStack (مجلدات فوق بعض) بدل أيقونة
+// المجلد العادية — كل ده يبان فورًا وانت بتتصفح إنك جوه مستوى فرعي، من
+// غير ما تحتاج تقرا breadcrumb.
 function FolderCard({ category, formsCount, onOpen }: {
   category: EncyclopediaCategoryRow;
   formsCount: number;
@@ -85,14 +76,23 @@ function FolderCard({ category, formsCount, onOpen }: {
   const isSubFolder = category.parent_id !== null;
   return React.createElement('button', {
     key: category.id, onClick: onOpen, 'data-testid': 'encyclopedia-folder-card',
-    className: 'w-full bg-premium-card border border-white/5 rounded-2xl p-3.5 flex items-center gap-3 text-right active:scale-[0.98] transition-transform',
+    className: `w-full rounded-2xl p-3.5 flex items-center gap-3 text-right active:scale-[0.98] transition-transform ${
+      isSubFolder
+        ? 'bg-premium-card border border-white/5 border-r-[3px] border-r-violet-400/70'
+        : 'bg-premium-card border border-white/5'
+    }`,
+    style: isSubFolder ? {
+      backgroundImage: 'repeating-linear-gradient(135deg, rgba(167,139,250,0.05) 0px, rgba(167,139,250,0.05) 6px, transparent 6px, transparent 12px)',
+    } : undefined,
   },
     React.createElement('div', {
       className: `w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isSubFolder ? 'bg-violet-400/10 text-violet-400' : 'bg-amber-400/10 text-amber-400'}`,
-    }, React.createElement(I.Folder)),
+    }, isSubFolder ? React.createElement(I.FolderStack) : React.createElement(I.Folder)),
     React.createElement('div', { className: 'flex-1 min-w-0' },
       React.createElement('p', { className: 'text-xs font-black text-white leading-tight truncate' }, category.name_ar),
-      React.createElement('p', { className: 'text-[9.5px] text-slate-500 mt-0.5' }, `${formsCount} نموذج`)
+      isSubFolder
+        ? React.createElement('span', { className: 'inline-block text-[8.5px] font-bold px-1.5 py-0.5 rounded-md bg-violet-400/10 text-violet-400 mt-0.5' }, `مجلد فرعي · ${formsCount}`)
+        : React.createElement('p', { className: 'text-[9.5px] text-slate-500 mt-0.5' }, `${formsCount} نموذج`)
     ),
     React.createElement(I.ChevronLeft)
   );
