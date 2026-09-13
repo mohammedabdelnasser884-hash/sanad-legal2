@@ -85,7 +85,11 @@ function ClientPortalModal({ client, portalAccess, onSave, onClose, saving }: Cl
         className:"p-3 rounded-xl bg-[#C9A84C]/10 border border-[#C9A84C]/20 space-y-1"
       },
         React.createElement('p',{className:"text-[10px] font-bold text-[#C9A84C]"},"معلومات الوصول للموكل"),
-        React.createElement('p',{className:"text-[10px] text-slate-400"},"رابط البوابة: /client-portal-pin.html"),
+        // 🔒 FIX (13 سبتمبر 2026): النص كان بيقول "/client-portal-pin.html"
+        // وده اسم غلط مش مطابق للملف الفعلي المرفوع (public/client-portal.html)
+        // — نص عرض ثابت بس، مفيش أي منطق أو رابط فعلي بيعتمد عليه، فالتصحيح
+        // آمن 100%.
+        React.createElement('p',{className:"text-[10px] text-slate-400"},"رابط البوابة: /client-portal.html"),
         React.createElement('p',{className:"text-[10px] text-slate-400"},"البريد: "+client.email),
         React.createElement('p',{className:"text-[10px] text-amber-400"},"PIN مُفعّل — لأسباب أمنية لا يمكن عرضه، اكتب رقمًا جديدًا لو الموكل نسيه")
       ),
