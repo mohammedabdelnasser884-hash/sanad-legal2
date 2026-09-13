@@ -74,3 +74,46 @@ export async function callAdminAction(payload: AdminActionPayload) {
   recordSuccess('generic_operation');
   return data;
 }
+
+// شكل الـ payload لعمليات قسم "الموسوعة القانونية" (Edge Function
+// encyclopedia-admin) — راجع تقرير التنفيذ (مرحلة 2). نفس فكرة
+// AdminActionPayload فوق: union صريح بدل Record<string, any> عشان أي
+// نوع عملية جديد يتضاف هنا بالاسم لو حصل.
+export type EncyclopediaActionPayload =
+  | { action: 'createCategory'; name_ar: string; parent_id?: string | null }
+  | { action: 'updateCategory'; id: string; name_ar?: string; parent_id?: string | null }
+  | { action: 'deleteCategory'; id: string }
+  | { action: 'uploadForm'; category_id: string; title: string; description?: string | null; file_name: string; file_type: string; file_base64: string }
+  | { action: 'updateForm'; id: string; title?: string; description?: string | null; category_id?: string; file_name?: string; file_type?: string; file_base64?: string }
+  | { action: 'deleteForm'; id: string };
+
+// استدعاء Edge Function encyclopedia-admin — نفس نمط callAdminAction
+// بالظبط (استخراج رسالة الخطأ العربية المقصودة لو موجودة، فولباك عام
+// لو مش موجودة)، بس مستقلة تمامًا عنها عشان الـpayload شكله مختلف كليًا.
+const ENCYCLOPEDIA_GENERIC_MSG = 'حصلت مشكلة أثناء تنفيذ العملية على الموسوعة القانونية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.';
+
+export async function callEncyclopediaAction(payload: EncyclopediaActionPayload) {
+  const { data, error } = await db.functions.invoke('encyclopedia-admin', { body: payload });
+  if (error) {
+    const serverMessage = await getEdgeFunctionErrorMessage(error as EdgeFunctionError);
+    const errorForTracking = {
+      message: (error as { message?: string })?.message,
+      code: (error as { code?: string })?.code,
+    };
+    if (looksArabicUserMessage(serverMessage)) {
+      await trackQueryOutcome('generic_operation', errorForTracking, {
+        label: 'الموسوعة القانونية',
+        message: serverMessage as string,
+      });
+      throw new Error(serverMessage as string);
+    }
+    await trackQueryOutcome('generic_operation', errorForTracking, {
+      label: 'الموسوعة القانونية',
+      message: ENCYCLOPEDIA_GENERIC_MSG,
+    });
+    throw new Error(ENCYCLOPEDIA_GENERIC_MSG);
+  }
+  if (data?.error) throw new Error(data.error);
+  recordSuccess('generic_operation');
+  return data;
+}
