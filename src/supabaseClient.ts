@@ -81,8 +81,11 @@ export async function callAdminAction(payload: AdminActionPayload) {
 // (form_id فقط → رابط تحميل موقّع).
 const ENCYCLOPEDIA_DOWNLOAD_GENERIC_MSG = 'تعذّر تحميل النموذج. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.';
 
-export async function callEncyclopediaDownload(formId: string): Promise<{ url: string; file_name: string }> {
-  const { data, error } = await db.functions.invoke('encyclopedia-download', { body: { form_id: formId } });
+export async function callEncyclopediaDownload(
+  formId: string,
+  mode: 'download' | 'view' = 'download',
+): Promise<{ url: string; file_name: string }> {
+  const { data, error } = await db.functions.invoke('encyclopedia-download', { body: { form_id: formId, mode } });
   if (error) {
     const serverMessage = await getEdgeFunctionErrorMessage(error as EdgeFunctionError);
     const errorForTracking = {
