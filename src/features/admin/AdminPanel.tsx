@@ -126,6 +126,8 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
     showFormModal, setShowFormModal, editingForm, setEditingForm,
     formModalCategoryId, setFormModalCategoryId, confirmDeleteForm, setConfirmDeleteForm,
     savingForm, handleSaveForm, handleDeleteForm,
+    showBatchUploadModal, setShowBatchUploadModal, batchModalCategoryId, setBatchModalCategoryId,
+    batchUploading, batchProgress, batchResults, setBatchResults, handleUploadBatch,
   } = encyclopedia;
   const { portalAccess, portalClient, setPortalClient, clientSearch, setClientSearch, showAddPortalUser, setShowAddPortalUser, savingPortal, fetchPortalAccess, handleSavePortal } = portal;
   const {
@@ -743,6 +745,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
       loadingEncyclopedia, categories: encyclopediaCategories, forms: encyclopediaForms,
       setEditingCategory, setCategoryParentForNew, setShowCategoryModal, setConfirmDeleteCategory,
       setEditingForm, setFormModalCategoryId, setShowFormModal, setConfirmDeleteForm,
+      setBatchModalCategoryId, setShowBatchUploadModal,
     }),
 
     // ══════════════════════════
@@ -786,6 +789,8 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
       showFormModal, setShowFormModal, editingForm, setEditingForm,
       formModalCategoryId, setFormModalCategoryId, savingForm, handleSaveForm,
       confirmDeleteForm, setConfirmDeleteForm, handleDeleteForm,
+      showBatchUploadModal, setShowBatchUploadModal, batchModalCategoryId, setBatchModalCategoryId,
+      batchUploading, batchProgress, batchResults, setBatchResults, handleUploadBatch,
     }),
 
     // تأكيدات القسم المفتوح (تسجيل خروج / قفل حساب / استعادة نسخة / إنهاء جلسات)
