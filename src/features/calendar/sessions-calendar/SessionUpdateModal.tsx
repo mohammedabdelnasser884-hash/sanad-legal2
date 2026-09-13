@@ -157,18 +157,11 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onCaseUpda
 
         if (insertResult.error) { showErrorToast('session_create', insertResult.error, 'فشل إنشاء الجلسة الجديدة', 'إنشاء جلسة تقويم'); return; }
 
-        // 📥 لو أي من الكتابتين اتقيّدت أوفلاين (مش من المفروض يحصل واحدة
-        // بس من غير التانية عمليًا — النت إما موجود أو مقطوع وقت النداءين
-        // المتتاليين دول — لكن بنتأكد من الاتنين احتياطيًا)، نوقف هنا:
-        // نسخ الأطراف/recalcNextHearing/إعادة فتح القضية/تيليجرام كلها
-        // عمليات onDone/بعد-الكتابة مش لازمة (أو مش ممكنة) وقت الأوفلاين —
-        // هتتنفذ آثارها المطلوبة (زي next_hearing) وقت المزامنة الفعلية.
-        if (updateResult.offline && updateResult.queued || insertResult.offline && insertResult.queued) {
-            toast('📥 تم حفظ التحديث محليًا — سيُزامن عند عودة الإنترنت');
-            onDone?.();
-            onClose();
-            return;
-        }
+        // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): كان هنا
+        // `if (updateResult.offline && updateResult.queued || insertResult.offline
+        // && insertResult.queued) {...}` — مستحيل يتحقق بعد المرحلة 1 (__dbWrite
+        // بترجع offline:false دايمًا لكل الكتابتين)، اتشال. هذا اكتشاف إضافي
+        // (الملف ده مكانش فى قائمة الملفات المُدقَّقة سابقًا لنفس النمط).
 
         const newSessionId = insertResult.data?.id;
 
