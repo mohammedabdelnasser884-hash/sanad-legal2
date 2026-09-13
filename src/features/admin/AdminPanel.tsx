@@ -10,6 +10,7 @@ import SecuritySection from './security/SecuritySection';
 import BackupSection from './backup/BackupSection';
 import OfficeSection from './office/OfficeSection';
 import LegalLibrarySection from './legal-library/LegalLibrarySection';
+import EncyclopediaSection from './encyclopedia/EncyclopediaSection';
 import UsersSection from './users/UsersSection';
 import ArchiveSection from './archive/ArchiveSection';
 import type { ArchiveTabId } from './archive/ArchiveSection';
@@ -26,6 +27,7 @@ import type { ActivityFilters } from './activity/hooks/useAdminActivity';
 import { useAdminBackup } from './backup/hooks/useAdminBackup';
 import { useAdminOffice } from './office/hooks/useAdminOffice';
 import { useAdminLegalLibrary } from './legal-library/hooks/useAdminLegalLibrary';
+import { useAdminEncyclopedia } from './encyclopedia/hooks/useAdminEncyclopedia';
 import { useAdminPortal } from './portal/hooks/useAdminPortal';
 import type { PortalAccessRow } from './portal/hooks/useAdminPortal';
 import { useAdminArchive, ARCHIVE_PAGE_SIZE } from './archive/hooks/useAdminArchive';
@@ -33,7 +35,7 @@ import { useAdminArchive, ARCHIVE_PAGE_SIZE } from './archive/hooks/useAdminArch
 import type { ProfileRow, ClientRow } from '../../types';
 import type { NavigationState } from '../../useNavigation';
 
-type SectionId = 'users' | 'portal' | 'activity' | 'sessions' | 'security' | 'backup' | 'office' | 'legal_library' | 'archive' | 'stats' | null;
+type SectionId = 'users' | 'portal' | 'activity' | 'sessions' | 'security' | 'backup' | 'office' | 'legal_library' | 'encyclopedia' | 'archive' | 'stats' | null;
 
 // شكل عنصر بطاقات التنقل الرئيسية (نفس الحقول المستخدمة فعليًا في الـ .map تحت)
 interface NavCardConfig {
@@ -72,7 +74,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
 
   // لو المستخدم مش السوبر أدمن وحصل أي شكل حصل خلاه واقف على قسم محجوب عليه، اقفله فورًا
   useEffect(() => {
-    if (!isSuperAdminUser && section === 'legal_library') setSection(null);
+    if (!isSuperAdminUser && (section === 'legal_library' || section === 'encyclopedia')) setSection(null);
   }, [isSuperAdminUser, section]);
 
   // ── قفل الـ scroll ──
@@ -91,6 +93,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
   const backup = useAdminBackup(profile);
   const office = useAdminOffice(profile?.tenant_id ?? null, profile);
   const library = useAdminLegalLibrary(profile);
+  const encyclopedia = useAdminEncyclopedia(profile);
   const adminStats = useAdminStats(profile, casesTotal);
   const { fetchStatsSummary } = adminStats;
   const portal = useAdminPortal(profile);
@@ -115,6 +118,15 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
   const { backups, loadingBackups, creatingBackup, backupProgress, backupProgressPercent, confirmRestore, setConfirmRestore, restoreConfirmText, setRestoreConfirmText, restoringBackup, restoreProgressPercent, pendingFileRestore, setPendingFileRestore, uploadingFile, fetchBackups, handleCreateBackup, handleDownloadBackup, handleRestoreBackup, handleFileSelected, handleRestoreFromFile } = backup;
   const { officeSettings, setOfficeSettings, loadingOffice, savingOffice, logoFile, setLogoFile, logoPreview, setLogoPreview, fetchOfficeSettings, handleSaveOfficeSettings } = office;
   const { laws, legalCategories, loadingLaws, showLawModal, setShowLawModal, editingLaw, setEditingLaw, confirmDeleteLaw, setConfirmDeleteLaw, savingLaw, processingLaw, fetchLaws, fetchLegalCategories, handleSaveLaw, handleProcessLaw, handleDeleteLaw } = library;
+  const {
+    categories: encyclopediaCategories, forms: encyclopediaForms, loadingEncyclopedia, fetchEncyclopedia,
+    showCategoryModal, setShowCategoryModal, editingCategory, setEditingCategory,
+    categoryParentForNew, setCategoryParentForNew, confirmDeleteCategory, setConfirmDeleteCategory,
+    savingCategory, handleSaveCategory, handleDeleteCategory,
+    showFormModal, setShowFormModal, editingForm, setEditingForm,
+    formModalCategoryId, setFormModalCategoryId, confirmDeleteForm, setConfirmDeleteForm,
+    savingForm, handleSaveForm, handleDeleteForm,
+  } = encyclopedia;
   const { portalAccess, portalClient, setPortalClient, clientSearch, setClientSearch, showAddPortalUser, setShowAddPortalUser, savingPortal, fetchPortalAccess, handleSavePortal } = portal;
   const {
     archivedCases, archivedCasesTotal, loadingArchivedCases,
@@ -189,6 +201,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
     if (section === 'backup')   fetchBackups();
     if (section === 'office')   fetchOfficeSettings();
     if (section === 'legal_library') { fetchLaws(); fetchLegalCategories(); }
+    if (section === 'encyclopedia') fetchEncyclopedia();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section]);
 
@@ -493,6 +506,47 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
           width:'5px', height:'5px', borderRadius:'50%',
           background:'#2dd4bf', boxShadow:'0 0 8px rgba(45,212,191,0.8)',
         }})
+      ),
+
+      // صف 6: الموسوعة القانونية — عريض (مقصورة على السوبر أدمن فقط)
+      isSuperAdminUser && React.createElement('button',{
+        key:'encyclopedia',
+        onClick:()=>setSection('encyclopedia'),
+        'data-testid': 'admin-section-encyclopedia',
+        className:'active:scale-[0.97] transition-all text-right',
+        style:{
+          gridColumn:'span 2',
+          background: section==='encyclopedia' ? 'rgba(245,158,11,0.06)' : 'rgba(255,255,255,0.02)',
+          border:`1px solid ${section==='encyclopedia' ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.04)'}`,
+          borderRadius:'16px', padding:'14px',
+          display:'flex', flexDirection:'row', alignItems:'center', gap:'14px',
+          height:'78px', position:'relative', overflow:'hidden', cursor:'pointer',
+        }
+      },
+        React.createElement('div',{style:{
+          position:'absolute', top:0, right:0, left:0,
+          height:'2px', background:'#f59e0b', opacity: section==='encyclopedia' ? 1 : 0.5,
+        }}),
+        React.createElement('div',{style:{
+          width:'34px', height:'34px', borderRadius:'12px', flexShrink:0,
+          display:'flex', alignItems:'center', justifyContent:'center',
+          background:'rgba(245,158,11,0.12)', color:'#f59e0b',
+        }},
+          React.createElement('div',{className:'w-5 h-5'}, React.createElement(I.Folder))
+        ),
+        React.createElement('div',{style:{flex:1}},
+          React.createElement('p',{className:'text-xs font-black text-white leading-tight'},'الموسوعة القانونية'),
+          React.createElement('p',{className:'text-[9.5px] text-slate-500 mt-0.5 font-medium'},'مجلدات ونماذج جاهزة للتحميل')
+        ),
+        React.createElement('span',{
+          className:'text-[11px] font-black px-2 py-0.5 rounded-lg',
+          style:{background:'rgba(245,158,11,0.12)', color:'#f59e0b'}
+        }, String(encyclopediaForms.length)),
+        section==='encyclopedia' && React.createElement('div',{style:{
+          position:'absolute', bottom:'10px', left:'12px',
+          width:'5px', height:'5px', borderRadius:'50%',
+          background:'#f59e0b', boxShadow:'0 0 8px rgba(245,158,11,0.8)',
+        }})
       )
     ),
 
@@ -574,6 +628,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
             backup:  'linear-gradient(90deg,#0891b2,#22d3ee)',
             office:  'linear-gradient(90deg,#d97706,#fbbf24)',
             legal_library: 'linear-gradient(90deg,#0d9488,#2dd4bf)',
+            encyclopedia: 'linear-gradient(90deg,#d97706,#fbbf24)',
             archive: 'linear-gradient(90deg,#6366f1,#818cf8)',
           } as Record<string, string>)[section as string]||'transparent',
           boxShadow:({
@@ -586,6 +641,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
             backup:  '0 0 12px rgba(34,211,238,0.5)',
             office:  '0 0 12px rgba(251,191,36,0.5)',
             legal_library: '0 0 12px rgba(45,212,191,0.5)',
+            encyclopedia: '0 0 12px rgba(251,191,36,0.5)',
             archive: '0 0 12px rgba(129,140,248,0.5)',
           } as Record<string, string>)[section as string]||'none',
         }}),
@@ -605,7 +661,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
             ),
             React.createElement('div',null,
               React.createElement('h2',{className:"text-sm font-black text-white"},
-                ({stats:'الإحصائيات',users:'المستخدمون',sessions:'الجلسات',portal:'بوابة الموكل',activity:'سجل النشاط',security:'الأمان',backup:'نسخ احتياطي',office:'إعدادات المكتب',legal_library:'المكتبة القانونية',archive:'الأرشيف'} as Record<string, string>)[section as string]||''
+                ({stats:'الإحصائيات',users:'المستخدمون',sessions:'الجلسات',portal:'بوابة الموكل',activity:'سجل النشاط',security:'الأمان',backup:'نسخ احتياطي',office:'إعدادات المكتب',legal_library:'المكتبة القانونية',encyclopedia:'الموسوعة القانونية',archive:'الأرشيف'} as Record<string, string>)[section as string]||''
               ),
               React.createElement('p',{className:"text-[10px] text-slate-500"},"لوحة الإدارة")
             )
@@ -681,6 +737,15 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
     section === 'legal_library' && isSuperAdminUser && React.createElement(LegalLibrarySection, { loadingLaws, laws, legalCategories, processingLaw, handleProcessLaw, setEditingLaw, setShowLawModal, setConfirmDeleteLaw }),
 
     // ══════════════════════════
+    //  SECTION: الموسوعة القانونية
+    // ══════════════════════════
+    section === 'encyclopedia' && isSuperAdminUser && React.createElement(EncyclopediaSection, {
+      loadingEncyclopedia, categories: encyclopediaCategories, forms: encyclopediaForms,
+      setEditingCategory, setCategoryParentForNew, setShowCategoryModal, setConfirmDeleteCategory,
+      setEditingForm, setFormModalCategoryId, setShowFormModal, setConfirmDeleteForm,
+    }),
+
+    // ══════════════════════════
     //  SECTION: الأرشيف (المرحلة 4 — قضايا + موكلين + أتعاب)
     // ══════════════════════════
     section === 'archive' && React.createElement(ArchiveSection, {
@@ -715,6 +780,12 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
       showLawModal, setShowLawModal, legalCategories, editingLaw, setEditingLaw, savingLaw, handleSaveLaw,
       confirmDeleteLaw, setConfirmDeleteLaw, handleDeleteLaw,
       confirmDelete, setConfirmDelete, handleDeleteUser,
+      showCategoryModal, setShowCategoryModal, encyclopediaCategories, editingCategory, setEditingCategory,
+      categoryParentForNew, setCategoryParentForNew, savingCategory, handleSaveCategory,
+      confirmDeleteCategory, setConfirmDeleteCategory, handleDeleteCategory,
+      showFormModal, setShowFormModal, editingForm, setEditingForm,
+      formModalCategoryId, setFormModalCategoryId, savingForm, handleSaveForm,
+      confirmDeleteForm, setConfirmDeleteForm, handleDeleteForm,
     }),
 
     // تأكيدات القسم المفتوح (تسجيل خروج / قفل حساب / استعادة نسخة / إنهاء جلسات)
