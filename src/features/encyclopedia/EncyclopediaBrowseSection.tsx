@@ -8,15 +8,19 @@ interface EncyclopediaBrowseSectionProps {
   forms: EncyclopediaFormRow[];
   downloadingFormId: string | null;
   onDownload: (form: EncyclopediaFormRow) => void;
+  previewingFormId: string | null;
+  onPreview: (form: EncyclopediaFormRow) => void;
 }
 
 // بطاقة نموذج (ملف) — نسخة عرض/تحميل بس، بدون تعديل/حذف (ده مقصور على
-// EncyclopediaSection.tsx بتاعة لوحة الإدارة). نفس شكل بطاقة الأدمن
-// تقريبًا، زرار واحد بس بدل زرارين.
-function FormCard({ form, downloading, onDownload }: {
+// EncyclopediaSection.tsx بتاعة لوحة الإدارة). زرارين: معاينة (يفتح
+// الملف للعرض بس، من غير ما يزوّد عداد التحميلات) وتحميل (زي ما كان).
+function FormCard({ form, downloading, onDownload, previewing, onPreview }: {
   form: EncyclopediaFormRow;
   downloading: boolean;
   onDownload: () => void;
+  previewing: boolean;
+  onPreview: () => void;
 }) {
   return React.createElement('div', {
     key: form.id, 'data-testid': 'encyclopedia-form-card',
@@ -32,10 +36,16 @@ function FormCard({ form, downloading, onDownload }: {
         React.createElement('span', { className: 'inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400 uppercase mt-1' }, form.file_type)
       )
     ),
-    React.createElement('button', {
-      onClick: onDownload, disabled: downloading, 'data-testid': 'encyclopedia-form-download',
-      className: 'w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-teal-400/10 border border-teal-400/20 text-teal-400 text-[11px] font-black active:scale-95 transition-transform disabled:opacity-50',
-    }, downloading ? React.createElement(I.Spin) : React.createElement(I.Download), downloading ? 'جاري التحميل...' : 'تحميل')
+    React.createElement('div', { className: 'flex items-center gap-2' },
+      React.createElement('button', {
+        onClick: onPreview, disabled: previewing || downloading, 'data-testid': 'encyclopedia-form-preview',
+        className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-slate-300 text-[11px] font-black active:scale-95 transition-transform disabled:opacity-50',
+      }, previewing ? React.createElement(I.Spin) : React.createElement(I.Eye), previewing ? 'جاري الفتح...' : 'معاينة'),
+      React.createElement('button', {
+        onClick: onDownload, disabled: downloading || previewing, 'data-testid': 'encyclopedia-form-download',
+        className: 'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-teal-400/10 border border-teal-400/20 text-teal-400 text-[11px] font-black active:scale-95 transition-transform disabled:opacity-50',
+      }, downloading ? React.createElement(I.Spin) : React.createElement(I.Download), downloading ? 'جاري التحميل...' : 'تحميل')
+    )
   );
 }
 
@@ -62,6 +72,7 @@ function FolderCard({ category, formsCount, onOpen }: {
 
 function EncyclopediaBrowseSection({
   loadingEncyclopedia, categories, forms, downloadingFormId, onDownload,
+  previewingFormId, onPreview,
 }: EncyclopediaBrowseSectionProps) {
   // مستويين بس — activeCategoryId يمثل المجلد المفتوح حاليًا (رئيسي أو فرعي)، null = القائمة الرئيسية
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
@@ -128,6 +139,8 @@ function EncyclopediaBrowseSection({
       formsOf(activeCategory.id).map((form) => React.createElement(FormCard, {
         key: form.id, form, downloading: downloadingFormId === form.id,
         onDownload: () => onDownload(form),
+        previewing: previewingFormId === form.id,
+        onPreview: () => onPreview(form),
       })),
       subCategoriesOf(activeCategory.id).length === 0 && formsOf(activeCategory.id).length === 0 &&
         React.createElement('div', { 'data-testid': 'encyclopedia-empty', className: 'bg-premium-card border border-white/5 rounded-xl p-10 text-center text-slate-500 text-xs' }, 'المجلد فارغ حاليًا')
@@ -140,6 +153,8 @@ function EncyclopediaBrowseSection({
         : formsOf(activeCategory.id).map((form) => React.createElement(FormCard, {
             key: form.id, form, downloading: downloadingFormId === form.id,
             onDownload: () => onDownload(form),
+            previewing: previewingFormId === form.id,
+            onPreview: () => onPreview(form),
           }))
     )
   );
