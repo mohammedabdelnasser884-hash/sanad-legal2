@@ -884,8 +884,9 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
     // يعني الدالة دي مش محتاجة أي كاسكيد يدوي.
     const handlePermanentDeleteFee = async (id: string) => {
         const targetFee = fees.find((f) => f.id === id);
-        const { error, offline, queued } = await window.__dbWrite({ type: 'DELETE', table: 'case_fees', id });
-        if (offline && queued) { toast('📥 الحذف محفوظ محلياً — سيُزامن عند عودة الإنترنت'); return; }
+        // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
+        // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
+        const { error } = await window.__dbWrite({ type: 'DELETE', table: 'case_fees', id });
         if (error) { showErrorToast('fee_permanent_delete', error, 'فشل حذف الأتعاب نهائياً — تحقق من الاتصال وأعد المحاولة', 'حذف أتعاب نهائيًا'); return; }
         toast('🗑️ تم حذف الأتعاب نهائياً');
         logActivity(db, 'حذف أتعاب نهائياً', {
@@ -906,10 +907,11 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
     // ─ أرشفة سجل أتعاب (بدل حذف نهائي — البند 8 من قائمة الإجراءات) ─
     const handleDelete = async (id: string) => {
         const targetFee = fees.find((f) => f.id === id);
-        const { error: feeError, offline, queued } = await window.__dbWrite({
+        // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
+        // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
+        const { error: feeError } = await window.__dbWrite({
             type: 'UPDATE', table: 'case_fees', data: { deleted_at: new Date().toISOString() }, id
         });
-        if (offline && queued) { toast('📥 الأرشفة محفوظة محلياً — ستُزامن عند عودة الإنترنت'); return; }
         if(feeError){ showErrorToast('fee_archive', feeError, 'فشل أرشفة الأتعاب — تحقق من الاتصال وأعد المحاولة', 'أرشفة أتعاب'); return; }
         toast('📦 تم نقل الأتعاب للأرشيف');
         logActivity(db, 'أرشفة أتعاب', {
@@ -925,8 +927,9 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
 
     // ─ استرجاع أتعاب من الأرشيف ─
     const handleRestoreFee = async (id: string) => {
-        const { error, offline, queued } = await window.__dbWrite({ type: 'UPDATE', table: 'case_fees', data: { deleted_at: null }, id });
-        if (offline && queued) { toast('📥 الاسترجاع محفوظ محلياً — سيُزامن عند عودة الإنترنت'); return; }
+        // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
+        // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
+        const { error } = await window.__dbWrite({ type: 'UPDATE', table: 'case_fees', data: { deleted_at: null }, id });
         if (error) { showErrorToast('fee_restore', error, 'فشل استرجاع الأتعاب — تحقق من الاتصال وأعد المحاولة', 'استرجاع أتعاب'); return; }
         toast('✅ تم استرجاع الأتعاب');
         logActivity(db, 'استرجاع أتعاب من الأرشيف', { entity_type: 'fee', entity_id: id });
