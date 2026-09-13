@@ -45,14 +45,14 @@ describe('withCaseSelfOfflineSentinel', () => {
     expect(withCaseSelfOfflineSentinel('real-case-1', data, 'عنوان')).toEqual({ client_id: 'c-1' });
   });
 
-  it('لو caseId تمبيد، بيضيف _offlineSelfTempId و_offlineSelfFallbackName', () => {
+  // 🗑️ (تحديث بعد المرحلة 3 — تقرير إلغاء الأوفلاين، 13 سبتمبر 2026):
+  // الدالة بقت passthrough بسيط (شرط isOfflineTempId مستحيل يتحقق بعد
+  // المرحلة 1 — caseId اللي بيوصل هنا حقيقي دايمًا)، فمفيش sentinel
+  // بيتضاف حتى لو caseId اتولّد بصيغة تمبيد.
+  it('حتى لو caseId بصيغة تمبيد، بيرجع data زي ما هي من غير أي sentinel (passthrough بعد المرحلة 3)', () => {
     const tempId = makeOfflineTempId();
     const result = withCaseSelfOfflineSentinel(tempId, { client_id: 'c-1' }, 'قضية أوفلاين');
-    expect(result).toEqual({
-      client_id: 'c-1',
-      _offlineSelfTempId: tempId,
-      _offlineSelfFallbackName: 'قضية أوفلاين',
-    });
+    expect(result).toEqual({ client_id: 'c-1' });
   });
 });
 
@@ -64,15 +64,15 @@ describe('withFkOfflineSentinel', () => {
       .toEqual({ case_id: 'real-1' });
   });
 
-  it('لو offline&&queued، بيضيف _offlineFkTempId بالشكل الصح', () => {
+  // 🗑️ (تحديث بعد المرحلة 3 — تقرير إلغاء الأوفلاين، 13 سبتمبر 2026):
+  // شرط (offline && queued) مستحيل يتحقق بعد المرحلة 1 (__dbWrite بيرجع
+  // offline:false دايمًا)، فالدالة بقت passthrough بسيط في كل الحالات.
+  it('حتى لو offline&&queued=true، بيرجع data زي ما هي من غير sentinel (passthrough بعد المرحلة 3)', () => {
     const result = withFkOfflineSentinel(true, true, 'client_id', 'tmp-y', 'clients', 'أحمد محمد', { client_id: 'tmp-y' });
-    expect(result).toEqual({
-      client_id: 'tmp-y',
-      _offlineFkTempId: [{ field: 'client_id', tempId: 'tmp-y', table: 'clients', fallbackNameValue: 'أحمد محمد' }],
-    });
+    expect(result).toEqual({ client_id: 'tmp-y' });
   });
 
-  it('التركيب مع withCaseSelfOfflineSentinel بيدّي شكل الحالة المزدوجة (الاتنين تمبيد مع بعض)', () => {
+  it('التركيب مع withCaseSelfOfflineSentinel بيفضل زي ما هو (الاتنين passthrough بعد المرحلة 3)', () => {
     const caseTempId = makeOfflineTempId();
     const clientTempId = makeOfflineTempId();
     const result = withCaseSelfOfflineSentinel(
@@ -80,12 +80,7 @@ describe('withFkOfflineSentinel', () => {
       withFkOfflineSentinel(true, true, 'client_id', clientTempId, 'clients', 'موكل د', { client_id: clientTempId }),
       'قضية أوفلاين د',
     );
-    expect(result).toEqual({
-      client_id: clientTempId,
-      _offlineSelfTempId: caseTempId,
-      _offlineSelfFallbackName: 'قضية أوفلاين د',
-      _offlineFkTempId: [{ field: 'client_id', tempId: clientTempId, table: 'clients', fallbackNameValue: 'موكل د' }],
-    });
+    expect(result).toEqual({ client_id: clientTempId });
   });
 });
 
@@ -132,8 +127,11 @@ describe('buildCaseInsertData', () => {
       plaintiff_legal_title: null,
       defendant_legal_title: null,
       status: 'نشطة',
-      _offlineTempId: 'tmp-1',
     });
+    // 🗑️ (تحديث بعد المرحلة 3 — 13 سبتمبر 2026): offlineTempId فضل باراميتر
+    // غير مستخدم جوه الدالة (كان بيتبعت كـ_offlineTempId فى الصف قبل كده)
+    // — مفيش قارئ له بعد حذف offlineSync.ts، فمش المفروض يظهر في الناتج.
+    expect(result).not.toHaveProperty('_offlineTempId');
   });
 
   // 🆕 (F.3 — 6 أغسطس 2026): buildCaseInsertData بقى مابيكتبش أعمدة legacy
@@ -508,17 +506,16 @@ describe('linkClientToParty', () => {
     ]);
   });
 
-  it('caseId تمبيد أوفلاين + طرف أساسي → UPDATE:cases بيحمل _offlineSelfTempId/_offlineSelfFallbackName', async () => {
+  // 🗑️ (تحديث بعد المرحلة 3 — 13 سبتمبر 2026): withCaseSelfOfflineSentinel
+  // بقت passthrough، فحتى لو caseId بصيغة تمبيد، UPDATE:cases بيحمل
+  // client_id بس زي أي caseId حقيقي — نفس سلوك تيست "الطرف الأساسي" فوق.
+  it('حتى لو caseId بصيغة تمبيد + طرف أساسي → UPDATE:cases بيحمل client_id بس (passthrough بعد المرحلة 3)', async () => {
     const { fn, calls } = mockDbWrite();
     window.__dbWrite = fn as unknown as typeof window.__dbWrite;
     const tempCaseId = makeOfflineTempId();
     await linkClientToParty('party-1', 'client-1', true, tempCaseId, 'عنوان مؤقت');
     const caseCall = calls.find((c) => c.table === 'cases');
-    expect(caseCall?.data).toEqual({
-      client_id: 'client-1',
-      _offlineSelfTempId: tempCaseId,
-      _offlineSelfFallbackName: 'عنوان مؤقت',
-    });
+    expect(caseCall?.data).toEqual({ client_id: 'client-1' });
   });
 
   it('فشل UPDATE على case_parties → ok=false حتى لو الطرف مش أساسي', async () => {
@@ -800,7 +797,10 @@ describe('linkSessionGroupToCase', () => {
     expect(result.failedIds.sort()).toEqual(['session-1', 'session-old-9']);
   });
 
-  it('caseId تمبيد أوفلاين → كل صفوف السلسلة بتاخد _offlineFkTempId', async () => {
+  // 🗑️ (تحديث بعد المرحلة 3 — 13 سبتمبر 2026): withFkOfflineSentinel بقت
+  // passthrough، فصفوف case_sessions بتاخد case_id بس من غير أي sentinel
+  // حتى لو caseId بصيغة تمبيد.
+  it('حتى لو caseId بصيغة تمبيد → صفوف السلسلة بتاخد case_id بس من غير sentinel (passthrough بعد المرحلة 3)', async () => {
     const { fn, calls } = mockDbWrite();
     window.__dbWrite = fn as unknown as typeof window.__dbWrite;
     const db = makeMockDb({ data: [{ id: 'session-1' }, { id: 'session-old-9' }], error: null });
@@ -812,9 +812,7 @@ describe('linkSessionGroupToCase', () => {
     const sessionCalls = calls.filter((c) => c.table === 'case_sessions');
     expect(sessionCalls).toHaveLength(2);
     for (const c of sessionCalls) {
-      expect(c.data?._offlineFkTempId).toEqual([
-        { field: 'case_id', tempId: tempCaseId, table: 'cases', fallbackNameValue: 'عنوان مؤقت' },
-      ]);
+      expect(c.data).toEqual({ case_id: tempCaseId });
     }
   });
 });
@@ -877,7 +875,9 @@ describe('retryFailedGroupSessionsLinkToCase', () => {
     expect(result.failedIds).toEqual(['session-old-9']);
   });
 
-  it('caseId تمبيد أوفلاين → الصفوف بتاخد _offlineFkTempId زي linkSessionGroupToCase بالظبط', async () => {
+  // 🗑️ (تحديث بعد المرحلة 3 — 13 سبتمبر 2026): نفس تحديث تيست
+  // linkSessionGroupToCase فوق — withFkOfflineSentinel بقت passthrough.
+  it('حتى لو caseId بصيغة تمبيد → الصفوف بتاخد case_id بس زي linkSessionGroupToCase بالظبط (passthrough بعد المرحلة 3)', async () => {
     const calls: DbWriteOp[] = [];
     const fn = vi.fn(async (op: DbWriteOp) => { calls.push(op); return { error: null }; });
     window.__dbWrite = fn as unknown as typeof window.__dbWrite;
@@ -888,9 +888,7 @@ describe('retryFailedGroupSessionsLinkToCase', () => {
       db as any, ['session-old-9'], tempCaseId, true, true, tempCaseId, 'عنوان مؤقت',
     );
     const sessionCalls = calls.filter((c) => c.table === 'case_sessions');
-    expect(sessionCalls[0]?.data?._offlineFkTempId).toEqual([
-      { field: 'case_id', tempId: tempCaseId, table: 'cases', fallbackNameValue: 'عنوان مؤقت' },
-    ]);
+    expect(sessionCalls[0]?.data).toEqual({ case_id: tempCaseId });
   });
 
   it('نقل أطراف صف فشل → الصف ده في failedIds حتى لو case_id بتاعه اتحدّث صح', async () => {
