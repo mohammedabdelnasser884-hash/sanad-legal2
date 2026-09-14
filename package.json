@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "export NODE_OPTIONS=--max-old-space-size=4096 && npm run lint && tsc --noEmit && vite build",
-    "type-check": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
+    "type-check": "node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc --noEmit",
+    "build:app": "node --max-old-space-size=4096 ./node_modules/vite/bin/vite.js build",
+    "build": "npm run lint && npm run type-check && npm run build:app",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
