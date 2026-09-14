@@ -547,7 +547,7 @@ ${PDF_FONT_LINK}
                 const check = await runDuplicateCheckOfflineAware((signal) =>
                     checkCaseNumberDuplicate(db, session.case_number, session.court_level, session.case_type, undefined, signal)
                 );
-                if (check.skipped) toast('⚠️ أوف لاين — فحص تكرار رقم القيد هيتأجل لحد المزامنة', false);
+                if (check.skipped) toast('⚠️ فحص تكرار رقم القيد استغرق وقتًا أطول من المتوقع — تم تجاوزه ومتابعة الحفظ', false);
                 else caseDup = check.result!;
             } catch (e) {
                 showErrorToast('case_number_duplicate_check', e, 'تعذّر التحقق من رقم القيد. حاول مرة أخرى.', 'تحويل جلسة لقضية');
