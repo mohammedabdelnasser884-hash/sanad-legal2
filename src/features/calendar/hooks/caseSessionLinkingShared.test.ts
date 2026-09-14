@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-  makeOfflineTempId, isOfflineTempId, withCaseSelfOfflineSentinel, withFkOfflineSentinel,
+  makeOfflineTempId, isOfflineTempId, withCaseSelfOfflineSentinel,
   buildCaseInsertData, findMatchingClientByName,
   fetchSessionClientParties, matchClientsForParties, linkClientToParty, unlinkClientFromParty,
   unlinkClientFromSessionParty,
@@ -53,34 +53,6 @@ describe('withCaseSelfOfflineSentinel', () => {
     const tempId = makeOfflineTempId();
     const result = withCaseSelfOfflineSentinel(tempId, { client_id: 'c-1' }, 'قضية أوفلاين');
     expect(result).toEqual({ client_id: 'c-1' });
-  });
-});
-
-describe('withFkOfflineSentinel', () => {
-  it('لو مش offline&&queued، بيرجع data زي ما هي', () => {
-    expect(withFkOfflineSentinel(false, undefined, 'case_id', 'tmp-x', 'cases', 'عنوان', { case_id: 'real-1' }))
-      .toEqual({ case_id: 'real-1' });
-    expect(withFkOfflineSentinel(true, false, 'case_id', 'tmp-x', 'cases', 'عنوان', { case_id: 'real-1' }))
-      .toEqual({ case_id: 'real-1' });
-  });
-
-  // 🗑️ (تحديث بعد المرحلة 3 — تقرير إلغاء الأوفلاين، 13 سبتمبر 2026):
-  // شرط (offline && queued) مستحيل يتحقق بعد المرحلة 1 (__dbWrite بيرجع
-  // offline:false دايمًا)، فالدالة بقت passthrough بسيط في كل الحالات.
-  it('حتى لو offline&&queued=true، بيرجع data زي ما هي من غير sentinel (passthrough بعد المرحلة 3)', () => {
-    const result = withFkOfflineSentinel(true, true, 'client_id', 'tmp-y', 'clients', 'أحمد محمد', { client_id: 'tmp-y' });
-    expect(result).toEqual({ client_id: 'tmp-y' });
-  });
-
-  it('التركيب مع withCaseSelfOfflineSentinel بيفضل زي ما هو (الاتنين passthrough بعد المرحلة 3)', () => {
-    const caseTempId = makeOfflineTempId();
-    const clientTempId = makeOfflineTempId();
-    const result = withCaseSelfOfflineSentinel(
-      caseTempId,
-      withFkOfflineSentinel(true, true, 'client_id', clientTempId, 'clients', 'موكل د', { client_id: clientTempId }),
-      'قضية أوفلاين د',
-    );
-    expect(result).toEqual({ client_id: clientTempId });
   });
 });
 
@@ -702,7 +674,7 @@ describe('linkSessionGroupToCase', () => {
     const db = makeMockDb();
     const result = await linkSessionGroupToCase(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      db as any, { id: 'session-1', session_group_id: null }, 'case-1', false, false, 'tmp-x', 'عنوان',
+      db as any, { id: 'session-1', session_group_id: null }, 'case-1',
     );
     expect(result).toEqual({ ok: true, failedIds: [], linkedCount: 1 });
     expect(db.from).not.toHaveBeenCalledWith('case_sessions');
@@ -717,7 +689,7 @@ describe('linkSessionGroupToCase', () => {
     const db = makeMockDb({ data: [{ id: 'session-1' }, { id: 'session-old-9' }], error: null });
     const result = await linkSessionGroupToCase(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      db as any, { id: 'session-1', session_group_id: 'group-abc' }, 'case-1', false, false, 'tmp-x', 'عنوان',
+      db as any, { id: 'session-1', session_group_id: 'group-abc' }, 'case-1',
     );
     expect(result.ok).toBe(true);
     expect(result.linkedCount).toBe(2);
@@ -732,7 +704,7 @@ describe('linkSessionGroupToCase', () => {
     const db = makeMockDb({ data: [{ id: 'session-old-9' }], error: null });
     const result = await linkSessionGroupToCase(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      db as any, { id: 'session-1', session_group_id: 'group-abc' }, 'case-1', false, false, 'tmp-x', 'عنوان',
+      db as any, { id: 'session-1', session_group_id: 'group-abc' }, 'case-1',
     );
     expect(result.linkedCount).toBe(2);
     const sessionIds = calls.filter((c) => c.table === 'case_sessions').map((c) => c.id).sort();
@@ -745,7 +717,7 @@ describe('linkSessionGroupToCase', () => {
     const db = makeMockDb({ data: null, error: new Error('query failed') });
     const result = await linkSessionGroupToCase(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      db as any, { id: 'session-1', session_group_id: 'group-abc' }, 'case-1', false, false, 'tmp-x', 'عنوان',
+      db as any, { id: 'session-1', session_group_id: 'group-abc' }, 'case-1',
     );
     expect(result).toEqual({ ok: true, failedIds: [], linkedCount: 1 });
     expect(calls).toEqual([
@@ -769,7 +741,7 @@ describe('linkSessionGroupToCase', () => {
     );
     const result = await linkSessionGroupToCase(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      db as any, { id: 'session-1', session_group_id: 'group-abc' }, 'case-1', false, false, 'tmp-x', 'عنوان',
+      db as any, { id: 'session-1', session_group_id: 'group-abc' }, 'case-1',
     );
     expect(result.ok).toBe(false);
     expect(result.failedIds).toEqual(['session-old-9']);
@@ -791,29 +763,10 @@ describe('linkSessionGroupToCase', () => {
     );
     const result = await linkSessionGroupToCase(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      db as any, { id: 'session-1', session_group_id: 'group-abc' }, 'case-1', false, false, 'tmp-x', 'عنوان',
+      db as any, { id: 'session-1', session_group_id: 'group-abc' }, 'case-1',
     );
     expect(result.ok).toBe(false);
     expect(result.failedIds.sort()).toEqual(['session-1', 'session-old-9']);
-  });
-
-  // 🗑️ (تحديث بعد المرحلة 3 — 13 سبتمبر 2026): withFkOfflineSentinel بقت
-  // passthrough، فصفوف case_sessions بتاخد case_id بس من غير أي sentinel
-  // حتى لو caseId بصيغة تمبيد.
-  it('حتى لو caseId بصيغة تمبيد → صفوف السلسلة بتاخد case_id بس من غير sentinel (passthrough بعد المرحلة 3)', async () => {
-    const { fn, calls } = mockDbWrite();
-    window.__dbWrite = fn as unknown as typeof window.__dbWrite;
-    const db = makeMockDb({ data: [{ id: 'session-1' }, { id: 'session-old-9' }], error: null });
-    const tempCaseId = makeOfflineTempId();
-    await linkSessionGroupToCase(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      db as any, { id: 'session-1', session_group_id: 'group-abc' }, tempCaseId, true, true, tempCaseId, 'عنوان مؤقت',
-    );
-    const sessionCalls = calls.filter((c) => c.table === 'case_sessions');
-    expect(sessionCalls).toHaveLength(2);
-    for (const c of sessionCalls) {
-      expect(c.data).toEqual({ case_id: tempCaseId });
-    }
   });
 });
 
@@ -875,21 +828,11 @@ describe('retryFailedGroupSessionsLinkToCase', () => {
     expect(result.failedIds).toEqual(['session-old-9']);
   });
 
-  // 🗑️ (تحديث بعد المرحلة 3 — 13 سبتمبر 2026): نفس تحديث تيست
-  // linkSessionGroupToCase فوق — withFkOfflineSentinel بقت passthrough.
-  it('حتى لو caseId بصيغة تمبيد → الصفوف بتاخد case_id بس زي linkSessionGroupToCase بالظبط (passthrough بعد المرحلة 3)', async () => {
-    const calls: DbWriteOp[] = [];
-    const fn = vi.fn(async (op: DbWriteOp) => { calls.push(op); return { error: null }; });
-    window.__dbWrite = fn as unknown as typeof window.__dbWrite;
-    const db = makeMockDb();
-    const tempCaseId = makeOfflineTempId();
-    await retryFailedGroupSessionsLinkToCase(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      db as any, ['session-old-9'], tempCaseId, true, true, tempCaseId, 'عنوان مؤقت',
-    );
-    const sessionCalls = calls.filter((c) => c.table === 'case_sessions');
-    expect(sessionCalls[0]?.data).toEqual({ case_id: tempCaseId });
-  });
+  // 🗑️ (تحديث بعد المرحلة 3 — تنظيف withFkOfflineSentinel، 14 سبتمبر 2026):
+  // اتحذف تست "caseId بصيغة تمبيد" هنا (قرار ب فى تقرير التدقيق) — كانت
+  // بتختبر سلوك sentinel اتشال خالص من linkSingleSessionToCase؛ باراميترات
+  // caseOffline/caseQueued/caseTempId فضلت فى التوقيع (قرار أ) بس بقت غير
+  // مستخدمة جوّا الدالة، فمفيش سلوك فعلي إضافي يتفحص هنا بعد النهاردة.
 
   it('نقل أطراف صف فشل → الصف ده في failedIds حتى لو case_id بتاعه اتحدّث صح', async () => {
     const calls: DbWriteOp[] = [];
