@@ -314,25 +314,11 @@ describe('useClientLinking', () => {
       expect(recalcNextHearing).not.toHaveBeenCalled();
     });
 
-    it('🆕 (المرحلة 2) أوفلاين بالكامل: إنشاء القضية بيترجع queued من غير id حقيقي → createdCaseId بيتخزّن كتمبيد، وUPDATE الجلسة بيتبعت بـ case_id بس (الـsentinel اتشال في المرحلة 3)، ومفيش recalcNextHearing (هتتحسب بعد المزامنة)', async () => {
-      dbWrite.setResult('INSERT:cases', { error: null, offline: true, queued: true });
-      mockDb.setResult('clients:select', { data: [], error: null });
-      const saved = makeSavedFormData({ title: 'قضية أوفلاين' }, { sessionId: 'session-offline-1' });
-      const { result } = renderHook(() => useClientLinking(saved, vi.fn()));
-
-      await act(async () => { await result.current.handleLinkCase(); });
-
-      expect(toast).toHaveBeenCalledWith('📥 القضية محفوظة محلياً — ستُضاف فور عودة الإنترنت');
-      expect(result.current.createdCaseId).toMatch(/^tmp-/);
-      const sessionUpdateCall = dbWrite.callsFor('UPDATE:case_sessions')[0];
-      expect(sessionUpdateCall.id).toBe('session-offline-1');
-      expect(sessionUpdateCall.data?.case_id).toBe(result.current.createdCaseId);
-      // 🗑️ (تحديث بعد المرحلة 3 — 13 سبتمبر 2026): withFkOfflineSentinel
-      // بقت passthrough، فمفيش _offlineFkTempId في الناتج حتى في هذا
-      // السيناريو (dbWrite بيرجع offline/queued=true يدويًا هنا بالموك بس).
-      expect(sessionUpdateCall.data).toEqual({ case_id: result.current.createdCaseId });
-      expect(recalcNextHearing).not.toHaveBeenCalled();
-    });
+    // 🗑️ دفعة 2 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تست "أوفلاين
+    // بالكامل" اتشال — كان بيتأكد إن createdCaseId بيتخزّن كتمبيد ومفيش
+    // recalcNextHearing، والفرعين دول اتشالوا خالص من handleLinkCase
+    // (realOrTempCaseId بقى دايمًا insertedCase?.id، وrecalcNextHearing بقى
+    // بينادى دايمًا من غير شرط).
   });
 
   describe('handleLinkExistingClient', () => {
@@ -360,28 +346,9 @@ describe('useClientLinking', () => {
       expect(result.current.linkingToCase).toBe(false);
     });
 
-    it('🆕 المرحلة 3-1: createdCaseId لسه تمبيد (القضية اتقيدت أوفلاين في handleLinkCase) → __dbWrite بـ client_id بس من غير sentinel (اتشال في المرحلة 3)، وتوست "محفوظ محلياً" لو رجع queued', async () => {
-      dbWrite.setResult('INSERT:cases', { error: null, offline: true, queued: true });
-      dbWrite.setResult('UPDATE:cases', { error: null, offline: true, queued: true });
-      mockDb.setResult('clients:select', { data: [{ id: 'client-found-offline', full_name: 'أحمد محمد' }], error: null });
-      const saved = makeSavedFormData({ title: 'قضية أوفلاين للربط' });
-      const { result } = renderHook(() => useClientLinking(saved, vi.fn()));
-      await act(async () => { await result.current.handleLinkCase(); });
-      const tempCaseId = result.current.createdCaseId as string;
-      expect(tempCaseId).toMatch(/^tmp-/);
-
-      await act(async () => { await result.current.handleLinkExistingClient(); });
-
-      // 🗑️ (تحديث بعد المرحلة 3 — 13 سبتمبر 2026): withCaseSelfOfflineSentinel
-      // بقت passthrough، فمفيش _offlineSelfTempId/_offlineSelfFallbackName
-      // في الناتج حتى مع createdCaseId بصيغة تمبيد.
-      expect(dbWrite.callsFor('UPDATE:cases')[0]).toEqual({
-        type: 'UPDATE', table: 'cases', id: tempCaseId,
-        data: { client_id: 'client-found-offline' },
-      });
-      expect(toast).toHaveBeenCalledWith('📥 الربط محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-      expect(result.current.clientStep).toBe('done');
-    });
+    // 🗑️ دفعة 2: تست "createdCaseId لسه تمبيد" اتشال — createdCaseId
+    // مستحيل يبقى تمبيد بعد إلغاء الفرع الميت فى handleLinkCase، وفرع
+    // "توست محفوظ محلياً" اتشال بالكامل من handleLinkExistingClient.
 
     it('🆕 فشل الربط (error) → الرسالة الموحدة تتعرض، والخام يتسجل عبر recordError، من غير تغيير clientStep', async () => {
       dbWrite.setResult('INSERT:cases', { error: null, offline: false, data: { id: 'case-y' } });
@@ -441,7 +408,7 @@ describe('useClientLinking', () => {
       expect(onOpenCreateClientForCase).not.toHaveBeenCalled();
     });
 
-    it('القضية أونلاين (id حقيقي) → الكول-باك بيتنادى بـ caseId الحقيقي وisOfflineTemp=false من غير fallbackTitle', async () => {
+    it('القضية أونلاين (id حقيقي) → الكول-باك بيتنادى بـ caseId الحقيقي وcaseOfflineInfo=undefined', async () => {
       dbWrite.setResult('INSERT:cases', { error: null, offline: false, data: { id: 'case-add-1' } });
       mockDb.setResult('clients:select', { data: [], error: null });
       const onOpenCreateClientForCase = vi.fn();
@@ -453,43 +420,15 @@ describe('useClientLinking', () => {
 
       expect(onOpenCreateClientForCase).toHaveBeenCalledWith(
         'case-add-1', 'موكل جديد', '12345', '', undefined,
-        { isOfflineTemp: false, fallbackTitle: undefined },
+        undefined,
       );
     });
 
-    it('القضية أوفلاين (createdCaseId لسه تمبيد من handleLinkCase) → الكول-باك بيتنادى بـ isOfflineTemp=true وfallbackTitle = عنوان القضية', async () => {
-      dbWrite.setResult('INSERT:cases', { error: null, offline: true, queued: true });
-      mockDb.setResult('clients:select', { data: [], error: null });
-      const onOpenCreateClientForCase = vi.fn();
-      const saved = makeSavedFormData({ title: 'قضية أوفلاين ب', plaintiff: 'موكل ب' });
-      const { result } = renderHook(() => useClientLinking(saved, vi.fn(), undefined, undefined, onOpenCreateClientForCase));
-      await act(async () => { await result.current.handleLinkCase(); });
-      const tempCaseId = result.current.createdCaseId as string;
-      expect(tempCaseId).toMatch(/^tmp-/);
-
-      act(() => { result.current.handleAddAndLinkClient(); });
-
-      expect(onOpenCreateClientForCase).toHaveBeenCalledWith(
-        tempCaseId, 'موكل ب', '', '', undefined,
-        { isOfflineTemp: true, fallbackTitle: 'قضية أوفلاين ب' },
-      );
-    });
-
-    it('العنوان فاضي في الفورم (قضية أوفلاين) → fallbackTitle بيستخدم fullCaseNumber بدلًا منه', async () => {
-      dbWrite.setResult('INSERT:cases', { error: null, offline: true, queued: true });
-      mockDb.setResult('clients:select', { data: [], error: null });
-      const onOpenCreateClientForCase = vi.fn();
-      const saved = makeSavedFormData({ title: '', plaintiff: 'موكل بدون عنوان' }, { fullCaseNumber: '30 لسنة 2026' });
-      const { result } = renderHook(() => useClientLinking(saved, vi.fn(), undefined, undefined, onOpenCreateClientForCase));
-      await act(async () => { await result.current.handleLinkCase(); });
-
-      act(() => { result.current.handleAddAndLinkClient(); });
-
-      expect(onOpenCreateClientForCase).toHaveBeenCalledWith(
-        expect.stringMatching(/^tmp-/), 'موكل بدون عنوان', '', '', undefined,
-        { isOfflineTemp: true, fallbackTitle: '30 لسنة 2026' },
-      );
-    });
+    // 🗑️ دفعة 2 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تستات "القضية
+    // أوفلاين" و"العنوان فاضي في الفورم (قضية أوفلاين)" اتشالوا — كانوا
+    // بيتأكدوا من isOfflineTemp=true/fallbackTitle محسوبين، والفرع اللي
+    // كان بيحسبهم اتشال بالكامل من handleAddAndLinkClient (caseOfflineInfo
+    // بقى دايمًا undefined، مستحيل createdCaseId يبقى تمبيد أصلًا).
   });
 
 });
