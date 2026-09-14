@@ -376,7 +376,7 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
             // (العملية اتقيدت بس)، فـ savedFormData.sessionId هيبقى null —
             // ده متعامل معاه بالفعل في useClientLinking.ts (خطوة ربط الجلسة
             // بالقضية بتتخطى لو sessionId فاضي)، صفر تغيير سلوك إضافي مطلوب.
-            const { data: sessionData, error, offline, queued } = await window.__dbWrite({
+            const { data: sessionData, error } = await window.__dbWrite({
                 type: 'INSERT',
                 table: 'case_sessions',
                 data: {
@@ -426,28 +426,13 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
                 return;
             }
 
-            if (offline && queued) {
-                toast('📥 الجلسة المستقلة محفوظة محلياً — ستُضاف فور عودة الإنترنت');
-                // ⚡ NEW (مرحلة 6.2): أطراف الجلسة (لو وضع standalone) بتتقيّد
-                // هي كمان في نفس طابور الأوفلاين — بتتحل تلقائيًا بـ session_id
-                // الحقيقي وقت المزامنة (_offlineFkTempId فوق في insertSessionParties).
-                const offlinePartiesResult = await insertSessionParties(null, true, true);
-                if (!offlinePartiesResult.ok) {
-                    toast(
-                        offlinePartiesResult.reason === 'validation'
-                            ? offlinePartiesResult.message
-                            : '⚠️ الجلسة اتقيّدت محليًا، لكن حصل خطأ في حفظ بعض أطراف الدعوى الإضافية — راجعها بعد المزامنة',
-                        true
-                    );
-                }
-                // ⚡ FIX (تحليل لوجز E2E — 9 أغسطس 2026): onSaved(true) —
-                // نتخطى الريفريش الشبكي هنا؛ راجع تعليق onSaved في الأعلى
-                // وفي AppModals.tsx لسبب البارامتر.
-                onSaved(true);
-                draft.clearDraft();
-                onClose();
-                return;
-            }
+            // 🗑️ دفعة 2 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): كان هنا
+            // `if (offline && queued) {...}` (توست "الجلسة محفوظة محلياً" +
+            // مسار insertSessionParties(null, true, true) بديل + return مبكر)
+            // — مستحيل يتحقق بعد المرحلة 1 (__dbWrite بترجع offline:false
+            // دايمًا)، اتشال بالكامل. sessionOfflineTempId فضل موجود بس عشان
+            // withFkOfflineSentinel تحت لسه بياخده كباراميتر (passthrough
+            // بسيطة حاليًا — راجع caseSessionLinkingShared.ts).
 
             // ⚡ NEW (مرحلة 6.2): تسجيل كل أطراف الجلسة في case_parties — أونلاين
             // بالـ session_id الحقيقي مباشرة (مفيش داعي لسنتينل هنا).
