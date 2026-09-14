@@ -883,6 +883,14 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
     //   - invoices.fee_payment_id/case_id/client_id → SET NULL (الفواتير تفضل موجودة بسجلها كامل)
     // يعني الدالة دي مش محتاجة أي كاسكيد يدوي.
     const handlePermanentDeleteFee = async (id: string) => {
+        // 🔒 FIX (توحيد رسائل المنع — استكمال المسح على useFeesActions.ts، 14
+        // سبتمبر 2026): نفس نمط handleSave/handleAddPayment/handleDeletePayment
+        // فوق فى نفس الملف — كان مفقود من عمليات الحذف النهائي/الأرشفة/
+        // الاسترجاع تحديدًا.
+        if (!navigator.onLine) {
+            toast('⚠️ حذف الأتعاب نهائيًا يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+            return;
+        }
         const targetFee = fees.find((f) => f.id === id);
         // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
         // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
@@ -906,6 +914,12 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
 
     // ─ أرشفة سجل أتعاب (بدل حذف نهائي — البند 8 من قائمة الإجراءات) ─
     const handleDelete = async (id: string) => {
+        // 🔒 FIX (توحيد رسائل المنع — 14 سبتمبر 2026): نفس منطق
+        // handlePermanentDeleteFee فوق.
+        if (!navigator.onLine) {
+            toast('⚠️ أرشفة الأتعاب يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+            return;
+        }
         const targetFee = fees.find((f) => f.id === id);
         // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
         // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
@@ -927,6 +941,12 @@ export function useFeesActions(cases: MappedCase[], clients: ClientRow[], countr
 
     // ─ استرجاع أتعاب من الأرشيف ─
     const handleRestoreFee = async (id: string) => {
+        // 🔒 FIX (توحيد رسائل المنع — 14 سبتمبر 2026): نفس منطق
+        // handlePermanentDeleteFee/handleDelete فوق.
+        if (!navigator.onLine) {
+            toast('⚠️ استرجاع الأتعاب يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+            return;
+        }
         // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): فرع
         // offline&&queued اتشال — مستحيل يتحقق بعد المرحلة 1.
         const { error } = await window.__dbWrite({ type: 'UPDATE', table: 'case_fees', data: { deleted_at: null }, id });
