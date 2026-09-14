@@ -610,10 +610,7 @@ ${PDF_FONT_LINK}
             }
             recordSuccess('case_create');
             const groupLinkResult = await linkSessionGroupToCase(
-                // 🗑️ دفعة 2: offline/queued بقوا false ثابت — linkSessionGroupToCase
-                // بتفضل تقبلهم فى توقيعها لحد تبسيط caseSessionLinkingShared.ts
-                // لاحقًا، لكن بيتجاهلوا فعليًا (withFkOfflineSentinel passthrough).
-                db, { id: session.id, session_group_id: session.session_group_id }, realOrTempCaseId, false, false, offlineTempId, caseTitle,
+                db, { id: session.id, session_group_id: session.session_group_id }, realOrTempCaseId,
             );
             if (!groupLinkResult.ok && groupLinkResult.failedIds.includes(session.id)) {
                 showErrorToast('session_case_link', null, 'تم إنشاء القضية لكن تعذّر ربط الجلسة بها. حاول تحديث الصفحة.', 'ربط الجلسة بالقضية');
