@@ -204,7 +204,7 @@ export function useClientActions(params: {
             const check = await runDuplicateCheckOfflineAware((signal) =>
                 checkClientDuplicate(db, { full_name: form.full_name, national_id: form.national_id, cr_number: form.cr_number }, undefined, signal)
             );
-            if (check.skipped) toast('⚠️ أوف لاين — فحص تكرار بيانات الموكل هيتأجل لحد المزامنة', false);
+            if (check.skipped) toast('⚠️ فحص تكرار بيانات الموكل استغرق وقتًا أطول من المتوقع — تم تجاوزه ومتابعة الحفظ', false);
             else dup = check.result!;
         } catch (e) {
             showErrorToast('client_duplicate_check', e, 'تعذّر التحقق من بيانات الموكل. حاول مرة أخرى.', 'إضافة موكل');
@@ -517,7 +517,7 @@ export function useClientActions(params: {
             const check = await runDuplicateCheckOfflineAware((signal) =>
                 checkClientDuplicate(db, { full_name: form.full_name, national_id: form.national_id, cr_number: form.cr_number }, clientId, signal)
             );
-            if (check.skipped) toast('⚠️ أوف لاين — فحص تكرار بيانات الموكل هيتأجل لحد المزامنة', false);
+            if (check.skipped) toast('⚠️ فحص تكرار بيانات الموكل استغرق وقتًا أطول من المتوقع — تم تجاوزه ومتابعة الحفظ', false);
             else dup = check.result!;
         } catch (e) {
             showErrorToast('client_duplicate_check', e, 'تعذّر التحقق من بيانات الموكل. حاول مرة أخرى.', 'تعديل موكل');
