@@ -399,13 +399,13 @@ describe('useClientActions', () => {
     });
   });
 
-  // 🆕 Phase 4 (خطة توحيد إنشاء الموكل): تستات clientLinkTarget. caseIsOfflineTemp
-  // كان بيغطي القضية المستهدفة نفسها لسه معرّف مؤقت أوفلاين — دفعة 1 (13
-  // سبتمبر 2026) شالت سيناريوهات الموكل نفسه أوفلاين (مستحيلة بعد المرحلة 1)؛
-  // سيناريو caseIsOfflineTemp للقضية المستهدفة فضل (تست تحت) لأنه بيتأكد إن
-  // الـsentinel القديم (المشال أصلاً فى المرحلة 3) مش راجع تاني.
+  // 🆕 Phase 4 (خطة توحيد إنشاء الموكل): تستات clientLinkTarget.
+  // 🗑️ دفعة 3 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): caseIsOfflineTemp/
+  // caseFallbackTitle اتشالوا نهائيًا من نوع ClientLinkTarget (كانوا حقول
+  // غير مقروءة خالص من دفعة 1)، فتست "caseIsOfflineTemp=true" اتحذف —
+  // مبقاش ممكن يتبنى حتى (excess property على النوع الجديد).
   describe('handleSaveClient — clientLinkTarget (ربط تلقائي بعد الحفظ)', () => {
-    it('clientLinkTarget من نوع case (أونلاين، caseIsOfflineTemp غير موجود) → UPDATE:cases بـ client_id الحقيقي من غير أي sentinel أوفلاين، logActivity "ربط قضية بموكل"، وonClientLinked بتتنادى', async () => {
+    it('clientLinkTarget من نوع case (أونلاين) → UPDATE:cases بـ client_id الحقيقي من غير أي sentinel أوفلاين، logActivity "ربط قضية بموكل"، وonClientLinked بتتنادى', async () => {
       dbWriteMock().mockImplementation(async (op: { type: string; table: string }) => {
         if (op.type === 'INSERT' && op.table === 'clients') return { error: null, offline: false, queued: false, data: { id: 'new-client-1' } };
         return { error: null, offline: false, queued: false };
@@ -424,30 +424,6 @@ describe('useClientActions', () => {
         entity_type: 'case', entity_id: 'case-real-1', client_name: 'أحمد محمد علي',
       }));
       expect(onClientLinked).toHaveBeenCalledWith({ type: 'case', caseId: 'case-real-1' }, 'new-client-1');
-    });
-
-    // 🗑️ (تحديث بعد المرحلة 3 — تقرير إلغاء الأوفلاين، 13 سبتمبر 2026):
-    // isOfflineTemp/isTargetOfflineTempCase مستحيل يبقوا true بعد المرحلة 1
-    // (الكتابة أونلاين دايمًا)، فالـspreadين الشرطيين لـ_offlineFkTempId/
-    // _offlineSelfTempId اتشالوا نهائيًا من useClientActions.ts — كانوا
-    // دايمًا بيرجعوا {} عمليًا. UPDATE:cases بقى بيحمل client_id بس، حتى
-    // مع caseIsOfflineTemp=true.
-    it('clientLinkTarget من نوع case مع caseIsOfflineTemp=true (القضية نفسها لسه تمبيد) → UPDATE:cases بيحمل client_id بس (الـsentinel اتشال في المرحلة 3)', async () => {
-      dbWriteMock().mockImplementation(async (op: { type: string; table: string }) => {
-        if (op.type === 'INSERT' && op.table === 'clients') return { error: null, offline: false, queued: false, data: { id: 'new-client-2' } };
-        return { error: null, offline: false, queued: false };
-      });
-      const params = makeParams({
-        clientLinkTarget: { type: 'case', caseId: 'tmp-case-1', caseIsOfflineTemp: true, caseFallbackTitle: 'قضية أوفلاين' },
-      });
-      const { handleSaveClient } = useClientActions(params);
-
-      await handleSaveClient(makeForm(), null, null);
-
-      expect(dbWriteMock()).toHaveBeenCalledWith(expect.objectContaining({
-        type: 'UPDATE', table: 'cases', id: 'tmp-case-1',
-        data: { client_id: 'new-client-2' },
-      }));
     });
 
     // 🗑️ دفعة 1: تست "caseIsOfflineTemp=true والموكل نفسه أوفلاين (queued)"
