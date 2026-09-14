@@ -273,11 +273,7 @@ export function useClientLinking(
         // المُختبَرة، ويحمي أي سيناريو مستقبلي يبقى فيه للجلسة الجديدة سلسلة
         // بالفعل وقت التحويل.
         const groupLinkResult = await linkSessionGroupToCase(
-          // 🗑️ دفعة 2: offline/queued بقوا false ثابت (بدل المتغيّرات
-          // المحذوفة فوق) — linkSessionGroupToCase بتفضل تقبلهم فى توقيعها
-          // لحد تبسيط caseSessionLinkingShared.ts لاحقًا، لكن بيتجاهلوا
-          // فعليًا (withFkOfflineSentinel أصبحت passthrough).
-          db, { id: savedFormData.sessionId, session_group_id: null }, realOrTempCaseId, false, false, offlineTempId, caseTitle,
+          db, { id: savedFormData.sessionId, session_group_id: null }, realOrTempCaseId,
         );
         if (!groupLinkResult.ok && groupLinkResult.failedIds.includes(savedFormData.sessionId)) {
           // فشل ربط الجلسة الأساسية نفسها بالقضية (case_id) — نفس رسالة
@@ -356,7 +352,7 @@ export function useClientLinking(
         // مستحيل ترجع true بعد إلغاء الفرع الميت فى handleLinkCase فوق
         // (createdCaseId دايمًا id حقيقي من القاعدة).
         const isPrimary = partyIndex === 0;
-        const result = await linkClientToParty(currentParty.id, foundClient.id, isPrimary, createdCaseId, undefined, undefined, undefined, currentParty.updated_at ?? null);
+        const result = await linkClientToParty(currentParty.id, foundClient.id, isPrimary, createdCaseId, undefined, undefined, currentParty.updated_at ?? null);
         if (result.conflict) {
           toast(`⚠️ "${currentParty.name}" عدّله شخص آخر قبل ما توصل هنا — أعد المحاولة`, true);
         } else if (!result.ok) {
