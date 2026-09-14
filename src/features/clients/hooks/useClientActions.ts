@@ -62,6 +62,12 @@ export interface ClientFormData {
 // (نفس منطق linkClientToParty في caseSessionLinkingShared.ts). caseId/
 // caseIsOfflineTemp/caseFallbackTitle بنفس معنى هدف 'case' (القضية اللي
 // الطرف تابع لها ممكن لسه تكون تمبيد أوفلاين).
+// 🗑️ دفعة 1 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): caseIsOfflineTemp/
+// caseFallbackTitle (فوق فى 'case' و'party') بقوا حقول غير مقروءة خالص فى
+// الملف ده — الفرعين اللي كانوا بيستخدموهم (فرع 'party' هنا وفرع
+// 'case'/'session' تحت) اتشالوا بالكامل. فضلوا فى النوع لأن App.tsx لسه
+// بيبعتهم وقت بناء clientLinkTarget — إزالتهم من هناك كمان برا نطاق
+// الدفعة دي.
 // ⚡ NEW (خطة تعدد الأطراف، مرحلة 13 جزء 2 — 23 يوليو 2026): هدف ربط
 // جديد 'sessionParty' — مرآة لهدف 'party' فوق، بس لطرف تابع لجلسة
 // مستقلة *لسه ما اتحوّلتش لقضية* (زرار "إضافة الموكل لقائمة الموكلين
@@ -259,22 +265,19 @@ export function useClientActions(params: {
             contact_info: { id_url: idUrl, id_back_url: idBackUrl, poa_url: poaUrl } as ClientContactInfo,
         };
 
-        // 🗑️ المرحلة 3 (إلغاء الأوفلاين فى الكتابة، 13 سبتمبر 2026): كان
-        // بيتبعت كـ_offlineTempId فى الـpayload فوق — اتشال (مفيش قارئ له
-        // بعد حذف offlineSync.ts فى المرحلة 2). offlineTempId فضل متغيّر
-        // محلي بيتولّد زي الأول ومستخدم تحت كـfallback فى الفرع الميت
-        // offline&&queued (هيتشال لاحقًا).
-        const offlineTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-        const { error, offline, queued, data: insertedClient } = await window.__dbWrite({
+        // 🗑️ دفعة 1 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): offlineTempId
+        // اتشال بالكامل — كان بيتولّد بس عشان يستخدم كـfallback لـlinkedClientId
+        // فى الفرع الميت offline&&queued تحت (اتشال هو كمان)، ومفيش قارئ تاني
+        // له بعد حذف offlineSync.ts فى المرحلة 2.
+        const { error, data: insertedClient } = await window.__dbWrite({
             type: 'INSERT', table: 'clients', data: payload, returning: true,
         });
         setSavingClient(false);
 
-        if (offline && queued) {
-            toast('📥 الموكل محفوظ محلياً — سيُضاف فور عودة الإنترنت');
-            // إضافة مؤقتة في الـ state المحلي
-            setClients((prev) => [{ ...payload, id: 'offline-' + Date.now(), full_name: form.full_name } as unknown as ClientRow, ...prev]);
-        } else if (error) {
+        // 🗑️ دفعة 1: كان هنا `if (offline && queued) {...}` (توست "محفوظ
+        // محلياً" + إضافة مؤقتة فى الـstate) — مستحيل يتحقق بعد المرحلة 1،
+        // اتشال بنفس منطق useCaseCrudActions.ts/useRemindersTab.ts.
+        if (error) {
             // 🔒 FIX (تقرير الموثوقية — نتيجة 3): خط دفاع أخير — لو الـ
             // UNIQUE index على الداتابيز (راجع client-case-unique-constraints-migration.sql)
             // رفض الإدراج (كود 23505 من Postgres) رغم إن فحص التكرار في
@@ -322,19 +325,22 @@ export function useClientActions(params: {
         // clientLinkTarget) — نفس فلسفة handleLinkClient الموجودة
         // الموجودين، بس هنا الموكل نفسه جديد اتحفظ لسه.
         if (clientLinkTarget) {
-            const isOfflineTemp = offline && queued;
-            const linkedClientId = isOfflineTemp ? offlineTempId : (insertedClient as { id: string } | null)?.id;
+            // 🗑️ دفعة 1: isOfflineTemp اتشال — كان دايمًا false بعد المرحلة 1
+            // (offline/queued بقوا مستحيلين)، فـlinkedClientId بقى دايمًا id
+            // الموكل الحقيقي الراجع من __dbWrite مباشرة.
+            const linkedClientId = (insertedClient as { id: string } | null)?.id;
             // ⚡ NEW (7.2 جزء 2): هدف 'party' — بيستخدم linkClientToParty
             // المشتركة (case_parties.client_id + cases.client_id لو الطرف
             // أساسي) بدل مسار table/targetId العادي تحت (اللي معملوش لـ
             // case_parties أصلاً). فرع مستقل عشان مفيش داعي نلوي منطق
             // 'case'/'session' الموجود من أجل حالة تالتة مختلفة معماريًا.
             if (linkedClientId && clientLinkTarget.type === 'party') {
-                const caseTitleForSentinel = clientLinkTarget.caseIsOfflineTemp ? clientLinkTarget.caseFallbackTitle : undefined;
+                // 🗑️ دفعة 1: caseTitleForSentinel اتشال — withCaseSelfOfflineSentinel
+                // بقت passthrough بسيطة (راجع caseSessionLinkingShared.ts) فمفيش
+                // فرق فعلي بين تمرير قيمة أو undefined هنا.
                 const result = await linkClientToParty(
                     clientLinkTarget.partyId, linkedClientId, clientLinkTarget.isPrimaryParty,
-                    clientLinkTarget.caseId, caseTitleForSentinel,
-                    isOfflineTemp ? { isTempClientId: true, tempClientId: offlineTempId, fallbackNameValue: form.full_name } : undefined,
+                    clientLinkTarget.caseId, undefined,
                 );
                 if (!result.ok) {
                     showErrorToast('client_auto_link', new Error('party link failed'), 'تم حفظ الموكل لكن تعذّر ربطه بالطرف تلقائيًا — استخدم زرار "🔗 ربط" لربطه يدويًا.', 'ربط الموكل تلقائيًا');
@@ -356,7 +362,6 @@ export function useClientActions(params: {
                 const result = await linkClientToSessionParty(
                     clientLinkTarget.partyId, linkedClientId, clientLinkTarget.isPrimaryParty,
                     clientLinkTarget.sessionId,
-                    isOfflineTemp ? { isTempClientId: true, tempClientId: offlineTempId, fallbackNameValue: form.full_name } : undefined,
                 );
                 if (!result.ok) {
                     showErrorToast('client_auto_link', new Error('session party link failed'), 'تم حفظ الموكل لكن تعذّر ربطه بالطرف تلقائيًا — استخدم زرار "🔗 ربط" لربطه يدويًا.', 'ربط الموكل تلقائيًا');
