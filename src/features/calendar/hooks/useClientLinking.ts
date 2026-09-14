@@ -8,7 +8,7 @@ import { checkCaseNumberDuplicate } from '../../../shared/lib/caseValidation';
 import { runDuplicateCheckOfflineAware } from '../../../shared/lib/offlineGuard';
 import type { Form } from '../NewStandaloneSessionModal';
 import {
-  makeOfflineTempId, isOfflineTempId, withCaseSelfOfflineSentinel, findMatchingClientByName, buildCaseInsertData,
+  makeOfflineTempId, withCaseSelfOfflineSentinel, findMatchingClientByName, buildCaseInsertData,
   fetchSessionClientParties, matchClientsForParties, linkClientToParty, linkSessionGroupToCase,
 } from './caseSessionLinkingShared';
 import type { SessionClientParty, PartyClientMatch } from './caseSessionLinkingShared';
@@ -188,12 +188,13 @@ export function useClientLinking(
         setLinkingCase(false);
         return;
       }
-      // 🆕 المرحلة 2 (خطة توسيع الأوفلاين): معرّف مؤقت client-side، بنفس
-      // نمط offlineTempId الموجود فعلاً في useCaseActions.ts (handleSaveCase)
-      // — بيتبعت مع القضية بغض النظر عن حالة الاتصال، وبيتشال قبل أي INSERT
-      // حقيقي (stripOfflineSentinels في offlineQueue.ts).
+      // 🗑️ دفعة 2 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): offlineTempId
+      // فضل موجود بس عشان buildCaseInsertData/linkSessionGroupToCase تحت
+      // (caseSessionLinkingShared.ts) لسه بياخدوه كباراميتر فى توقيعهم —
+      // بيتجاهلوه فعليًا (راجع تعليقاتهم هناك)، هيتشال هو كمان لما الملف ده
+      // يتبسط فى دفعة لاحقة.
       const offlineTempId = makeOfflineTempId();
-      const { error, offline, queued, data: insertedCase } = await window.__dbWrite({
+      const { error, data: insertedCase } = await window.__dbWrite({
         type: 'INSERT',
         table: 'cases',
         // ⚡ FIX (توحيد): بناء بيانات القضية دلوقتي في buildCaseInsertData
@@ -235,16 +236,14 @@ export function useClientLinking(
         }
         return;
       }
-      // 🆕 المرحلة 2: لو أوفلاين، مفيش id حقيقي راجع من __dbWrite (العملية
-      // في الطابور بس) — بنستخدم التمبيد نفسه كمرجع مؤقت بدل null، عشان
-      // خطوة ربط الجلسة تحت تقدر "تشاور" عليه لحد ما يتزامن.
-      const realOrTempCaseId = (offline && queued) ? offlineTempId : (insertedCase as { id: string } | null)?.id;
+      // 🗑️ دفعة 2: realOrTempCaseId بقى دايمًا insertedCase?.id — الفرع
+      // الميت (offline&&queued ? offlineTempId : ...) اتشال، مستحيل يتحقق
+      // بعد المرحلة 1 (__dbWrite بترجع offline:false دايمًا). ده كمان يعني
+      // isOfflineTempId(createdCaseId) تحت (فى handleLinkExistingClient/
+      // handleAddAndLinkClient) هترجع false دايمًا.
+      const realOrTempCaseId = (insertedCase as { id: string } | null)?.id;
       if (!realOrTempCaseId) { showErrorToast('case_create', new Error('no id returned'), 'تعذّر إنشاء القضية. حاول مرة أخرى.', 'إنشاء قضية'); return; }
-      if (offline && queued) {
-        toast('📥 القضية محفوظة محلياً — ستُضاف فور عودة الإنترنت');
-      } else {
-        toast('✅ تم إنشاء ملف القضية');
-      }
+      toast('✅ تم إنشاء ملف القضية');
       setCreatedCaseId(realOrTempCaseId);
       // ⚡ ربط الجلسة المستقلة الأصلية بالقضية الجديدة — من غير الخطوة دي
       // الجلسة كانت هتفضل "مستقلة" (case_id = null) حتى بعد إنشاء ملف
@@ -269,7 +268,11 @@ export function useClientLinking(
         // المُختبَرة، ويحمي أي سيناريو مستقبلي يبقى فيه للجلسة الجديدة سلسلة
         // بالفعل وقت التحويل.
         const groupLinkResult = await linkSessionGroupToCase(
-          db, { id: savedFormData.sessionId, session_group_id: null }, realOrTempCaseId, offline, queued, offlineTempId, caseTitle,
+          // 🗑️ دفعة 2: offline/queued بقوا false ثابت (بدل المتغيّرات
+          // المحذوفة فوق) — linkSessionGroupToCase بتفضل تقبلهم فى توقيعها
+          // لحد تبسيط caseSessionLinkingShared.ts لاحقًا، لكن بيتجاهلوا
+          // فعليًا (withFkOfflineSentinel أصبحت passthrough).
+          db, { id: savedFormData.sessionId, session_group_id: null }, realOrTempCaseId, false, false, offlineTempId, caseTitle,
         );
         if (!groupLinkResult.ok && groupLinkResult.failedIds.includes(savedFormData.sessionId)) {
           // فشل ربط الجلسة الأساسية نفسها بالقضية (case_id) — نفس رسالة
@@ -282,16 +285,13 @@ export function useClientLinking(
           if (!groupLinkResult.ok) {
             toast('⚠️ تم إنشاء القضية وربط الجلسة، لكن حصل خطأ في نقل بعض أطراف الدعوى الإضافية — راجعها يدويًا', true);
           }
-          if (!(offline && queued)) {
-            // ⚡ FIX: next_hearing كان بيفضل فاضي في القضية الجديدة رغم إن
-            // فيها جلسة مربوطة فعليًا — نفس منطق recalcNextHearing الموحّد
-            // المستخدم في كل مكان تاني بيضيف/يربط جلسة بقضية.
-            // 🆕 المرحلة 2: أونلاين بس هنا — أوفلاين، next_hearing هتتحسب
-            // تلقائيًا بعد المزامنة (المرحلة 4 القادمة في الخطة، لسه ما
-            // اتنفذتش)، مفيش معنى نناديها دلوقتي على تمبيد مش موجود فعليًا
-            // في القاعدة.
-            await recalcNextHearing(db, realOrTempCaseId);
-          }
+          // ⚡ FIX: next_hearing كان بيفضل فاضي في القضية الجديدة رغم إن
+          // فيها جلسة مربوطة فعليًا — نفس منطق recalcNextHearing الموحّد
+          // المستخدم في كل مكان تاني بيضيف/يربط جلسة بقضية.
+          // 🗑️ دفعة 2: الشرط `if (!(offline && queued))` حوالين النداء ده
+          // اتشال — الكتابة أونلاين دايمًا بعد المرحلة 1، فالقضية دايمًا
+          // موجودة فعليًا فى القاعدة وقت الوصول هنا.
+          await recalcNextHearing(db, realOrTempCaseId);
         }
       }
       onSaved(); // تحديث قائمة القضايا والجلسات فوراً (بعد اكتمال الربط)
@@ -347,12 +347,11 @@ export function useClientLinking(
       if (!currentParty) return;
       setLinkingToCase(true);
       try {
-        const isTempCaseId = isOfflineTempId(createdCaseId);
-        const caseTitle = isTempCaseId && savedFormData
-          ? (savedFormData.form.title || savedFormData.fullCaseNumber || 'قضية من جلسة مستقلة')
-          : undefined;
+        // 🗑️ دفعة 2: isTempCaseId/caseTitle اتشالوا — isOfflineTempId(createdCaseId)
+        // مستحيل ترجع true بعد إلغاء الفرع الميت فى handleLinkCase فوق
+        // (createdCaseId دايمًا id حقيقي من القاعدة).
         const isPrimary = partyIndex === 0;
-        const result = await linkClientToParty(currentParty.id, foundClient.id, isPrimary, createdCaseId, caseTitle, undefined, undefined, currentParty.updated_at ?? null);
+        const result = await linkClientToParty(currentParty.id, foundClient.id, isPrimary, createdCaseId, undefined, undefined, undefined, currentParty.updated_at ?? null);
         if (result.conflict) {
           toast(`⚠️ "${currentParty.name}" عدّله شخص آخر قبل ما توصل هنا — أعد المحاولة`, true);
         } else if (!result.ok) {
@@ -368,36 +367,21 @@ export function useClientLinking(
     // ── fallback: جلسة قديمة (مسار الاسم الواحد القديم، صفر تغيير سلوك) ──
     setLinkingToCase(true);
     try {
-      // 🆕 المرحلة 3-1 (خطة توسيع الأوفلاين): تحويل من db.from() المباشر لـ
-      // __dbWrite. createdCaseId ممكن يكون لسه تمبيد (لو القضية اتقيدت
-      // أوفلاين في handleLinkCase فوق ولسه ما اتزامنتش) — بنميزه بنفس
-      // بادئة offlineTempId ('tmp-') المستخدمة هناك. لو تمبيد فعلاً، بنبعت
-      // _offlineSelfTempId (+ عنوان القضية كـ fallback بالاسم) عشان دورة
-      // المزامنة تقدر تحل الـ id الحقيقي قبل تنفيذ الـ UPDATE (شوف
-      // resolveOfflineSelfId في offlineQueue.ts — اكتشاف معماري جديد: هنا
-      // الـ id بتاع السطر المستهدف نفسه هو التمبيد، مش حقل FK جوه data
-      // زي _offlineFkTempId العادية).
-      const isTempCaseId = isOfflineTempId(createdCaseId);
-      const caseTitle = isTempCaseId && savedFormData
-        ? (savedFormData.form.title || savedFormData.fullCaseNumber || 'قضية من جلسة مستقلة')
-        : undefined;
-      const { error, offline, queued } = await window.__dbWrite({
+      // 🗑️ دفعة 2 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): isTempCaseId/
+      // caseTitle اتشالوا (نفس سبب handleLinkExistingClient — wizard فوق) —
+      // withCaseSelfOfflineSentinel بقت passthrough أصلاً، caseTitle مش
+      // بيتقرا منها حتى لو اتبعت.
+      const { error } = await window.__dbWrite({
         type: 'UPDATE',
         table: 'cases',
         id: createdCaseId,
-        data: withCaseSelfOfflineSentinel(createdCaseId, { client_id: foundClient.id }, caseTitle),
+        data: withCaseSelfOfflineSentinel(createdCaseId, { client_id: foundClient.id }, undefined),
       });
       if (error) {
         showErrorToast('session_client_link', error, 'تعذّر ربط الموكل بالجلسة. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'ربط الموكل بالجلسة');
       }
-      else if (offline && queued) {
-        // ⚠️ ممكن نوصل هنا حتى لو أونلاين فعليًا (لو createdCaseId تمبيد —
-        // شوف forceQueueForSelfTempId في __dbWrite): الرسالة لسه صحيحة
-        // لأن الربط فعليًا هيتم بعد اكتمال مزامنة القضية، مش دلوقتي.
-        recordSuccess('session_client_link');
-        toast('📥 الربط محفوظ محلياً — سيُزامن عند عودة الإنترنت');
-        setClientStep('done');
-      }
+      // 🗑️ دفعة 2: كان هنا `else if (offline && queued) {...}` (توست "الربط
+      // محفوظ محلياً") — مستحيل يتحقق بعد المرحلة 1، اتشال.
       else { recordSuccess('session_client_link'); toast('✅ تم ربط الموكل بالقضية'); setClientStep('done'); }
     } catch { toast('❌ خطأ غير متوقع', true); }
     finally { setLinkingToCase(false); }
@@ -410,7 +394,9 @@ export function useClientLinking(
   // handleSaveClient الموحّد (useClientActions.ts) بعد الحفظ.
   const handleAddAndLinkClient = () => {
     if (!createdCaseId) return;
-    const isTempCaseId = isOfflineTempId(createdCaseId);
+    // 🗑️ دفعة 2 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): isTempCaseId
+    // اتشال — createdCaseId دايمًا id حقيقي بعد إلغاء الفرع الميت فى
+    // handleLinkCase فوق، فـcaseOfflineInfo بقى دايمًا undefined.
     // ⚡ NEW (7.2 جزء 2): wizard الأطراف المتعددة — بيفتح NewClientModal
     // الموحّد ببيانات الطرف الحالي (اسمه/رقمه القومي/توكيله/عنوانه هو، مش
     // savedFormData.form.plaintiff) عبر onOpenCreateClientForParty الجديدة
@@ -421,14 +407,11 @@ export function useClientLinking(
     if (partyList.length > 0) {
       const currentParty = partyList[partyIndex];
       if (!currentParty) return;
-      const caseTitle = isTempCaseId && savedFormData
-        ? (savedFormData.form.title || savedFormData.fullCaseNumber || 'قضية من جلسة مستقلة')
-        : undefined;
       const isPrimary = partyIndex === 0;
       onOpenCreateClientForParty?.(
         currentParty.id, createdCaseId, isPrimary,
         currentParty.name, currentParty.national_id, currentParty.power_of_attorney, currentParty.address,
-        { isOfflineTemp: isTempCaseId, fallbackTitle: caseTitle },
+        undefined,
         () => goToNextPartyOrDone(partyIndex, partyList, partyMatches),
       );
       return;
@@ -437,12 +420,11 @@ export function useClientLinking(
     if (!savedFormData) return;
     const { form: f } = savedFormData;
     if (!f.plaintiff?.trim()) return;
-    const caseTitle = isTempCaseId ? (f.title || savedFormData.fullCaseNumber || 'قضية من جلسة مستقلة') : undefined;
     onOpenCreateClientForCase?.(
       // ⚠️ NewStandaloneSessionModal.Form مفيهاش حقل عنوان (undefined هنا) —
       // الحقل ده خاص بفورم القضية العادية (NewCaseModal/EditCaseModal) بس.
       createdCaseId, f.plaintiff, f.plaintiff_national_id, f.plaintiff_power_of_attorney, undefined,
-      { isOfflineTemp: isTempCaseId, fallbackTitle: caseTitle },
+      undefined,
     );
   };
 
