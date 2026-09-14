@@ -13,7 +13,6 @@ import { checkCaseNumberDuplicate } from '../../../../shared/lib/caseValidation'
 import { showErrorToast, lockErrorIfNoRowsAffected } from '../../../../shared/lib/errorReporting';
 import { runDuplicateCheckOfflineAware } from '../../../../shared/lib/offlineGuard';
 import { db } from '../../../../supabaseClient';
-import { withFkOfflineSentinel } from '../../../calendar/hooks/caseSessionLinkingShared';
 import { validateParties } from '../../../../shared/lib/casePartiesValidation';
 import { checkPermission } from '../../../../shared/lib/permissions';
 import type { MappedCase } from '../../../../hooks/useAppData';
@@ -113,11 +112,11 @@ export function createCaseCrudActions(
         // client-side بيتبعت مع القضية (_offlineTempId) ومع الجلسة الأولى
         // (_offlineCaseTempId) عشان دورة المزامنة القديمة تربطهم ببعض بعد
         // رجوع النت. بعد المرحلة 1 (الكتابة أونلاين دايمًا، مفيش طابور)
-        // الحقلين اتشالوا من الـpayload الفعلي. offlineTempId فضل هنا بس
-        // كـtempId argument لـwithFkOfflineSentinel (بقت passthrough بسيطة —
-        // راجع caseSessionLinkingShared.ts) وجوه الفرع الميت offline&&queued
-        // تحت (هيتشال بالكامل مع باقي بنية الأوفلاين فى مرحلة لاحقة).
-        const offlineTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        // الحقلين اتشالوا من الـpayload الفعلي.
+        // 🗑️ تنظيف withFkOfflineSentinel (الخيار ب، 14 سبتمبر 2026):
+        // offlineTempId نفسها اتشالت هنا كمان — كانت آخر استخدام ليها
+        // (تمريرها كـtempId لـwithFkOfflineSentinel اللي اتشالت خالص من
+        // caseSessionLinkingShared.ts).
         const payload = {
             case_number_official: form.number || null,
             title: form.title,
@@ -169,7 +168,7 @@ export function createCaseCrudActions(
         // يقدر يختار الرسالة المناسبة من غير ما نعرض توست مزدوج (واحد من
         // جوه الدالة وواحد تاني من بره) لنفس المشكلة.
         type InsertPartiesResult = { ok: true } | { ok: false; reason: 'validation'; message: string } | { ok: false; reason: 'write' };
-        const insertCaseParties = async (caseId: string | null, isOffline: boolean, isQueued: boolean): Promise<InsertPartiesResult> => {
+        const insertCaseParties = async (caseId: string | null): Promise<InsertPartiesResult> => {
             const parties = form.parties;
             if (!parties || parties.length === 0) return { ok: true };
             // 🔒 NEW (خطوة 4.3 — خطة تعدد الأطراف، قسم 7-ج): فاليديشن سيرفر
@@ -208,8 +207,7 @@ export function createCaseCrudActions(
                     client_id: p.client_id || null,
                     sort_order: i,
                 };
-                const finalData = withFkOfflineSentinel(isOffline, isQueued, 'case_id', offlineTempId, 'cases', form.title, rowData);
-                const partyResult = await window.__dbWrite({ type: 'INSERT', table: 'case_parties', data: finalData });
+                const partyResult = await window.__dbWrite({ type: 'INSERT', table: 'case_parties', data: rowData });
                 if (partyResult.error) allOk = false;
             }
             return allOk ? { ok: true } : { ok: false, reason: 'write' };
@@ -287,7 +285,7 @@ export function createCaseCrudActions(
             // ⚡ NEW (مرحلة 4.2): تسجيل كل أطراف الدعوى في case_parties — أونلاين
             // بالـ id الحقيقي مباشرة (مفيش داعي لسنتينل هنا).
             if (newCaseId) {
-                const partiesResult = await insertCaseParties(newCaseId, false, false);
+                const partiesResult = await insertCaseParties(newCaseId);
                 if (!partiesResult.ok) {
                     // 🔒 (4.3): فشل الفاليديشن بيتعرض برسالته المحدّدة (نفس
                     // رسالة usePartyFields.ts)، وفشل الكتابة بيتعرض برسالة
