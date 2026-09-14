@@ -382,20 +382,9 @@ describe('useClientActions', () => {
       }));
     });
 
-    it('offline/queued → توست حفظ محلي، وإضافة تفاؤلية لعنصر جديد في state المحلي، من غير logActivity أو تليجرام', async () => {
-      dbWriteMock().mockResolvedValue({ error: null, offline: true, queued: true });
-      const params = makeParams();
-      const { handleSaveClient } = useClientActions(params);
-
-      await handleSaveClient(makeForm(), null, null);
-
-      expect(toast).toHaveBeenCalledWith('📥 الموكل محفوظ محلياً — سيُضاف فور عودة الإنترنت');
-      expect(params.setClients).toHaveBeenCalled();
-      expect(logActivity).not.toHaveBeenCalled();
-      expect(params.sendTelegram).not.toHaveBeenCalled();
-      expect(params.fetchClients).not.toHaveBeenCalled();
-    });
-
+    // 🗑️ دفعة 1 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): تست "offline/queued
+    // → توست حفظ محلي..." اتشال — الفرع نفسه (if(offline&&queued){...}) اتشال
+    // من useClientActions.ts، مستحيل يتحقق بعد المرحلة 1.
     it('فشل (error من غير offline) → توست فشل، وقف فوري من غير أي خطوة تانية، لكن setShowClientModal(false) لسه بتتنادى في النهاية', async () => {
       dbWriteMock().mockResolvedValue({ error: { message: 'insert failed' }, offline: false, queued: false });
       const params = makeParams();
@@ -410,9 +399,11 @@ describe('useClientActions', () => {
     });
   });
 
-  // 🆕 Phase 4 (خطة توحيد إنشاء الموكل): تستات clientLinkTarget، بالذات
-  // caseIsOfflineTemp (القضية المستهدفة نفسها لسه معرّف مؤقت أوفلاين —
-  // مسار Phase 2: handleAddAndLinkClient بعد تحويل جلسة مستقلة لقضية).
+  // 🆕 Phase 4 (خطة توحيد إنشاء الموكل): تستات clientLinkTarget. caseIsOfflineTemp
+  // كان بيغطي القضية المستهدفة نفسها لسه معرّف مؤقت أوفلاين — دفعة 1 (13
+  // سبتمبر 2026) شالت سيناريوهات الموكل نفسه أوفلاين (مستحيلة بعد المرحلة 1)؛
+  // سيناريو caseIsOfflineTemp للقضية المستهدفة فضل (تست تحت) لأنه بيتأكد إن
+  // الـsentinel القديم (المشال أصلاً فى المرحلة 3) مش راجع تاني.
   describe('handleSaveClient — clientLinkTarget (ربط تلقائي بعد الحفظ)', () => {
     it('clientLinkTarget من نوع case (أونلاين، caseIsOfflineTemp غير موجود) → UPDATE:cases بـ client_id الحقيقي من غير أي sentinel أوفلاين، logActivity "ربط قضية بموكل"، وonClientLinked بتتنادى', async () => {
       dbWriteMock().mockImplementation(async (op: { type: string; table: string }) => {
@@ -459,28 +450,11 @@ describe('useClientActions', () => {
       }));
     });
 
-    it('clientLinkTarget مع caseIsOfflineTemp=true والموكل نفسه أوفلاين (queued) → UPDATE:cases بيحمل client_id بس (الـsentinel اتشال في المرحلة 3)', async () => {
-      dbWriteMock().mockImplementation(async (op: { type: string; table: string }) => {
-        if (op.type === 'INSERT' && op.table === 'clients') return { error: null, offline: true, queued: true };
-        return { error: null, offline: true, queued: true };
-      });
-      const params = makeParams({
-        clientLinkTarget: { type: 'case', caseId: 'tmp-case-2', caseIsOfflineTemp: true, caseFallbackTitle: 'قضية أوفلاين د' },
-      });
-      const { handleSaveClient } = useClientActions(params);
-
-      await handleSaveClient(makeForm({ full_name: 'موكل أوفلاين جديد' }), null, null);
-
-      const updateCall = dbWriteMock().mock.calls
-        .map((c: unknown[]) => c[0] as { type: string; table: string; data: Record<string, unknown> })
-        .find(
-        (op) => op.type === 'UPDATE' && op.table === 'cases',
-      ) as { data: Record<string, unknown> };
-      const clientTempId = updateCall.data.client_id as string;
-      expect(clientTempId).toMatch(/^tmp-/);
-      expect(updateCall.data).toEqual({ client_id: clientTempId });
-    });
-
+    // 🗑️ دفعة 1: تست "caseIsOfflineTemp=true والموكل نفسه أوفلاين (queued)"
+    // اتشال — كان بيعتمد على offlineTempId كـfallback لـlinkedClientId لما
+    // insert الموكل نفسه يرجع offline:true/queued:true؛ الفرع ده اتشال
+    // بالكامل من useClientActions.ts (linkedClientId بقى دايمًا id الموكل
+    // الحقيقي الراجع من __dbWrite).
     it('clientLinkTarget من نوع session → UPDATE:case_sessions بـ client_id، من غير أي sentinel أوفلاين للقضية (مش مطلوب لجلسات)', async () => {
       dbWriteMock().mockImplementation(async (op: { type: string; table: string }) => {
         if (op.type === 'INSERT' && op.table === 'clients') return { error: null, offline: false, queued: false, data: { id: 'new-client-3' } };
