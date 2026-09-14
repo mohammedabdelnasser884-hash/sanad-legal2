@@ -16,6 +16,9 @@ interface BackupSectionProps {
   setConfirmRestore: React.Dispatch<React.SetStateAction<BackupRow | null>>;
   handleFileSelected: (file: File) => void | Promise<void>;
   uploadingFile: boolean;
+  // 🔒 قفل منتجي (14 سبتمبر 2026): true لو المكتب فى وضع "مشاهدة فقط" —
+  // بيعطّل زرار الرفع وزرار الاستعادة فى كل كارت نسخة، ويعرض ملحوظة ثابتة.
+  isRestoreWriteLocked: boolean;
 }
 
 // ── شريط تقدم بسيط بالنسبة المئوية (نفس ألوان القسم الذهبية) ──
@@ -34,6 +37,7 @@ function BackupSection({
   fetchBackups, loadingBackups, backups,
   handleDownloadBackup, setConfirmRestore,
   handleFileSelected, uploadingFile,
+  isRestoreWriteLocked,
 }: BackupSectionProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   return React.createElement('div',{className:"space-y-4"},
@@ -89,13 +93,26 @@ function BackupSection({
         }),
         React.createElement('button',{
           onClick: () => fileInputRef.current?.click(),
-          disabled: uploadingFile,
+          disabled: uploadingFile || isRestoreWriteLocked,
           'data-testid': 'admin-backup-upload-button',
           className:"w-full py-2.5 rounded-xl text-[11px] font-bold text-[#C9A84C] bg-white/5 border border-[#C9A84C]/25 active:scale-95 transition-transform disabled:opacity-60 flex items-center justify-center gap-2"
         },
           uploadingFile
             ? React.createElement(React.Fragment,null, React.createElement(I.Spin), React.createElement('span',null,"جاري قراءة الملف..."))
+            : isRestoreWriteLocked
+            ? React.createElement(React.Fragment,null, React.createElement('span',{className:"text-sm"},"🔒"), React.createElement('span',null,"الرفع غير متاح — اشتراك المكتب فى وضع القراءة فقط"))
             : React.createElement(React.Fragment,null, React.createElement('span',{className:"text-sm"},"📤"), React.createElement('span',null,"رفع نسخة محفوظة من الجهاز"))
+        ),
+
+        // 🔒 ملحوظة قفل ثابتة (بدل/بالإضافة لتوست بعد الضغط) — تفضل معروضة
+        // طول ما المكتب فى وضع مشاهدة فقط، عشان تكون واضحة من قبل أي ضغطة.
+        isRestoreWriteLocked && React.createElement('div',{
+          className:"p-2.5 rounded-xl bg-red-500/10 border border-red-500/20",
+          'data-testid': 'admin-backup-section-locked-notice',
+        },
+          React.createElement('p',{className:"text-[10px] font-black text-red-400"}, "🔒 الاستعادة والرفع غير متاحين حاليًا"),
+          React.createElement('p',{className:"text-[9px] text-slate-400 leading-relaxed"},
+            "اشتراك المكتب فى وضع القراءة فقط. إنشاء نسخة احتياطية جديدة لسه متاح عادي، لكن استعادة نسخة قديمة أو رفع نسخة من جهازك ممنوعين لحد ما يتجدد الاشتراك.")
         ),
 
         // تحذير مهم
@@ -181,11 +198,12 @@ function BackupSection({
                     // استعادة
                     React.createElement('button',{
                       onClick:()=>setConfirmRestore(backup),
+                      disabled: isRestoreWriteLocked,
                       'data-testid': 'admin-backup-restore-button',
-                      className:"flex items-center justify-center gap-1.5 py-2.5 bg-premium-card hover:bg-[#C9A84C]/10 transition-colors active:scale-95"
+                      className:"flex items-center justify-center gap-1.5 py-2.5 bg-premium-card hover:bg-[#C9A84C]/10 transition-colors active:scale-95 disabled:opacity-40 disabled:hover:bg-premium-card"
                     },
-                      React.createElement('span',{className:"text-xs"},"🔄"),
-                      React.createElement('span',{className:"text-[10px] font-bold text-[#C9A84C]"},"استعادة")
+                      React.createElement('span',{className:"text-xs"}, isRestoreWriteLocked ? "🔒" : "🔄"),
+                      React.createElement('span',{className:"text-[10px] font-bold text-[#C9A84C]"}, isRestoreWriteLocked ? "غير متاح" : "استعادة")
                     )
                   )
                 );
