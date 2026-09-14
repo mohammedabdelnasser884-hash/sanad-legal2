@@ -192,7 +192,15 @@ test('3) مودال "تحويل لقضية؟" — إنشاء قضية من بي�
   await expect(caseRow.first()).toBeVisible({ timeout: 15_000 });
 });
 
-test('4) حفظ الجلسة المستقلة أوفلاين', async ({ page, context }) => {
+// 🔧 FIX (إصلاح لوجز E2E — 14 سبتمبر 2026، مرحلة 5 من خطة إلغاء الأوفلاين):
+// الاسم والجسم اتحدثوا عشان يعكسوا السلوك الفعلي بعد "دفعة 2" (13 سبتمبر
+// 2026) اللي شالت فرع `if (offline && queued)` من NewStandaloneSessionModal.tsx
+// نهائيًا. الكتابة بقت أونلاين-فقط دايمًا: أي محاولة حفظ أوفلاين بترجع خطأ
+// شبكة من __dbWrite فتوصله لـshowErrorToast('session_save', ...) اللي بيعرض
+// توست الخطأ العام('❌ تعذّر حفظ الجلسة. حاول مرة أخرى. لو المشكلة استمرت،
+// تواصل مع الدعم.') بدل توست "محفوظة محلياً" القديم، والمودال يفضل مفتوح
+// (مفيش أي إغلاق تلقائي بعد الخطأ) بدل ما يتقفل.
+test('4) منع حفظ الجلسة المستقلة أوفلاين برسالة واضحة', async ({ page, context }) => {
   await login(page);
   const title = `اختبار E2E - جلسة أوفلاين - ${Date.now()}`;
 
@@ -238,11 +246,12 @@ test('4) حفظ الجلسة المستقلة أوفلاين', async ({ page, co
   await context.setOffline(true);
   try {
     await page.getByTestId('new-session-save').click();
-    await expectToast(page, '📥 الجلسة المستقلة محفوظة محلياً — ستُضاف فور عودة الإنترنت');
-    // أونلاين وضع "standalone" بيفتح مودال "تحويل لقضية؟"، لكن أوفلاين
-    // (offline && queued) بيقفل المودال فورًا (راجع handleSave) — بلا
-    // فقد بيانات، الجلسة اتقيّدت في طابور الأوفلاين.
-    await page.getByTestId('new-session-modal').waitFor({ state: 'hidden', timeout: 10_000 });
+    await expectToast(page, '❌ تعذّر حفظ الجلسة. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.');
+    // العملية اتمنعت بالكامل (مفيش كتابة أوفلاين تاني) — المودال لازم
+    // يفضل مفتوح والبيانات اللي المستخدم دخلها متتفقدش (راجع handleSave:
+    // return مبكر بعد showErrorToast، مفيش أي إغلاق تلقائي للمودال).
+    await expect(page.getByTestId('new-session-modal')).toBeVisible();
+    await expect(page.getByTestId('new-session-title')).toHaveValue(title);
   } finally {
     await context.setOffline(false);
   }
