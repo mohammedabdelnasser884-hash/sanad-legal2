@@ -120,7 +120,7 @@ export function createCaseClientLinking(
             power_of_attorney: linkedClient.cr_number || '',
             address: linkedClient.address || '',
         } : undefined;
-        const result = await linkClientToParty(partyId, clientId, isPrimaryParty, caseId, existingCase?.title || undefined, undefined, syncFields, knownUpdatedAt, knownCaseUpdatedAt);
+        const result = await linkClientToParty(partyId, clientId, isPrimaryParty, caseId, existingCase?.title || undefined, syncFields, knownUpdatedAt, knownCaseUpdatedAt);
         if (result.conflict) {
             if (result.conflictScope === 'case') {
                 toast('⚠️ الطرف اترّبط، لكن القضية نفسها عدّلها شخص آخر — أعد فتحها لمراجعة بيانات الموكل الأساسي', true);
