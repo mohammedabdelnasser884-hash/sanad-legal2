@@ -561,7 +561,7 @@ const TABLE       = 'tenants';
 // وبعدها لازم يختار المكتب واحدة من الباقات التلاتة دي ويدفع.
 const PLANS = [
   {
-    id: 'lawyer', name: 'باقة المحامي', monthly: 250, color: '#C9A84C',
+    id: 'lawyer', name: 'باقة المحامي', monthly: 300, color: '#C9A84C',
     badge: 'الأكثر طلباً',
     // ⚠️ الأرقام دي لازم تفضل مطابقة تمامًا لجدول plan_limits الحقيقي في
     // قاعدة البيانات (مصدر الإنفاذ الفعلي عبر الـTriggers B1-B6) — مش
@@ -574,7 +574,7 @@ const PLANS = [
     ],
   },
   {
-    id: 'office', name: 'باقة المكاتب', monthly: 400, color: '#60a5fa',
+    id: 'office', name: 'باقة المكاتب', monthly: 450, color: '#60a5fa',
     badge: null,
     features: [
       { text: 'قضايا نشطة بلا حد', ok: true },
