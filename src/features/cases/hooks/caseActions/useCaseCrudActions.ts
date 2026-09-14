@@ -99,7 +99,7 @@ export function createCaseCrudActions(
             const check = await runDuplicateCheckOfflineAware((signal) =>
                 checkCaseNumberDuplicate(db, form.number, form.court_level, form.type, undefined, signal)
             );
-            if (check.skipped) toast('⚠️ أوف لاين — فحص تكرار رقم القيد هيتأجل لحد المزامنة', false);
+            if (check.skipped) toast('⚠️ فحص تكرار رقم القيد استغرق وقتًا أطول من المتوقع — تم تجاوزه ومتابعة الحفظ', false);
             else caseDup = check.result!;
         } catch (e) {
             showErrorToast('case_number_duplicate_check', e, 'تعذّر التحقق من رقم القيد. حاول مرة أخرى.', 'إضافة قضية');
@@ -533,7 +533,7 @@ export function createCaseCrudActions(
                 const check = await runDuplicateCheckOfflineAware((signal) =>
                     checkCaseNumberDuplicate(db, form.number, form.court_level, form.type, caseId, signal)
                 );
-                if (check.skipped) toast('⚠️ أوف لاين — فحص تكرار رقم القيد هيتأجل لحد المزامنة', false);
+                if (check.skipped) toast('⚠️ فحص تكرار رقم القيد استغرق وقتًا أطول من المتوقع — تم تجاوزه ومتابعة الحفظ', false);
                 else caseDup = check.result!;
             } catch (e) {
                 showErrorToast('case_number_duplicate_check', e, 'تعذّر التحقق من رقم القيد. حاول مرة أخرى.', 'تعديل قضية');
