@@ -423,17 +423,15 @@ function App() {
     // في تفاصيل القضية (InfoSection) بقى بيفتح NewClientModal الكامل —
     // نفس موديل قسم الموكلين — مليان ببيانات المدعي من القضية، بدل ما
     // يعمل INSERT مباشر بحقول ناقصة (اسم + رقم قومي بس).
+    // 🗑️ دفعة 3 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): باراميتر
+    // caseOfflineInfo (ومعاه caseIsOfflineTemp/caseFallbackTitle فى
+    // linkTarget) اتشال — كان دايمًا undefined من دفعة 2.
     const handleOpenCreateClientForCase = useCallback((
         caseId: string, plaintiffName: string, plaintiffNationalId?: string | null, plaintiffPoa?: string | null,
         // ⚡ NEW (21 يوليو 2026): عنوان الموكل — لو القضية عندها عنوان مسجل
         // بالفعل (plaintiff_address)، بيتملى تلقائيًا هنا بدل ما يتكتب من
         // تاني، عشان عنوان الموكل الجديد ميختلفش عن اللي مسجل في القضية.
         plaintiffAddress?: string | null,
-        // ⚡ NEW (Phase 2): لو القضية المستهدفة نفسها لسه معرّف مؤقت أوفلاين
-        // (تم إنشاؤها من جلسة مستقلة ولسه ما اتزامنتش) — شوف
-        // handleAddAndLinkClient في useClientLinking.ts. فاضي دايمًا لمسار
-        // Phase 1 (قضية محفوظة بالفعل ليها id حقيقي).
-        caseOfflineInfo?: { isOfflineTemp: boolean; fallbackTitle?: string },
     ) => {
         openNewClientModal({
             initialData: {
@@ -442,11 +440,7 @@ function App() {
                 cr_number: plaintiffPoa || '',
                 address: plaintiffAddress || '',
             },
-            linkTarget: {
-                type: 'case', caseId,
-                caseIsOfflineTemp: caseOfflineInfo?.isOfflineTemp,
-                caseFallbackTitle: caseOfflineInfo?.fallbackTitle,
-            },
+            linkTarget: { type: 'case', caseId },
             contextLabel: 'هيتربط الموكل تلقائيًا بهذه القضية بعد الحفظ',
             onLinked: (target, clientId) => {
                 if (target.type !== 'case') return;
@@ -468,9 +462,10 @@ function App() {
     // الفعلي) عشان الـ wizard في useClientLinking.ts ينتقل للطرف الجاي —
     // شوف تعليق OpenCreateClientForParty في useClientLinking.ts لتفاصيل
     // السبب المعماري.
+    // 🗑️ دفعة 3: caseOfflineInfo اتشال هنا كمان (نفس سبب فوق).
     const handleOpenCreateClientForParty: OpenCreateClientForParty = useCallback((
         partyId, caseId, isPrimaryParty, partyName, partyNationalId, partyPoa, partyAddress,
-        caseOfflineInfo, onAfterLink,
+        onAfterLink,
     ) => {
         openNewClientModal({
             initialData: {
@@ -481,8 +476,6 @@ function App() {
             },
             linkTarget: {
                 type: 'party', partyId, caseId, isPrimaryParty,
-                caseIsOfflineTemp: caseOfflineInfo?.isOfflineTemp,
-                caseFallbackTitle: caseOfflineInfo?.fallbackTitle,
             },
             contextLabel: 'هيتربط الموكل تلقائيًا بهذا الطرف بعد الحفظ',
             onLinked: (target, clientId) => {
