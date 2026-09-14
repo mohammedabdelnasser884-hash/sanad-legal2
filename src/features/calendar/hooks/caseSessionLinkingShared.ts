@@ -64,39 +64,6 @@ export function withCaseSelfOfflineSentinel(
   return data;
 }
 
-/** لو العملية رجعت queued (أوفلاين)، بيضيف sentinel حل الـ FK
- * (_offlineFkTempId) عشان دورة المزامنة تربط السطر بـ id الحقيقي بعد
- * ما يتزامن. لو أونلاين، بيرجع data زي ما هي.
- * ⚡ NEW (مرحلة 6.2 — خطة تعدد الأطراف، 23 يوليو 2026): `table` بقى
- * بيقبل `'case_sessions'` كمان (مش بس `'cases'|'clients'`) — لدعم
- * FK صفوف `case_parties` بتاعة جلسة مستقلة (`session_id`) لسه في
- * الطابور. `resolveOfflineFkRefs`/`OfflineFkTempIdRef.table` في
- * offlineQueue.ts أصلاً عام (`DbWriteTable`) ومكانش محتاج أي تعديل؛
- * `FK_FALLBACK_NAME_COLUMN` مقصود إنها معملهاش entry لـ `case_sessions`
- * (مفيش عمود "اسم" فريد منطقي يتبحث بيه — تعليق موجود بالفعل في
- * offlineQueue.ts) فالحل هيعتمد بس على تطابق التمبيد في نفس دورة
- * المزامنة، بالظبط زي أي جدول تاني برا القايمة دي. */
-// 🗑️ المرحلة 3 (إلغاء الأوفلاين فى الكتابة، 13 سبتمبر 2026): شرط الدالة
-// (offline && queued) بقى مستحيل يتحقق بـtrue بعد المرحلة 1 — __dbWrite
-// بيرجع offline:false دايمًا وqueued فضلت undefined دايمًا (مفيش طابور
-// يتقيّد فيه أصلاً). عمليًا كل نداء لـwithFkOfflineSentinel كان بيرجع data
-// زي ما هي من غير أي تغيير حتى قبل التبسيط ده. الدالة فضلت بنفس التوقيع
-// (6 نداء إجمالاً مؤكَّدين بالعدّ — 4 فى الملف ده + useCaseCrudActions.ts +
-// NewStandaloneSessionModal.tsx — كلهم متلمسوش) كـpassthrough بسيط لحد ما
-// تتشال هي والـcallers مع بعض فى تبسيط لاحق.
-export function withFkOfflineSentinel(
-  offline: boolean | undefined,
-  queued: boolean | undefined,
-  field: string,
-  tempId: string,
-  table: 'cases' | 'clients' | 'case_sessions',
-  fallbackNameValue: string | null | undefined,
-  data: Record<string, unknown>,
-): Record<string, unknown> {
-  void offline; void queued; void field; void tempId; void table; void fallbackNameValue;
-  return data;
-}
-
 /** الحقول المشتركة اللازمة لبناء صف INSERT في جدول cases عند تحويل جلسة
  * مستقلة (سواء لسه بيانات form أو جلسة محفوظة بالفعل) لملف قضية —
  * أسماء generic (مش أسماء أعمدة الجدول) عشان تتغذى من Form أو
@@ -236,19 +203,16 @@ export type MovePartiesResult = { ok: true } | { ok: false };
  * بالجلسة نفسها) — مش خطأ حقيقي، الطرف الأساسي أصلاً اتكتب في القضية عبر
  * buildCaseInsertData.
  *
- * caseId ممكن يكون تمبيد أوفلاين (لو إنشاء القضية نفسه اتقيّد أوفلاين) —
- * caseOffline/caseQueued/caseTempId/caseFallbackTitle بينفعوا withFkOfflineSentinel
- * عشان دورة المزامنة تحل case_id الحقيقي بعدين، نفس نمط أي FK تاني في
- * الملف ده.
+ * 🗑️ المرحلة 3 (إلغاء الأوفلاين فى الكتابة، 13 سبتمبر 2026): caseId بقى
+ * id حقيقي دايمًا (الكتابة أونلاين دايمًا بعد المرحلة 1) — الباراميترات
+ * الأربعة اللي كانت بتغذي withFkOfflineSentinel (caseOffline/caseQueued/
+ * caseTempId/caseFallbackTitle) اتشالت من هنا بعد ما الدالة دي اتشالت
+ * هي نفسها (كانت passthrough بسيط).
  */
 export async function movePartiesFromSessionToCase(
   db: SupabaseClient<Database>,
   sessionId: string,
   caseId: string,
-  caseOffline: boolean | undefined,
-  caseQueued: boolean | undefined,
-  caseTempId: string,
-  caseFallbackTitle: string | undefined,
 ): Promise<MovePartiesResult> {
   // ⚠️ case_parties بقت مضافة في database.types.ts (خطة تعدد الأطراف،
   // مرحلة 1) — مفيش داعي لكاست 'as cases' هنا تاني (كان قبل كده بديل
@@ -272,10 +236,7 @@ export async function movePartiesFromSessionToCase(
       type: 'UPDATE',
       table: 'case_parties',
       id: row.id,
-      data: withFkOfflineSentinel(
-        caseOffline, caseQueued, 'case_id', caseTempId, 'cases', caseFallbackTitle,
-        { case_id: caseId, session_id: null },
-      ),
+      data: { case_id: caseId, session_id: null },
     });
     if (result.error) {
       // 🔒 FIX (duplicate national_id عبر أعضاء session_group_id — 13
@@ -354,24 +315,15 @@ async function linkSingleSessionToCase(
   db: SupabaseClient<Database>,
   sid: string,
   caseId: string,
-  caseOffline: boolean | undefined,
-  caseQueued: boolean | undefined,
-  caseTempId: string,
-  caseFallbackTitle: string | undefined,
 ): Promise<{ ok: boolean }> {
   const { error: linkErr } = await window.__dbWrite({
     type: 'UPDATE',
     table: 'case_sessions',
     id: sid,
-    data: withFkOfflineSentinel(
-      caseOffline, caseQueued, 'case_id', caseTempId, 'cases', caseFallbackTitle,
-      { case_id: caseId },
-    ),
+    data: { case_id: caseId },
   });
   if (linkErr) return { ok: false };
-  const moveResult = await movePartiesFromSessionToCase(
-    db, sid, caseId, caseOffline, caseQueued, caseTempId, caseFallbackTitle,
-  );
+  const moveResult = await movePartiesFromSessionToCase(db, sid, caseId);
   return { ok: moveResult.ok };
 }
 
@@ -379,15 +331,11 @@ export async function linkSessionGroupToCase(
   db: SupabaseClient<Database>,
   session: { id: string; session_group_id?: string | null },
   caseId: string,
-  caseOffline: boolean | undefined,
-  caseQueued: boolean | undefined,
-  caseTempId: string,
-  caseFallbackTitle: string | undefined,
 ): Promise<{ ok: boolean; failedIds: string[]; linkedCount: number }> {
   const groupSessionIds = await fetchSessionGroupIds(db, session);
   const failedIds: string[] = [];
   for (const sid of groupSessionIds) {
-    const { ok } = await linkSingleSessionToCase(db, sid, caseId, caseOffline, caseQueued, caseTempId, caseFallbackTitle);
+    const { ok } = await linkSingleSessionToCase(db, sid, caseId);
     if (!ok) failedIds.push(sid);
   }
   return { ok: failedIds.length === 0, failedIds, linkedCount: groupSessionIds.length };
@@ -422,7 +370,7 @@ export async function retryFailedGroupSessionsLinkToCase(
 ): Promise<{ ok: boolean; failedIds: string[] }> {
   const stillFailed: string[] = [];
   for (const sid of failedIds) {
-    const { ok } = await linkSingleSessionToCase(db, sid, caseId, caseOffline, caseQueued, caseTempId, caseFallbackTitle);
+    const { ok } = await linkSingleSessionToCase(db, sid, caseId);
     if (!ok) stillFailed.push(sid);
   }
   return { ok: stillFailed.length === 0, failedIds: stillFailed };
@@ -716,15 +664,10 @@ export async function matchClientsForParties(
  * أوفلاين (withCaseSelfOfflineSentinel)، caseTitle بيتستخدم كـ fallback
  * بالاسم في الحالة دي بس.
  *
- * ⚡ NEW (7.2 جزء 2، 23 يوليو 2026): باراميتر سادس اختياري `clientOfflineInfo`
- * — لما clientId نفسه لسه تمبيد أوفلاين (سيناريو "إضافة موكل جديد" لطرف
- * إضافي غير الأساسي، أونلاين إنشاء الموكل ممكن يتقيّد أوفلاين زي أي INSERT
- * تاني). من غيره، الـ UPDATE على case_parties كان هيبعت التمبيد نفسه كـ
- * client_id حرفيًا من غير أي sentinel يوضح لدورة المزامنة إنه محتاج حل —
- * فجوة كانت موجودة في نسخة جزء 1 من الدالة دي (لسه ما كانتش مستخدمة إلا
- * لموكلين مطابقين من findMatchingClientByName اللي id بتاعهم حقيقي دايمًا).
- * لو الباراميتر مش متبعت (زي كل الاستدعاءات القديمة)، السلوك زي ما هو
- * بالظبط — نفس شكل الناتج القديم حرفيًا.
+ * 🗑️ المرحلة 3 (إلغاء الأوفلاين فى الكتابة، 13 سبتمبر 2026): باراميتر
+ * `clientOfflineInfo` (كان بيغذي withFkOfflineSentinel لحالة "موكل جديد
+ * لسه تمبيد أوفلاين") اتشال بعد ما الكتابة بقت أونلاين دايمًا — clientId
+ * اللي بيوصل هنا id حقيقي دايمًا دلوقتي.
  *
  * ⚡ NEW (خطة توحيد "ربط طرف بموكل موجود" — مرحلة 1، فقرة 6 من التقرير):
  * باراميتر سابع اختياري `syncFields` — لو اتبعت، بيتضاف اسم/رقم قومي/
@@ -752,7 +695,6 @@ export async function linkClientToParty(
   isPrimaryParty: boolean,
   caseId: string,
   caseTitle: string | undefined,
-  clientOfflineInfo?: { isTempClientId: boolean; tempClientId: string; fallbackNameValue: string | null },
   syncFields?: { name: string; national_id: string; power_of_attorney: string; address: string },
   knownUpdatedAt?: string | null,
   // ⚡ NEW (خطة توحيد "ربط طرف بموكل موجود" — مرحلة 3، 6 أغسطس 2026):
@@ -771,17 +713,11 @@ export async function linkClientToParty(
   const baseData: Record<string, unknown> = syncFields
     ? { client_id: clientId, ...syncFields }
     : { client_id: clientId };
-  const partyUpdateData = clientOfflineInfo
-    ? withFkOfflineSentinel(
-        clientOfflineInfo.isTempClientId, true, 'client_id', clientOfflineInfo.tempClientId, 'clients',
-        clientOfflineInfo.fallbackNameValue, baseData,
-      )
-    : baseData;
   const partyResult = await window.__dbWrite({
     type: 'UPDATE',
     table: 'case_parties',
     id: partyId,
-    data: partyUpdateData,
+    data: baseData,
     knownUpdatedAt: knownUpdatedAt ?? null,
   });
   if (partyResult.conflict) return { ok: false, conflict: true, conflictScope: 'party' };
@@ -856,6 +792,9 @@ export async function unlinkClientFromParty(
 //  القديم في useClientActions.ts)، صفر تغيير في العمود المستهدف نفسه.
 // ══════════════════════════════════════════════════════════════
 
+// 🗑️ المرحلة 3 (إلغاء الأوفلاين فى الكتابة، 13 سبتمبر 2026): باراميتر
+// `clientOfflineInfo` اتشال لنفس سبب linkClientToParty فوق — clientId
+// بقى id حقيقي دايمًا.
 // ⚡ NEW (خطة توحيد "ربط طرف بموكل موجود" — مرحلة 1، فقرة 6 من التقرير):
 // نفس فكرة syncFields في linkClientToParty فوق بالظبط — باراميتر سادس
 // اختياري، لو اتبعت بيتزامن اسم/رقم قومي/توكيل/عنوان الطرف مع client_id
@@ -874,7 +813,6 @@ export async function linkClientToSessionParty(
   clientId: string,
   isPrimaryParty: boolean,
   sessionId: string,
-  clientOfflineInfo?: { isTempClientId: boolean; tempClientId: string; fallbackNameValue: string | null },
   syncFields?: { name: string; national_id: string; power_of_attorney: string; address: string },
   knownUpdatedAt?: string | null,
   knownSessionUpdatedAt?: string | null,
@@ -882,17 +820,11 @@ export async function linkClientToSessionParty(
   const baseData: Record<string, unknown> = syncFields
     ? { client_id: clientId, ...syncFields }
     : { client_id: clientId };
-  const partyUpdateData = clientOfflineInfo
-    ? withFkOfflineSentinel(
-        clientOfflineInfo.isTempClientId, true, 'client_id', clientOfflineInfo.tempClientId, 'clients',
-        clientOfflineInfo.fallbackNameValue, baseData,
-      )
-    : baseData;
   const partyResult = await window.__dbWrite({
     type: 'UPDATE',
     table: 'case_parties',
     id: partyId,
-    data: partyUpdateData,
+    data: baseData,
     knownUpdatedAt: knownUpdatedAt ?? null,
   });
   if (partyResult.conflict) return { ok: false, conflict: true, conflictScope: 'party' };
