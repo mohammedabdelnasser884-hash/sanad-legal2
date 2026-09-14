@@ -22,7 +22,6 @@ import { useUnsavedChangesGuard } from '@/shared/hooks/useUnsavedChangesGuard';
 // نمط تاني. راجع تعليقات useModalPresentation.ts.
 import { useModalPresentation } from '@/shared/hooks/useModalPresentation';
 import { useClientLinking } from './hooks/useClientLinking';
-import { makeOfflineTempId, withFkOfflineSentinel } from './hooks/caseSessionLinkingShared';
 import type { OpenCreateClientForSession, OpenCreateClientForCase, OpenCreateClientForParty, OpenCreateClientForSessionParty } from './hooks/useClientLinking';
 
 // ══════════════════════════════════════════
@@ -309,13 +308,6 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
         // مستقلة) هيتضاف في مرحلة 6.2 التالية.
         const primaryPlaintiff = partyFields.plaintiffs.find((p) => p.is_client) || partyFields.plaintiffs[0];
         const primaryDefendant = partyFields.defendants.find((p) => p.is_client) || partyFields.defendants[0];
-        // ⚡ (مرحلة 6.2 — خطة تعدد الأطراف)، معدَّل فى المرحلة 3 (إلغاء
-        // الأوفلاين فى الكتابة، 13 سبتمبر 2026): معرّف مؤقت لصف الجلسة —
-        // كان بيتبعت كـ_offlineTempId فى payload الجلسة (اتشال)، ولسه
-        // بيتبعت كـtempId argument لـwithFkOfflineSentinel تحت (بقت
-        // passthrough بسيطة — راجع caseSessionLinkingShared.ts، مفيش أثر
-        // فعلي دلوقتي).
-        const sessionOfflineTempId = makeOfflineTempId();
         // ⚡ NEW (مرحلة 6.2): بيكتب صف في case_parties لكل طرف في
         // partyFields.parties، بنداءات __dbWrite منفصلة — نفس آلية
         // insertCaseParties في useCaseActions.ts (مرحلة 4.2) بالحرف، لكن
@@ -324,7 +316,7 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
         // لا تُنادى إلا في وضع "standalone" (وضع "existing" مفيهوش أطراف
         // خاصة بالجلسة نفسها — الأطراف بتاعة القضية المختارة أصلاً).
         type InsertPartiesResult = { ok: true } | { ok: false; reason: 'validation'; message: string } | { ok: false; reason: 'write' };
-        const insertSessionParties = async (sessionId: string | null, isOffline: boolean, isQueued: boolean): Promise<InsertPartiesResult> => {
+        const insertSessionParties = async (sessionId: string | null): Promise<InsertPartiesResult> => {
             const parties = partyFields.parties;
             if (!parties || parties.length === 0) return { ok: true };
             // 🔒 فاليديشن سيرفر مكرر (نفس نمط 4.3/5.2) — دفاع في العمق لو
@@ -356,12 +348,7 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
                     client_id: p.client_id || null,
                     sort_order: i,
                 };
-                // fallbackNameValue null — case_sessions مفيهوش عمود "اسم"
-                // فريد منطقي (زي title القضايا) للبحث الاحتياطي بالاسم؛
-                // الحل هيعتمد بس على تطابق التمبيد في نفس دورة المزامنة
-                // (تعليق موضّح بالتفصيل جوه withFkOfflineSentinel نفسها).
-                const finalData = withFkOfflineSentinel(isOffline, isQueued, 'session_id', sessionOfflineTempId, 'case_sessions', null, rowData);
-                const partyResult = await window.__dbWrite({ type: 'INSERT', table: 'case_parties', data: finalData });
+                const partyResult = await window.__dbWrite({ type: 'INSERT', table: 'case_parties', data: rowData });
                 if (partyResult.error) allOk = false;
             }
             return allOk ? { ok: true } : { ok: false, reason: 'write' };
@@ -430,9 +417,7 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
             // `if (offline && queued) {...}` (توست "الجلسة محفوظة محلياً" +
             // مسار insertSessionParties(null, true, true) بديل + return مبكر)
             // — مستحيل يتحقق بعد المرحلة 1 (__dbWrite بترجع offline:false
-            // دايمًا)، اتشال بالكامل. sessionOfflineTempId فضل موجود بس عشان
-            // withFkOfflineSentinel تحت لسه بياخده كباراميتر (passthrough
-            // بسيطة حاليًا — راجع caseSessionLinkingShared.ts).
+            // دايمًا)، اتشال بالكامل.
 
             // ⚡ NEW (مرحلة 6.2): تسجيل كل أطراف الجلسة في case_parties — أونلاين
             // بالـ session_id الحقيقي مباشرة (مفيش داعي لسنتينل هنا).
@@ -442,7 +427,7 @@ export default function NewStandaloneSessionModal({ onClose, onSaved, onClientAd
             // حقيقي نربط بيه case_parties، فبنعرض تحذير بدل ما نبعت INSERT
             // بـ session_id فاضي (هيترفض من قيد case_parties_one_parent أصلاً).
             if (sessionData?.id) {
-                const partiesResult = await insertSessionParties(sessionData.id, false, false);
+                const partiesResult = await insertSessionParties(sessionData.id);
                 if (!partiesResult.ok) {
                     toast(
                         partiesResult.reason === 'validation'
