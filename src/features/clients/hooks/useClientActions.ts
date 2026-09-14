@@ -47,27 +47,19 @@ export interface ClientFormData {
 
 // ⚡ NEW: "فين هيتربط الموكل الجديد بعد الحفظ" — بيتحدد وقت فتح
 // NewClientModal من جوه قضية أو جلسة مستقلة (شوف خطة توحيد إنشاء الموكل).
-// ⚡ NEW (Phase 2): caseIsOfflineTemp/caseFallbackTitle — لازمين لما
-// القضية المستهدفة نفسها لسه معرّف مؤقت أوفلاين (تم إنشاؤها من جلسة
-// مستقلة، ولسه ما اتزامنتش) — بنفس نمط _offlineSelfTempId/
-// _offlineSelfFallbackName المستخدم في handleLinkExistingClient/
-// handleAddAndLinkClient الأصليين (useClientLinking.ts). مش لازمين لمسار
-// Phase 1 (قضية محفوظة بالفعل ليها id حقيقي دايمًا).
 // ⚡ NEW (خطة تعدد الأطراف، 7.2 جزء 2 — 23 يوليو 2026): هدف ربط جديد
 // 'party' — لما NewClientModal بيتفتح لطرف بعينه (is_client=true) في
 // wizard useClientLinking.ts/useSessionLinking.ts، بدل ما نربط
 // cases.client_id مباشرة زي هدف 'case' العادي. partyId هو صف case_parties
 // المستهدف (id حقيقي دايمًا — الطرف أصلاً موجود في القاعدة قبل فتح
 // الموديل)، وisPrimaryParty بتحدد هل نحدّث cases.client_id القديم كمان
-// (نفس منطق linkClientToParty في caseSessionLinkingShared.ts). caseId/
-// caseIsOfflineTemp/caseFallbackTitle بنفس معنى هدف 'case' (القضية اللي
-// الطرف تابع لها ممكن لسه تكون تمبيد أوفلاين).
-// 🗑️ دفعة 1 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): caseIsOfflineTemp/
-// caseFallbackTitle (فوق فى 'case' و'party') بقوا حقول غير مقروءة خالص فى
-// الملف ده — الفرعين اللي كانوا بيستخدموهم (فرع 'party' هنا وفرع
-// 'case'/'session' تحت) اتشالوا بالكامل. فضلوا فى النوع لأن App.tsx لسه
-// بيبعتهم وقت بناء clientLinkTarget — إزالتهم من هناك كمان برا نطاق
-// الدفعة دي.
+// (نفس منطق linkClientToParty في caseSessionLinkingShared.ts).
+// 🗑️ دفعة 3 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): caseIsOfflineTemp/
+// caseFallbackTitle (كانوا فى 'case' و'party') اتشالوا نهائيًا من النوع —
+// كانوا حقول غير مقروءة خالص فى الملف ده من دفعة 1 (مستحيل تتحقق بعد
+// المرحلة 1)، ودفعة 2 شالت آخر مصدر ليهم فى App.tsx/useClientLinking.ts
+// (caseOfflineInfo بقى دايمًا undefined هناك)، فمبقاش لهم أي قارئ أو كاتب
+// فى المشروع كله.
 // ⚡ NEW (خطة تعدد الأطراف، مرحلة 13 جزء 2 — 23 يوليو 2026): هدف ربط
 // جديد 'sessionParty' — مرآة لهدف 'party' فوق، بس لطرف تابع لجلسة
 // مستقلة *لسه ما اتحوّلتش لقضية* (زرار "إضافة الموكل لقائمة الموكلين
@@ -81,11 +73,11 @@ export interface ClientFormData {
 // مش صف حقيقي في case_parties، فمفيش أي DB write مطلوب هنا (بعكس
 // 'party'/'sessionParty' اللي بيحدّثوا case_parties.client_id فعليًا) —
 // مجرد إرجاع بيانات الموكل المُنشأ حديثًا للمستدعي عبر onLinked عشان
-// يحدّث partyFields بنفسه (raجع NewCaseModal.tsx/EditCaseModal.tsx).
+// يحدّث partyFields بنفسه (راجع NewCaseModal.tsx/EditCaseModal.tsx).
 export type ClientLinkTarget =
-    | { type: 'case'; caseId: string; caseIsOfflineTemp?: boolean; caseFallbackTitle?: string }
+    | { type: 'case'; caseId: string }
     | { type: 'session'; sessionId: string }
-    | { type: 'party'; partyId: string; caseId: string; isPrimaryParty: boolean; caseIsOfflineTemp?: boolean; caseFallbackTitle?: string }
+    | { type: 'party'; partyId: string; caseId: string; isPrimaryParty: boolean }
     | { type: 'sessionParty'; partyId: string; sessionId: string; isPrimaryParty: boolean }
     | { type: 'localParty' };
 
