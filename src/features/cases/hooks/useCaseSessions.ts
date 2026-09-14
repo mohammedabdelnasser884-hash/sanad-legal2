@@ -405,7 +405,10 @@ export function useCaseSessions(
     setCancelingReservationId(null);
 
     if (result.conflict) { toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
-    if (result.error && !result.offline) { toast('❌ فشل إلغاء حجز النطق بالحكم، حاول مرة أخرى', true); return; }
+    // 🗑️ تبسيط فرع ميت (14 سبتمبر 2026): كان `if (result.error && !result.offline))`
+    // — بما إن `__dbWrite` بيرجّع `offline:false` دايمًا بعد المرحلة 1، `!result.offline`
+    // كانت `true` دايمًا فعليًا، فالشرط اتبسّط لمرادفه المباشر.
+    if (result.error) { toast('❌ فشل إلغاء حجز النطق بالحكم، حاول مرة أخرى', true); return; }
 
     // 🗑️ المرحلة 4 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): كان هنا
     // `if (result.offline && result.queued) {...}` — مستحيل يتحقق بعد
