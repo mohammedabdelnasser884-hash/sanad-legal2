@@ -29,6 +29,22 @@
 //                      الجديد)؛ لو مش موجودة، تعديل بيانات النموذج بس.
 //   deleteForm      { id }   — بيمسح ملف الـStorage الأول، بعدين الصف.
 //
+//  ⚡ توسيع (خطة "الموارد القانونية" — مرحلة 2): نفس الفانكشن بقت
+//  مسؤولة كمان عن الكتابة على قسم "دليل المحامي" الجديد (تصنيفات +
+//  روابط، جدولين lawyer_guide_categories/lawyer_guide_links) — بنفس
+//  أسلوب التحقق (is_super_admin-gated) المستخدم فوق مع الموسوعة.
+//  دليل المحامي بيانات بحتة (بدون رفع ملفات Storage)، فمافيش أي تعامل
+//  مع الـBucket في العمليات دي.
+//   createLinkCategory  { name_ar, icon?, sort_order? }
+//   updateLinkCategory  { id, name_ar?, icon?, sort_order? }
+//   deleteLinkCategory  { id }   — Cascade: بيمسح كل الروابط اللي جواه
+//                                  (DB cascade، مفيش ملفات Storage)
+//   createLink      { category_id, title, url, description?,
+//                      entity_type?, last_verified_at? }
+//   updateLink      { id, category_id?, title?, url?, description?,
+//                      entity_type?, last_verified_at? }
+//   deleteLink      { id }
+//
 //  الخرج: دايمًا status 200 — { ok:true, ... } أو { error: "..." }
 //  (نفس اتفاقية admin-actions).
 // ══════════════════════════════════════════════════════
@@ -330,6 +346,124 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true });
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'تعذر حذف النموذج' });
+      }
+    }
+
+    // ══════════ دليل المحامي — تصنيفات ══════════
+
+    // ── إنشاء تصنيف ──
+    if (action === 'createLinkCategory') {
+      const nameAr = String(body.name_ar || '').trim();
+      if (!nameAr) return json({ error: 'اسم التصنيف مطلوب' });
+      const id = crypto.randomUUID();
+      try {
+        const rows = await rest('lawyer_guide_categories', 'POST', {
+          id,
+          name_ar: nameAr,
+          icon: body.icon ? String(body.icon).trim() : null,
+          sort_order: Number.isFinite(body.sort_order) ? Number(body.sort_order) : 0,
+        });
+        return json({ ok: true, category: Array.isArray(rows) ? rows[0] : rows });
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'تعذر إنشاء التصنيف' });
+      }
+    }
+
+    // ── تعديل تصنيف ──
+    if (action === 'updateLinkCategory') {
+      const id = String(body.id || '');
+      if (!id) return json({ error: 'id مطلوب' });
+      const patch: Record<string, unknown> = {};
+      if (body.name_ar !== undefined) {
+        const nameAr = String(body.name_ar).trim();
+        if (!nameAr) return json({ error: 'اسم التصنيف مطلوب' });
+        patch.name_ar = nameAr;
+      }
+      if (body.icon !== undefined) patch.icon = body.icon ? String(body.icon).trim() : null;
+      if (body.sort_order !== undefined) patch.sort_order = Number(body.sort_order) || 0;
+      try {
+        const rows = await rest(`lawyer_guide_categories?id=eq.${id}`, 'PATCH', patch);
+        return json({ ok: true, category: Array.isArray(rows) ? rows[0] : rows });
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'تعذر تعديل التصنيف' });
+      }
+    }
+
+    // ── حذف تصنيف (Cascade: بيشيل كل الروابط اللي جواه — بيانات بحتة، مفيش Storage) ──
+    if (action === 'deleteLinkCategory') {
+      const id = String(body.id || '');
+      if (!id) return json({ error: 'id مطلوب' });
+      try {
+        await rest(`lawyer_guide_categories?id=eq.${id}`, 'DELETE');
+        return json({ ok: true });
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'تعذر حذف التصنيف' });
+      }
+    }
+
+    // ══════════ دليل المحامي — روابط ══════════
+
+    // ── إنشاء رابط ──
+    if (action === 'createLink') {
+      const categoryId = String(body.category_id || '');
+      const title = String(body.title || '').trim();
+      const url = String(body.url || '').trim();
+      if (!categoryId || !title || !url) {
+        return json({ error: 'بيانات ناقصة (التصنيف، العنوان، الرابط كلهم مطلوبين)' });
+      }
+      const id = crypto.randomUUID();
+      try {
+        const rows = await rest('lawyer_guide_links', 'POST', {
+          id,
+          category_id: categoryId,
+          title,
+          url,
+          description: body.description ? String(body.description).trim() : null,
+          entity_type: body.entity_type ? String(body.entity_type).trim() : null,
+          last_verified_at: body.last_verified_at ? String(body.last_verified_at) : null,
+        });
+        return json({ ok: true, link: Array.isArray(rows) ? rows[0] : rows });
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'تعذر إنشاء الرابط' });
+      }
+    }
+
+    // ── تعديل رابط ──
+    if (action === 'updateLink') {
+      const id = String(body.id || '');
+      if (!id) return json({ error: 'id مطلوب' });
+      const patch: Record<string, unknown> = {};
+      if (body.category_id !== undefined) patch.category_id = String(body.category_id);
+      if (body.title !== undefined) {
+        const title = String(body.title).trim();
+        if (!title) return json({ error: 'عنوان الرابط مطلوب' });
+        patch.title = title;
+      }
+      if (body.url !== undefined) {
+        const url = String(body.url).trim();
+        if (!url) return json({ error: 'الرابط (URL) مطلوب' });
+        patch.url = url;
+      }
+      if (body.description !== undefined) patch.description = body.description ? String(body.description).trim() : null;
+      if (body.entity_type !== undefined) patch.entity_type = body.entity_type ? String(body.entity_type).trim() : null;
+      if (body.last_verified_at !== undefined) patch.last_verified_at = body.last_verified_at ? String(body.last_verified_at) : null;
+      try {
+        const rows = await rest(`lawyer_guide_links?id=eq.${id}`, 'PATCH', patch);
+        return json({ ok: true, link: Array.isArray(rows) ? rows[0] : rows });
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'تعذر تعديل الرابط' });
+      }
+    }
+
+    // ── حذف رابط ──
+    if (action === 'deleteLink') {
+      const id = String(body.id || '');
+      if (!id) return json({ error: 'id مطلوب' });
+      try {
+        await rest(`lawyer_guide_links?id=eq.${id}`, 'DELETE');
+        return json({ ok: true });
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'تعذر حذف الرابط' });
       }
     }
 
