@@ -82,6 +82,13 @@ export function useCaseSessions(
   // المتبقية لإنشاء جلسة جديدة على قضية هي "⚡ تحديث" (SessionUpdateModal).
 
   const handleDeleteSession = async (sessionId: string) => {
+    // 🔒 FIX (توحيد رسائل المنع — استكمال المسح على useCaseSessions.ts، 14
+    // سبتمبر 2026): نفس نمط handleDeleteFinalJudgment/handlePreliminaryJudgment/
+    // handlePostponeJudgment فى نفس الملف — كان مفقود من حذف الجلسة العادية.
+    if (!navigator.onLine) {
+      toast('⚠️ حذف الجلسة يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+      return;
+    }
     // 🆕 المرحلة 6.5: __dbWrite بدل db.from(...).delete() المباشر.
     // `_offlineSessionCaseId` sentinel (بيتحذف قبل أي كتابة حقيقية، زي أي
     // sentinel تاني في offlineQueue.ts — DELETE أصلاً مبيستخدمش `data` في
@@ -378,6 +385,13 @@ export function useCaseSessions(
   // الفلاج يرجع false، شروط إظهار زراير ✏️/🗑️/⚡ في TimelineSection.tsx
   // (s.is_judgment_reserved !== true) بتتفعّل لوحدها من غير أي كود إضافي.
   const handleCancelJudgmentReservation = async (sessionId: string) => {
+    // 🔒 FIX (توحيد رسائل المنع — 14 سبتمبر 2026): مش "حذف" بالحرف، لكن
+    // بره نطاق الطلب الأصلي أضفتها للاتساق — نفس فئة الإجراءات (إلغاء/حذف/
+    // استرجاع حكم) فى نفس الملف كلها محمية استباقيًا إلا هي.
+    if (!navigator.onLine) {
+      toast('⚠️ إلغاء حجز النطق بالحكم يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+      return;
+    }
     setCancelingReservationId(sessionId);
     const session = sessions.find((s) => s.id === sessionId);
 
