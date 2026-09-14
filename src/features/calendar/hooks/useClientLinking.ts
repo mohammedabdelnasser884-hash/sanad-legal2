@@ -45,16 +45,21 @@ export type OpenCreateClientForSession = (
 ) => void;
 
 // ⚡ NEW (خطة توحيد إنشاء الموكل، Phase 2): كول-باك بيفتح NewClientModal
-// الموحّد لمسار "إنشاء موكل جديد وربطه" بقضية (زي handleOpenCreateClientForCase
-// المستخدم في Phase 1 — نفس التوقيع بالظبط + باراميتر سادس اختياري لمعلومة
-// التمبيد الأوفلاين لو القضية نفسها لسه معرّف مؤقت).
+// ⚡ NEW (خطة توحيد إنشاء الموكل، Phase 1): كول-باك بيطلب من App.tsx يفتح
+// الموديل الموحّد لمسار "إنشاء موكل جديد وربطه" بقضية (زي handleOpenCreateClientForCase
+// المستخدم في Phase 1 — نفس التوقيع بالظبط).
+// 🗑️ دفعة 3 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): الباراميتر
+// caseOfflineInfo (معلومة "القضية المستهدفة نفسها لسه معرّف مؤقت أوفلاين")
+// اتشال نهائيًا — كان دايمًا undefined من دفعة 2 (realOrTempCaseId بقى
+// دايمًا id حقيقي فى handleLinkCase)، ومبقاش له أي قارئ فى App.tsx
+// (caseIsOfflineTemp/caseFallbackTitle اتشالوا هما كمان من ClientLinkTarget
+// فى useClientActions.ts فى نفس الدفعة).
 export type OpenCreateClientForCase = (
   caseId: string,
   plaintiffName: string,
   plaintiffNationalId?: string | null,
   plaintiffPoa?: string | null,
   plaintiffAddress?: string | null,
-  caseOfflineInfo?: { isOfflineTemp: boolean; fallbackTitle?: string },
 ) => void;
 
 // ⚡ NEW (خطة تعدد الأطراف، 7.2 جزء 2 — 23 يوليو 2026): كول-باك بيفتح
@@ -68,6 +73,7 @@ export type OpenCreateClientForCase = (
 // امتى الربط خلص عشان ينتقل للطرف الجاي في partyList — onAfterLink هي
 // نفس goToNextPartyOrDone بتاعة الطرف الحالي، بتتنادى من onLinked
 // الموجودة في App.tsx (handleOpenCreateClientForParty) بعد نجاح الربط.
+// 🗑️ دفعة 3: caseOfflineInfo اتشال هنا كمان (نفس سبب OpenCreateClientForCase فوق).
 export type OpenCreateClientForParty = (
   partyId: string,
   caseId: string,
@@ -76,7 +82,6 @@ export type OpenCreateClientForParty = (
   partyNationalId: string | null | undefined,
   partyPoa: string | null | undefined,
   partyAddress: string | null | undefined,
-  caseOfflineInfo: { isOfflineTemp: boolean; fallbackTitle?: string } | undefined,
   onAfterLink: () => void,
 ) => void;
 
@@ -411,7 +416,6 @@ export function useClientLinking(
       onOpenCreateClientForParty?.(
         currentParty.id, createdCaseId, isPrimary,
         currentParty.name, currentParty.national_id, currentParty.power_of_attorney, currentParty.address,
-        undefined,
         () => goToNextPartyOrDone(partyIndex, partyList, partyMatches),
       );
       return;
@@ -424,7 +428,6 @@ export function useClientLinking(
       // ⚠️ NewStandaloneSessionModal.Form مفيهاش حقل عنوان (undefined هنا) —
       // الحقل ده خاص بفورم القضية العادية (NewCaseModal/EditCaseModal) بس.
       createdCaseId, f.plaintiff, f.plaintiff_national_id, f.plaintiff_power_of_attorney, undefined,
-      undefined,
     );
   };
 
