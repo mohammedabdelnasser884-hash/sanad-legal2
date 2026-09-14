@@ -419,6 +419,14 @@ export function useClientActions(params: {
     // يعني الدالة دي مش محتاجة أي كاسكيد يدوي ولا تحذير "عندك قضايا مرتبطة" —
     // الحذف بيعدي عادي دايمًا (مفيش FK هيرفضه) والقضايا/الأتعاب تفضل موجودة.
     const handlePermanentDeleteClient = async (clientId: string) => {
+        // 🔒 FIX (توحيد رسائل المنع — إتمام بند المرحلة 4 المعلّق، 14 سبتمبر
+        // 2026): منع استباقي صريح قبل المحاولة، بنفس فلسفة useFeesActions.ts.
+        if (!navigator.onLine) {
+            nav.closeModal('delete');
+            setDeleteConfirm(null);
+            toast('⚠️ حذف الموكل نهائيًا يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+            return;
+        }
         const cl = clients.find((x) => x.id === clientId);
         // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') +
         // lockErrorIfNoRowsAffected — راجع الشرح الكامل فى errorReporting.ts.
@@ -449,6 +457,14 @@ export function useClientActions(params: {
             itemType: 'الموكل',
             title: 'حذف الموكل',
             onConfirmArchive: async () => {
+                // 🔒 FIX (توحيد رسائل المنع — إتمام بند المرحلة 4 المعلّق، 14
+                // سبتمبر 2026): نفس منطق handlePermanentDeleteClient فوق.
+                if (!navigator.onLine) {
+                    nav.closeModal('delete');
+                    setDeleteConfirm(null);
+                    toast('⚠️ أرشفة الموكل يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+                    return;
+                }
                 // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') +
                 // lockErrorIfNoRowsAffected.
                 const { error: rawError, data: archivedRows } = await db.from('clients').update({ deleted_at: new Date().toISOString() }).eq('id', clientId).select('id');
@@ -472,6 +488,12 @@ export function useClientActions(params: {
 
     // ─ استرجاع موكل من الأرشيف ─
     const handleRestoreClient = async (clientId: string) => {
+        // 🔒 FIX (توحيد رسائل المنع — إتمام بند المرحلة 4 المعلّق، 14 سبتمبر
+        // 2026): نفس منطق handlePermanentDeleteClient/onConfirmArchive فوق.
+        if (!navigator.onLine) {
+            toast('⚠️ استرجاع الموكل يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+            return;
+        }
         // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): .select('id') +
         // lockErrorIfNoRowsAffected.
         const { error: rawError, data: restoredRows } = await db.from('clients').update({ deleted_at: null }).eq('id', clientId).select('id');
