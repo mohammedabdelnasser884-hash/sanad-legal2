@@ -500,13 +500,16 @@ ${PDF_FONT_LINK}
     const handleDelete = async () => {
         setDeleting(true);
         try {
-            const { error, offline, queued } = await window.__dbWrite({ type: 'DELETE', table: 'case_sessions', id: session.id });
+            const { error } = await window.__dbWrite({ type: 'DELETE', table: 'case_sessions', id: session.id });
             if (error) {
                 showErrorToast('session_delete', error, 'تعذّر حذف الجلسة. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'حذف الجلسة');
                 return;
             }
             recordSuccess('session_delete');
-            toast(offline && queued ? '📥 حذف الجلسة محفوظ محلياً — سيُزامن عند عودة الإنترنت' : '✅ تم حذف الجلسة');
+            // 🗑️ دفعة 2 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): كان هنا
+            // `offline && queued ? '📥 ...' : '✅ ...'` — مستحيل يتحقق بعد
+            // المرحلة 1، اتشال.
+            toast('✅ تم حذف الجلسة');
             onDone();
             onClose();
         } catch { toast('❌ خطأ غير متوقع', true); }
@@ -555,8 +558,13 @@ ${PDF_FONT_LINK}
                 toast(caseDup.message!, true);
                 return;
             }
+            // 🗑️ دفعة 2 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): offlineTempId
+            // فضل موجود بس عشان buildCaseInsertData/linkSessionGroupToCase
+            // لسه بياخدوه كباراميتر (بيتجاهلوه فعليًا — راجع
+            // caseSessionLinkingShared.ts)، هيتشال هو كمان لما الملفات دي
+            // تتبسط فى دفعة لاحقة.
             const offlineTempId = makeOfflineTempId();
-            const { error, offline, queued, data: insertedCase } = await window.__dbWrite({
+            const { error, data: insertedCase } = await window.__dbWrite({
                 type: 'INSERT',
                 table: 'cases',
                 data: buildCaseInsertData({
@@ -592,30 +600,32 @@ ${PDF_FONT_LINK}
                 }
                 return;
             }
-            // نفس منطق useClientLinking.ts: أوفلاين، مفيش id حقيقي راجع —
-            // بنستخدم التمبيد نفسه كمرجع مؤقت لحد ما يتزامن.
-            const realOrTempCaseId = (offline && queued) ? offlineTempId : (insertedCase as { id: string } | null)?.id;
+            // 🗑️ دفعة 2: realOrTempCaseId بقى دايمًا insertedCase?.id — الفرع
+            // الميت (offline&&queued ? offlineTempId : ...) اتشال، نفس فيكس
+            // useClientLinking.ts (handleLinkCase).
+            const realOrTempCaseId = (insertedCase as { id: string } | null)?.id;
             if (!realOrTempCaseId) {
                 showErrorToast('case_create', new Error('no id returned'), 'تعذّر إنشاء القضية. حاول مرة أخرى.', 'إنشاء قضية');
                 return;
             }
             recordSuccess('case_create');
             const groupLinkResult = await linkSessionGroupToCase(
-                db, { id: session.id, session_group_id: session.session_group_id }, realOrTempCaseId, offline, queued, offlineTempId, caseTitle,
+                // 🗑️ دفعة 2: offline/queued بقوا false ثابت — linkSessionGroupToCase
+                // بتفضل تقبلهم فى توقيعها لحد تبسيط caseSessionLinkingShared.ts
+                // لاحقًا، لكن بيتجاهلوا فعليًا (withFkOfflineSentinel passthrough).
+                db, { id: session.id, session_group_id: session.session_group_id }, realOrTempCaseId, false, false, offlineTempId, caseTitle,
             );
             if (!groupLinkResult.ok && groupLinkResult.failedIds.includes(session.id)) {
                 showErrorToast('session_case_link', null, 'تم إنشاء القضية لكن تعذّر ربط الجلسة بها. حاول تحديث الصفحة.', 'ربط الجلسة بالقضية');
                 return;
             }
             recordSuccess('session_case_link');
-            if (offline && queued) {
-                toast('📥 القضية محفوظة محلياً — ستُضاف وتترّبط الجلسة بيها فور عودة الإنترنت');
-            } else if (!groupLinkResult.ok) {
+            // 🗑️ دفعة 2: كان هنا `if (offline && queued) {...}` (توست "القضية
+            // محفوظة محلياً") — مستحيل يتحقق بعد المرحلة 1، اتشال.
+            if (!groupLinkResult.ok) {
                 toast('⚠️ تم إنشاء القضية وربط الجلسة، لكن حصل خطأ في نقل بعض أطراف الدعوى الإضافية — راجعها يدويًا', true);
             } else {
-                // ⚡ NEW (فتح ملف القضية فورًا بعد التحويل — 12 أغسطس 2026):
-                // أونلاين بس (لو أوفلاين، realOrTempCaseId تمبيد محلي —
-                // مفيش صف حقيقي في cases نقدر نجيبه بيه لحد ما يتزامن).
+                // ⚡ NEW (فتح ملف القضية فورًا بعد التحويل — 12 أغسطس 2026)
                 const mapped = onOpenCase ? await fetchMappedCaseById(realOrTempCaseId) : null;
                 if (mapped) {
                     toast('✅ تم تحويل الجلسة لقضية بنجاح');
@@ -623,8 +633,6 @@ ${PDF_FONT_LINK}
                 } else {
                     toast('✅ تم تحويل الجلسة لقضية بنجاح — هتلاقيها في تبويب القضايا');
                 }
-                // next_hearing للقضية الجديدة — أونلاين بس (أوفلاين هتتحسب
-                // تلقائيًا بعد المزامنة، نفس تعليق useClientLinking.ts).
                 await recalcNextHearing(db, realOrTempCaseId);
             }
             setShowConvertConfirm(false);
@@ -688,7 +696,7 @@ ${PDF_FONT_LINK}
 
         // فولباك: مفيش صف case_parties مطابق (جلسة قديمة قبل مرحلة تعدد
         // الأطراف) — نفس الكتابة المباشرة القديمة بالظبط.
-        const { error, offline, queued, conflict } = await window.__dbWrite({
+        const { error, conflict } = await window.__dbWrite({
             type: 'UPDATE', table: 'case_sessions', id: session.id,
             data: { client_id: null },
             knownUpdatedAt: session.updated_at || null,
@@ -700,9 +708,10 @@ ${PDF_FONT_LINK}
             return;
         }
         recordSuccess('session_unlink');
-        toast(offline && queued
-            ? '📥 فك الربط محفوظ محلياً — سيُزامن عند عودة الإنترنت'
-            : '✅ تم فك الربط — بيانات الموكل في الجلسة بقت قابلة للتعديل الحر');
+        // 🗑️ دفعة 2 (تنظيف الفرع الميت المنتشر، 13 سبتمبر 2026): كان هنا
+        // `offline && queued ? '📥 ...' : '✅ ...'` — مستحيل يتحقق بعد المرحلة
+        // 1، اتشال.
+        toast('✅ تم فك الربط — بيانات الموكل في الجلسة بقت قابلة للتعديل الحر');
         setFullSession((prev) => ({ ...prev, client_id: null }));
         setShowUnlinkConfirm(false);
         onDone();
