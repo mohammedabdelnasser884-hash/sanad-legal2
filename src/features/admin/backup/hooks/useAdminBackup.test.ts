@@ -274,6 +274,14 @@ describe('useAdminBackup', () => {
 
     it('نص التأكيد غلط → توست تحذير فقط، من غير أي نداء لقاعدة البيانات', async () => {
       const { result } = setup();
+      // 🔒 FIX (تشخيص لوجز CI — 14 سبتمبر 2026): useAdminBackup بقى بيستخدم
+      // useTenantSubscriptionStatus جوّاه (قفل الاستعادة)، وده بيعمل نداء
+      // db.from('tenants') لوحده عند أول mount (مستقل تمامًا عن
+      // handleRestoreBackup). النداء ده مش جزء من اللي التست ده بيتأكد
+      // منه، فبنصفّي سجل mockDb.from بعد mount وقبل استدعاء
+      // handleRestoreBackup، عشان الـassertion تفضل مركّزة بس على أي
+      // نداء ناتج فعليًا عن حاولة الاستعادة نفسها.
+      mockDb.from.mockClear();
       act(() => { result.current.setRestoreConfirmText('غلط'); });
       await act(async () => { await result.current.handleRestoreBackup(BACKUP); });
 
@@ -285,6 +293,11 @@ describe('useAdminBackup', () => {
     it('مفيش tenantId معروف (profile من غير tenant_id) → توست فشل، من غير أي نداء لقاعدة البيانات', async () => {
       const noTenantProfile = { id: 'admin-1', full_name: 'أحمد المدير', tenant_id: null } as unknown as ProfileRow;
       const { result } = setup(noTenantProfile);
+      // نفس ملحوظة التست اللي فوق: منضمن إننا بنقيس بس النداءات الناتجة
+      // عن handleRestoreBackup نفسه (هنا أصلاً useTenantSubscriptionStatus
+      // مش هيعمل نداء لأن tenant_id فاضي، لكن التصفية دي بتخلي الـassertion
+      // متينة حتى لو ده اتغيّر مستقبلًا).
+      mockDb.from.mockClear();
       typeConfirm(result);
       await act(async () => { await result.current.handleRestoreBackup(BACKUP); });
 
