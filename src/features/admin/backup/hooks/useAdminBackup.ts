@@ -5,8 +5,19 @@ import { recordSuccess } from '../../../../systemHealth';
 import { logActivity } from '../../../../shared/lib/dataAccess';
 import { db } from '../../../../supabaseClient';
 import { formatArDate } from '../../../../shared/ui/arabicLocale';
+import { useTenantSubscriptionStatus } from '../../../../hooks/useTenantSubscriptionStatus';
 import type { ProfileRow, BackupRow } from '../../../../types';
 import type { Database, Json } from '../../../../database.types';
+
+// ── قفل الاستعادة/الرفع لمكتب فى وضع "مشاهدة فقط" (14 سبتمبر 2026) ──
+// القرار المنتجي المتفق عليه: مكتب منتهي الاشتراك (أو تجربة فى مرحلة
+// المشاهدة) لسه يقدر ياخد نسخة احتياطية جديدة (handleCreateBackup —
+// مش متأثرة خالص بالقفل ده)، لكن ممنوع يستعيد نسخة قديمة أو يرفع نسخة
+// من جهازه. نفس منطق tenant_write_allowed() فى الداتابيز (15-05):
+// مسموح فى active/grace/n_a بس، ممنوع فى trial_viewer/readonly/locked.
+const WRITE_LOCKED_STATES = new Set(['trial_viewer', 'readonly', 'locked']);
+const RESTORE_LOCKED_MESSAGE = '❌ الاستعادة غير متاحة حاليًا — اشتراك المكتب فى وضع القراءة فقط. جدّد الاشتراك أولاً.';
+const UPLOAD_LOCKED_MESSAGE = '❌ رفع نسخة احتياطية غير متاح حاليًا — اشتراك المكتب فى وضع القراءة فقط. جدّد الاشتراك أولاً.';
 
 // شكل الـ JSON المخزّن فعليًا في عمود backups.data (النوع الحقيقي في قاعدة
 // البيانات هو Json عام، فالواجهة دي بتوصف الشكل الفعلي اللي بيتبني بيه
@@ -226,6 +237,14 @@ export interface PendingFileRestore {
 export function useAdminBackup(profile?: ProfileRow | null) {
   const _userName = profile?.full_name || null;
   const tenantId = profile?.tenant_id ?? null;
+  // ⚠️ نداء إضافي مستقل عن أي هوك حالة اشتراك تانى موجود فى شجرة الأجزاء
+  // الأعلى (App.tsx) — عمدًا، عشان useAdminBackup يفضل ذاتي الاحتواء
+  // (self-contained) من غير الحاجة لتمرير lockState عبر props فى
+  // AdminPanel/AdminPanelProps. التكلفة: نداء شبكة خفيف إضافي (استعلام
+  // tenants + 2 RPC) لما شاشة الباك أب تُفتح، وده مقبول (ليس فى مسار
+  // ساخن/متكرر).
+  const { lockState: backupLockState } = useTenantSubscriptionStatus(profile ?? null);
+  const isRestoreWriteLocked = WRITE_LOCKED_STATES.has(backupLockState);
   const [backups, setBackups] = useState<BackupRow[]>([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [creatingBackup, setCreatingBackup] = useState(false);
@@ -481,6 +500,13 @@ export function useAdminBackup(profile?: ProfileRow | null) {
   };
 
   const handleRestoreBackup = async (backup: BackupRow) => {
+    // 🔒 قفل منتجي (14 سبتمبر 2026): فحص القفل أولًا، قبل حتى فحص نص
+    // التأكيد — عشان المستخدم يشوف سبب المنع الحقيقي فورًا، مش يفتكر
+    // إنه لازم يكتب "استعادة" الأول وبعدين يتفاجئ بمنع تانى.
+    if (isRestoreWriteLocked) {
+      toast(RESTORE_LOCKED_MESSAGE, true);
+      return;
+    }
     if (restoreConfirmText.trim() !== 'استعادة') {
       toast('❌ اكتب "استعادة" في حقل التأكيد أولاً', true);
       return;
@@ -530,6 +556,13 @@ export function useAdminBackup(profile?: ProfileRow | null) {
   // pendingFileRestore عشان مودال التأكيد (زي استعادة نسخة من القايمة بالظبط،
   // نفس شرط كتابة "استعادة") — الاستعادة الفعلية بتحصل في handleRestoreFromFile.
   const handleFileSelected = async (file: File) => {
+    // 🔒 قفل منتجي (14 سبتمبر 2026): بنمنع من أول خطوة (اختيار/قراءة
+    // الملف) مش بس عند الاستعادة الفعلية — القرار كان "ممنوع يرفع نسخة
+    // من عنده" كمنع للمسار كله، مش بس للكتابة النهائية فى قاعدة البيانات.
+    if (isRestoreWriteLocked) {
+      toast(UPLOAD_LOCKED_MESSAGE, true);
+      return;
+    }
     setUploadingFile(true);
     try {
       const text = await file.text();
@@ -562,6 +595,14 @@ export function useAdminBackup(profile?: ProfileRow | null) {
   // ── استعادة فعلية من الملف المرفوع (بعد تأكيد المستخدم بكتابة "استعادة") ──
   const handleRestoreFromFile = async () => {
     if (!pendingFileRestore) return;
+    // 🔒 قفل منتجي (14 سبتمبر 2026) — دفاع فى العمق (defense-in-depth):
+    // لو الاشتراك اتقفل بين لحظة اختيار الملف (handleFileSelected) ولحظة
+    // تأكيد الاستعادة دي (مثلاً المستخدم فاتح الشاشة من ساعتين)، لازم
+    // يترفض هنا كمان، مش يعتمد بس على الفحص الأول.
+    if (isRestoreWriteLocked) {
+      toast(RESTORE_LOCKED_MESSAGE, true);
+      return;
+    }
     if (restoreConfirmText.trim() !== 'استعادة') {
       toast('❌ اكتب "استعادة" في حقل التأكيد أولاً', true);
       return;
@@ -590,6 +631,9 @@ export function useAdminBackup(profile?: ProfileRow | null) {
   return {
     backups, loadingBackups,
     creatingBackup, backupProgress, backupProgressPercent,
+    // 🔒 بتُستخدم فى BackupSection.tsx لتعطيل زراير الاستعادة/الرفع
+    // وعرض رسالة ثابتة بدل الاعتماد على توست بعد الضغط بس (UX أوضح).
+    isRestoreWriteLocked,
     confirmRestore, setConfirmRestore,
     restoreConfirmText, setRestoreConfirmText,
     restoringBackup, restoreProgressPercent,
