@@ -102,7 +102,10 @@ function SessionUpdateModal({ session, caseData, db, onClose, onDone, onCaseUpda
         });
         // 🔒 نفس فحص الـConflict القديم (تقرير الموثوقية — القسم 12).
         if (updateResult.conflict) { setSaving(false); toast('⚠️ هذه الجلسة عدّلها شخص آخر بعد ما فتحتها — أعد المحاولة', true); return; }
-        if (updateResult.error && !updateResult.offline) { setSaving(false); showErrorToast('session_update', updateResult.error, 'فشل تسجيل ما تم في الجلسة', 'تحديث جلسة'); return; }
+        // 🗑️ تبسيط فرع ميت (14 سبتمبر 2026): كان `if (updateResult.error && !updateResult.offline)`
+        // — بما إن `__dbWrite` بيرجّع `offline:false` دايمًا بعد المرحلة 1، `!updateResult.offline`
+        // كانت `true` دايمًا فعليًا، فالشرط اتبسّط لمرادفه المباشر.
+        if (updateResult.error) { setSaving(false); showErrorToast('session_update', updateResult.error, 'فشل تسجيل ما تم في الجلسة', 'تحديث جلسة'); return; }
 
         // 2. أنشئ جلسة جديدة — عبر __dbWrite كمان (نفس السبب فوق).
         // ⚠️ الجلسة المستقلة (caseData.id = null) مالهاش صف في جدول cases —
