@@ -194,8 +194,11 @@ test('ضغط زرار حفظ التعديلات مرتين بسرعة (دبل-ك
 // بنحسب يومين مختلفين في نفس الشهر الحالي (بلا تنقل بين الشهور في
 // الـDatePicker — نفس قيد addCaseSession) عشان نتحكم في ترتيب الجلستين:
 // case_sessions بترجع مرتبة تنازليًا بالتاريخ (session_date DESC)، فالجلسة
-// بالتاريخ الأحدث بتبقى index 0 ("آخر جلسة" — زرار تحديث بس)، والتانية
-// (الأقدم) بتاخد زراير تعديل/حذف اللي التست ده محتاجها.
+// بالتاريخ الأحدث بتبقى index 0 ("آخر جلسة" — زراير تعديل/حذف).
+// 🔙 REVERT (طلب جيمي، 12 سبتمبر 2026 — راجع تعليق TimelineSection.tsx):
+// الجلسة الأقدم (i > 0) مبقاش ليها زراير تعديل/حذف خالص تاني — التستات
+// تحت (اللي كانت بتعدّل/تحذف الجلسة الأقدم مباشرة) اتحدّثت (14 سبتمبر
+// 2026) عشان تتحقق من غياب الزراير دي بدل ما تحاول تستخدمها.
 // 🔒 FIX (تشخيص لوجز E2E — 1 أغسطس 2026): نفس الباج المصلّح في
 // session-update.spec.ts — النسخة القديمة كانت بترجّع earlierDay===todayDay
 // لو اليوم الحالي هو أول يوم في الشهر (min(1, otherDay) بيرجع 1 دايمًا).
@@ -210,48 +213,62 @@ function twoDaysInCurrentMonth(): { earlierDay: number; laterDay: number } {
   return { earlierDay: Math.min(dayA, dayB), laterDay: Math.max(dayA, dayB) };
 }
 
-test('تعديل جلسة غير الأخيرة في تبويب الجلسات', async ({ page }) => {
+// 🔧 FIX (إصلاح لوجز E2E — 14 سبتمبر 2026): الاسم والجسم اتحدثوا عشان
+// يعكسوا REVERT 12 سبتمبر — التست القديم كان بيحاول يعدّل الجلسة الأقدم
+// مباشرة (زرار كان متاح وقتها)، ودلوقتي الزرار مش موجود خالص لغير آخر
+// جلسة. التست بقى يتحقق من غياب زرار التعديل على الجلسة الأقدم، ومن نجاح
+// التعديل العادي على آخر جلسة (تغطية سلوك i === 0 زي ما هو موصوف فوق).
+test('جلسة غير الأخيرة من غير زرار تعديل، وآخر جلسة قابلة للتعديل', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - تعديل جلسة - ${Date.now()}`;
   await createAndOpenCase(page, caseTitle);
 
   const { earlierDay, laterDay } = twoDaysInCurrentMonth();
-  const targetDesc = `جلسة هدف التعديل - ${Date.now()}`;
+  const olderDesc = `جلسة أقدم - ${Date.now()}`;
   const latestDesc = `جلسة الأحدث - ${Date.now()}`;
-  await addCaseSession(page, earlierDay, targetDesc);
+  await addCaseSession(page, earlierDay, olderDesc);
   await addCaseSession(page, laterDay, latestDesc);
 
-  const targetCard = page.getByTestId('session-card').filter({ hasText: targetDesc });
-  await expect(targetCard.first()).toBeVisible();
+  const olderCard = page.getByTestId('session-card').filter({ hasText: olderDesc });
+  await expect(olderCard.first()).toBeVisible();
+  // الجلسة الأقدم (i > 0) مالهاش زرار تعديل خالص بعد الـREVERT.
+  await expect(olderCard.first().getByTestId('session-edit-trigger')).toHaveCount(0);
 
+  const latestCard = page.getByTestId('session-card').filter({ hasText: latestDesc });
   const newDescription = `جلسة بعد التعديل - ${Date.now()}`;
-  await targetCard.first().getByTestId('session-edit-trigger').click();
+  await latestCard.first().getByTestId('session-edit-trigger').click();
   await page.getByTestId('session-edit-description').fill(newDescription);
   await page.getByTestId('session-edit-save').click();
 
   await expect(page.getByTestId('session-card').filter({ hasText: newDescription }).first()).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId('session-card').filter({ hasText: targetDesc })).toHaveCount(0);
+  await expect(page.getByTestId('session-card').filter({ hasText: latestDesc })).toHaveCount(0);
 });
 
-test('حذف جلسة غير الأخيرة في تبويب الجلسات', async ({ page }) => {
+// 🔧 FIX (إصلاح لوجز E2E — 14 سبتمبر 2026): نفس منطق تست التعديل فوق —
+// الجلسة الأقدم مبقاش ليها زرار حذف، آخر جلسة بس قابلة للحذف.
+test('جلسة غير الأخيرة من غير زرار حذف، وآخر جلسة قابلة للحذف', async ({ page }) => {
   await login(page);
   const caseTitle = `اختبار E2E - حذف جلسة - ${Date.now()}`;
   await createAndOpenCase(page, caseTitle);
 
   const { earlierDay, laterDay } = twoDaysInCurrentMonth();
-  const targetDesc = `جلسة هدف الحذف - ${Date.now()}`;
+  const olderDesc = `جلسة أقدم - ${Date.now()}`;
   const latestDesc = `جلسة الأحدث - ${Date.now()}`;
-  await addCaseSession(page, earlierDay, targetDesc);
+  await addCaseSession(page, earlierDay, olderDesc);
   await addCaseSession(page, laterDay, latestDesc);
 
-  const targetCard = page.getByTestId('session-card').filter({ hasText: targetDesc });
-  await expect(targetCard.first()).toBeVisible();
-  await targetCard.first().getByTestId('session-delete-trigger').click();
+  const olderCard = page.getByTestId('session-card').filter({ hasText: olderDesc });
+  await expect(olderCard.first()).toBeVisible();
+  // الجلسة الأقدم (i > 0) مالهاش زرار حذف خالص بعد الـREVERT.
+  await expect(olderCard.first().getByTestId('session-delete-trigger')).toHaveCount(0);
 
+  const latestCard = page.getByTestId('session-card').filter({ hasText: latestDesc });
+  await latestCard.first().getByTestId('session-delete-trigger').click();
   await page.getByTestId('confirm-delete-session-yes').click();
-  await expect(page.getByTestId('session-card').filter({ hasText: targetDesc })).toHaveCount(0, { timeout: 15_000 });
-  // الجلسة الأحدث لسه موجودة — التأكد إن الحذف كان دقيق (جلسة واحدة بس)
-  await expect(page.getByTestId('session-card').filter({ hasText: latestDesc })).toHaveCount(1);
+
+  await expect(page.getByTestId('session-card').filter({ hasText: latestDesc })).toHaveCount(0, { timeout: 15_000 });
+  // الجلسة الأقدم لسه موجودة — التأكد إن الحذف كان دقيق (جلسة واحدة بس)
+  await expect(page.getByTestId('session-card').filter({ hasText: olderDesc })).toHaveCount(1);
 });
 
 test('تحديث آخر جلسة (⚡) — إنشاء جلسة قادمة بنجاح', async ({ page }) => {
