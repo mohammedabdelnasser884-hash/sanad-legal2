@@ -240,8 +240,17 @@ test('جلسة غير الأخيرة من غير زرار تعديل، وآخر 
   await page.getByTestId('session-edit-description').fill(newDescription);
   await page.getByTestId('session-edit-save').click();
 
-  await expect(page.getByTestId('session-card').filter({ hasText: newDescription }).first()).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId('session-card').filter({ hasText: latestDesc })).toHaveCount(0);
+  // 🔧 FIX (إصلاح لوجز E2E — الجولة الثانية، 14 سبتمبر 2026): addCaseSession
+  // بيسجّل الوصف اللي بيبعته فعليًا في next_action الجلسة (حقل "session-
+  // update-next-required" في مودال "⚡ تحديث" — راجع SessionUpdateModal.tsx
+  // سطر 130)، مش في عمود description. زرار session-edit-trigger هنا بيعدّل
+  // description بس (session-edit-description) ومبيلمسش next_action خالص —
+  // فـlatestDesc فعليًا بيفضل ظاهر على نفس الكارت تحت "⚡ الإجراء القادم"
+  // حتى بعد التعديل الناجح (مش باج، ده سلوك متوقع لحقلين مختلفين). التست
+  // القديم هنا كان بيفترض غلط إن نفس النص ده هيختفي. دلوقتي بنتحقق إن نفس
+  // الكارت (متعرّف بنص next_action الثابت) بقى فيه كمان نص الـdescription
+  // الجديد، بدل ما نستنى اختفاء نص مفروض يفضل موجود.
+  await expect(latestCard.first()).toContainText(newDescription, { timeout: 15_000 });
 });
 
 // 🔧 FIX (إصلاح لوجز E2E — 14 سبتمبر 2026): نفس منطق تست التعديل فوق —
