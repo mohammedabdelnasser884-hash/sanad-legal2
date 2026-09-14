@@ -365,6 +365,16 @@ export function createCaseCrudActions(
     // 'case-docs' (تسرب تخزين بسيط) — مش روابط مكسورة أو صف قضية عالق زي ما كان
     // ممكن يحصل مع الترتيب القديم (Storage الأول، DB تاني).
     const handlePermanentDeleteCase = async (caseId: string) => {
+        // 🔒 FIX (توحيد رسائل المنع — إتمام بند المرحلة 4 المعلّق، 14 سبتمبر
+        // 2026): منع استباقي صريح قبل المحاولة، بنفس فلسفة useFeesActions.ts
+        // (منطق حذف نهائي لا رجعة فيه — أفضل نمنعه كامل أوفلاين بدل ما يتقيّد
+        // فى الطابور أو يترفض بعد محاولة فعلية).
+        if (!navigator.onLine) {
+            nav.closeModal('delete');
+            setDeleteConfirm(null);
+            toast('⚠️ حذف القضية نهائيًا يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+            return;
+        }
         const c = await getCaseRecord(caseId);
 
         // ─ خطوة 1: جلب storage_path لمستندات القضية (قبل ما صفوفها تتحذف تلقائيًا) ─
@@ -440,6 +450,14 @@ export function createCaseCrudActions(
             itemType: 'القضية',
             title: 'حذف القضية',
             onConfirmArchive: async () => {
+                // 🔒 FIX (توحيد رسائل المنع — إتمام بند المرحلة 4 المعلّق، 14
+                // سبتمبر 2026): نفس منطق handlePermanentDeleteCase فوق.
+                if (!navigator.onLine) {
+                    nav.closeModal('delete');
+                    setDeleteConfirm(null);
+                    toast('⚠️ أرشفة القضية يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+                    return;
+                }
                 // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): نفس فيكس الحذف
                 // النهائي فوق — .select('id') + lockErrorIfNoRowsAffected.
                 const { error: rawArchiveError, data: archivedRows } = await db.from('cases').update({ deleted_at: new Date().toISOString() }).eq('id', caseId).select('id');
@@ -478,6 +496,12 @@ export function createCaseCrudActions(
 
     // ─ استرجاع قضية من الأرشيف ─
     const handleRestoreCase = async (caseId: string) => {
+        // 🔒 FIX (توحيد رسائل المنع — إتمام بند المرحلة 4 المعلّق، 14 سبتمبر
+        // 2026): نفس منطق handlePermanentDeleteCase/onConfirmArchive فوق.
+        if (!navigator.onLine) {
+            toast('⚠️ استرجاع القضية يتطلب اتصالاً بالإنترنت — أعد المحاولة عند توفر الاتصال', true);
+            return;
+        }
         // 🔒 FIX (اختبار F1 اليدوي — 10 سبتمبر 2026): نفس فيكس الحذف/الأرشفة
         // فوق — .select('id') + lockErrorIfNoRowsAffected.
         const { error: rawRestoreError, data: restoredRows } = await db.from('cases').update({ deleted_at: null }).eq('id', caseId).select('id');
