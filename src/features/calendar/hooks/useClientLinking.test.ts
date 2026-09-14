@@ -408,7 +408,7 @@ describe('useClientLinking', () => {
       expect(onOpenCreateClientForCase).not.toHaveBeenCalled();
     });
 
-    it('القضية أونلاين (id حقيقي) → الكول-باك بيتنادى بـ caseId الحقيقي وcaseOfflineInfo=undefined', async () => {
+    it('القضية أونلاين (id حقيقي) → الكول-باك بيتنادى بـ caseId الحقيقي (بدون caseOfflineInfo، اتشال نهائيًا فى دفعة 3)', async () => {
       dbWrite.setResult('INSERT:cases', { error: null, offline: false, data: { id: 'case-add-1' } });
       mockDb.setResult('clients:select', { data: [], error: null });
       const onOpenCreateClientForCase = vi.fn();
@@ -420,7 +420,6 @@ describe('useClientLinking', () => {
 
       expect(onOpenCreateClientForCase).toHaveBeenCalledWith(
         'case-add-1', 'موكل جديد', '12345', '', undefined,
-        undefined,
       );
     });
 
