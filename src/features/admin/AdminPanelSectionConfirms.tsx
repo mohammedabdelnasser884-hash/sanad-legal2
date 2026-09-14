@@ -40,6 +40,10 @@ interface AdminPanelSectionConfirmsProps {
   restoringBackup: boolean;
   restoreProgressPercent: number;
   handleRestoreBackup: (backup: BackupRow) => void;
+  // 🔒 قفل منتجي (14 سبتمبر 2026): true لو المكتب فى وضع "مشاهدة فقط"
+  // (تجربة/باقة منتهية) — بيعطّل زرار التأكيد فى المودالين تحت ويعرض
+  // سبب المنع، بدل الاعتماد على توست بعد الضغط بس.
+  isRestoreWriteLocked: boolean;
 
   // تأكيد استعادة نسخة مرفوعة من الجهاز (نفس حقل التأكيد restoreConfirmText فوق)
   pendingFileRestore: PendingFileRestore | null;
@@ -60,6 +64,7 @@ export function AdminPanelSectionConfirms(props: AdminPanelSectionConfirmsProps)
     confirmSignOut, setConfirmSignOut, handleSignOutAllDevices, saving,
     confirmLock, setConfirmLock, handleToggleLock,
     confirmRestore, setConfirmRestore, restoreConfirmText, setRestoreConfirmText, restoringBackup, restoreProgressPercent, handleRestoreBackup,
+    isRestoreWriteLocked,
     pendingFileRestore, setPendingFileRestore, handleRestoreFromFile,
     confirmTerminateAll, setConfirmTerminateAll, activeSessions, profile, terminatingAll, handleTerminateAllSessions,
   } = props;
@@ -154,15 +159,22 @@ export function AdminPanelSectionConfirms(props: AdminPanelSectionConfirmsProps)
             formatArDate(confirmRestore.created_at || Date.now(), { year: 'numeric', month: 'long', day: 'numeric' }))
         ),
 
-        // تحذير
-        React.createElement('div', { className: "p-3 rounded-xl bg-red-500/10 border border-red-500/20 space-y-1" },
-          React.createElement('p', { className: "text-[10px] font-black text-red-400" }, "⚠️ تحذير مهم"),
-          React.createElement('p', { className: "text-[9px] text-slate-400 leading-relaxed" },
-            "ستُستبدل البيانات الحالية بالنسخة المحددة. هذه العملية لا يمكن التراجع عنها. يُنصح بإنشاء نسخة احتياطية جديدة أولاً.")
-        ),
+        // 🔒 قفل منتجي: المكتب فى وضع مشاهدة فقط — الاستعادة ممنوعة، والسبب
+        // الحقيقي معروض هنا بدل تحذير "لا يمكن التراجع" العادي.
+        isRestoreWriteLocked
+          ? React.createElement('div', { className: "p-3 rounded-xl bg-red-500/10 border border-red-500/20 space-y-1", 'data-testid': 'admin-backup-restore-locked-notice' },
+              React.createElement('p', { className: "text-[10px] font-black text-red-400" }, "🔒 الاستعادة غير متاحة"),
+              React.createElement('p', { className: "text-[9px] text-slate-400 leading-relaxed" },
+                "اشتراك المكتب فى وضع القراءة فقط حاليًا. جدّد الاشتراك للسماح بالاستعادة.")
+            )
+          : React.createElement('div', { className: "p-3 rounded-xl bg-red-500/10 border border-red-500/20 space-y-1" },
+              React.createElement('p', { className: "text-[10px] font-black text-red-400" }, "⚠️ تحذير مهم"),
+              React.createElement('p', { className: "text-[9px] text-slate-400 leading-relaxed" },
+                "ستُستبدل البيانات الحالية بالنسخة المحددة. هذه العملية لا يمكن التراجع عنها. يُنصح بإنشاء نسخة احتياطية جديدة أولاً.")
+            ),
 
-        // حقل التأكيد المزدوج — اكتب "استعادة" للمتابعة
-        React.createElement('div', { className: "space-y-1" },
+        // حقل التأكيد المزدوج — اكتب "استعادة" للمتابعة (بيفضل متعطّل لو مقفول)
+        !isRestoreWriteLocked && React.createElement('div', { className: "space-y-1" },
           React.createElement('p', { className: "text-[9px] text-slate-400 text-center" },
             'اكتب ', React.createElement('span', { className: "text-red-400 font-black" }, '"استعادة"'), ' للتأكيد:'
           ),
@@ -192,11 +204,12 @@ export function AdminPanelSectionConfirms(props: AdminPanelSectionConfirmsProps)
           }, "إلغاء"),
           React.createElement('button', {
             onClick: () => handleRestoreBackup(confirmRestore),
-            disabled: restoringBackup || restoreConfirmText.trim() !== 'استعادة',
+            disabled: isRestoreWriteLocked || restoringBackup || restoreConfirmText.trim() !== 'استعادة',
             'data-testid': 'admin-backup-restore-confirm-button',
             className: "py-2.5 rounded-xl text-xs font-black bg-[#C9A84C] text-white active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-1"
           },
-            restoringBackup ? React.createElement(React.Fragment, null, React.createElement(I.Spin), `جاري الاستعادة... ${restoreProgressPercent}%`)
+            isRestoreWriteLocked ? "🔒 غير متاح"
+              : restoringBackup ? React.createElement(React.Fragment, null, React.createElement(I.Spin), `جاري الاستعادة... ${restoreProgressPercent}%`)
               : "استعادة الآن"
           )
         ),
@@ -229,15 +242,21 @@ export function AdminPanelSectionConfirms(props: AdminPanelSectionConfirmsProps)
             "شكل النسخة المرفوعة أقدم أو مختلف عن الشكل الحالي — بعض البيانات ممكن ما تتستعادش بالكامل.")
         ),
 
-        // تحذير عام
-        React.createElement('div', { className: "p-3 rounded-xl bg-red-500/10 border border-red-500/20 space-y-1" },
-          React.createElement('p', { className: "text-[10px] font-black text-red-400" }, "⚠️ تحذير مهم"),
-          React.createElement('p', { className: "text-[9px] text-slate-400 leading-relaxed" },
-            "ستُستبدل البيانات الحالية بمحتوى الملف. هذه العملية لا يمكن التراجع عنها. يُنصح بإنشاء نسخة احتياطية جديدة أولاً.")
-        ),
+        // تحذير عام — أو سبب المنع الحقيقي لو المكتب مقفول
+        isRestoreWriteLocked
+          ? React.createElement('div', { className: "p-3 rounded-xl bg-red-500/10 border border-red-500/20 space-y-1", 'data-testid': 'admin-backup-restore-file-locked-notice' },
+              React.createElement('p', { className: "text-[10px] font-black text-red-400" }, "🔒 الاستعادة غير متاحة"),
+              React.createElement('p', { className: "text-[9px] text-slate-400 leading-relaxed" },
+                "اشتراك المكتب فى وضع القراءة فقط حاليًا. جدّد الاشتراك للسماح بالاستعادة.")
+            )
+          : React.createElement('div', { className: "p-3 rounded-xl bg-red-500/10 border border-red-500/20 space-y-1" },
+              React.createElement('p', { className: "text-[10px] font-black text-red-400" }, "⚠️ تحذير مهم"),
+              React.createElement('p', { className: "text-[9px] text-slate-400 leading-relaxed" },
+                "ستُستبدل البيانات الحالية بمحتوى الملف. هذه العملية لا يمكن التراجع عنها. يُنصح بإنشاء نسخة احتياطية جديدة أولاً.")
+            ),
 
         // حقل التأكيد المزدوج — اكتب "استعادة" للمتابعة
-        React.createElement('div', { className: "space-y-1" },
+        !isRestoreWriteLocked && React.createElement('div', { className: "space-y-1" },
           React.createElement('p', { className: "text-[9px] text-slate-400 text-center" },
             'اكتب ', React.createElement('span', { className: "text-red-400 font-black" }, '"استعادة"'), ' للتأكيد:'
           ),
@@ -266,11 +285,12 @@ export function AdminPanelSectionConfirms(props: AdminPanelSectionConfirmsProps)
           }, "إلغاء"),
           React.createElement('button', {
             onClick: handleRestoreFromFile,
-            disabled: restoringBackup || restoreConfirmText.trim() !== 'استعادة',
+            disabled: isRestoreWriteLocked || restoringBackup || restoreConfirmText.trim() !== 'استعادة',
             'data-testid': 'admin-backup-restore-file-confirm-button',
             className: "py-2.5 rounded-xl text-xs font-black bg-[#C9A84C] text-white active:scale-95 transition-transform disabled:opacity-50 flex items-center justify-center gap-1"
           },
-            restoringBackup ? React.createElement(React.Fragment, null, React.createElement(I.Spin), `جاري الاستعادة... ${restoreProgressPercent}%`)
+            isRestoreWriteLocked ? "🔒 غير متاح"
+              : restoringBackup ? React.createElement(React.Fragment, null, React.createElement(I.Spin), `جاري الاستعادة... ${restoreProgressPercent}%`)
               : "استعادة الآن"
           )
         ),
