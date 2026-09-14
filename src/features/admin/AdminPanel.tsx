@@ -149,7 +149,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
       setActivityPage(0);
     }, 400);
   }, [setActivityFilters, setActivityPage]);
-  const { backups, loadingBackups, creatingBackup, backupProgress, backupProgressPercent, confirmRestore, setConfirmRestore, restoreConfirmText, setRestoreConfirmText, restoringBackup, restoreProgressPercent, pendingFileRestore, setPendingFileRestore, uploadingFile, fetchBackups, handleCreateBackup, handleDownloadBackup, handleRestoreBackup, handleFileSelected, handleRestoreFromFile } = backup;
+  const { backups, loadingBackups, creatingBackup, backupProgress, backupProgressPercent, isRestoreWriteLocked, confirmRestore, setConfirmRestore, restoreConfirmText, setRestoreConfirmText, restoringBackup, restoreProgressPercent, pendingFileRestore, setPendingFileRestore, uploadingFile, fetchBackups, handleCreateBackup, handleDownloadBackup, handleRestoreBackup, handleFileSelected, handleRestoreFromFile } = backup;
   const { officeSettings, setOfficeSettings, loadingOffice, savingOffice, logoFile, setLogoFile, logoPreview, setLogoPreview, fetchOfficeSettings, handleSaveOfficeSettings } = office;
   const { laws, legalCategories, loadingLaws, showLawModal, setShowLawModal, editingLaw, setEditingLaw, confirmDeleteLaw, setConfirmDeleteLaw, savingLaw, processingLaw, fetchLaws, fetchLegalCategories, handleSaveLaw, handleProcessLaw, handleDeleteLaw } = library;
   const {
@@ -731,7 +731,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
     // ══════════════════════════
     //  SECTION: النسخ الاحتياطي
     // ══════════════════════════
-    section === 'backup' && React.createElement(BackupSection, { handleCreateBackup, creatingBackup, backupProgress, backupProgressPercent, fetchBackups, loadingBackups, backups, handleDownloadBackup, setConfirmRestore, handleFileSelected, uploadingFile }),
+    section === 'backup' && React.createElement(BackupSection, { handleCreateBackup, creatingBackup, backupProgress, backupProgressPercent, fetchBackups, loadingBackups, backups, handleDownloadBackup, setConfirmRestore, handleFileSelected, uploadingFile, isRestoreWriteLocked }),
 
     // ══════════════════════════
     //  SECTION: إعدادات المكتب
@@ -808,6 +808,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
       confirmSignOut, setConfirmSignOut, handleSignOutAllDevices, saving,
       confirmLock, setConfirmLock, handleToggleLock,
       confirmRestore, setConfirmRestore, restoreConfirmText, setRestoreConfirmText, restoringBackup, restoreProgressPercent, handleRestoreBackup,
+      isRestoreWriteLocked,
       pendingFileRestore, setPendingFileRestore, handleRestoreFromFile,
       confirmTerminateAll, setConfirmTerminateAll, activeSessions, profile, terminatingAll, handleTerminateAllSessions,
     }),
