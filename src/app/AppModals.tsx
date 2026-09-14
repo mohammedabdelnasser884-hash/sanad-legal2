@@ -431,7 +431,7 @@ function AppModals({
             onCreateAndLinkClientForParty: (caseId, party, isPrimaryParty, onAfterLink) =>
                 handleOpenCreateClientForCaseParty(
                     party.id, caseId, isPrimaryParty, party.name, party.national_id,
-                    party.power_of_attorney, party.address, undefined, onAfterLink,
+                    party.power_of_attorney, party.address, onAfterLink,
                 ),
             onNotify: sendTelegram, profile, country,
             // 🔒 FIX (تقرير الموثوقية — نتيجة 1): EditCaseModal ما كانش عنده
