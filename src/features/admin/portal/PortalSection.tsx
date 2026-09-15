@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { ClientRow } from '../../../types';
 import type { PortalAccessRow } from './hooks/useAdminPortal';
 
@@ -10,7 +10,37 @@ interface PortalSectionProps {
   setPortalClient: React.Dispatch<React.SetStateAction<ClientRow | null>>;
 }
 
+type StatusTab = 'all' | 'active' | 'inactive';
+
 function PortalSection({ clientSearch, setClientSearch, filteredClients, portalAccess, setPortalClient }: PortalSectionProps) {
+  const [statusTab, setStatusTab] = useState<StatusTab>('all');
+
+  // ⚡ تصنيف موحّد لكل عميل: مفعّل = عنده وصول وهو شغال. غير مفعّل = أي
+  // حالة تانية (معطّل صراحةً، أو لسه معملوش إعداد خالص) — الاتنين فعليًا
+  // بيوديك لنفس المودال/الإجراء (فتح ClientPortalModal وحفظ)، فمفيش داعي
+  // نفرّقهم بتاب منفصل، بس بنميّزهم بتلميح تحت الاسم جوه الكارت نفسه.
+  const withStatus = filteredClients.map((client: ClientRow) => {
+    const access = portalAccess.find((p: PortalAccessRow) => p.client_id === client.id);
+    const hasAccess = !!access;
+    const isActive = hasAccess && access?.is_active !== false;
+    return { client, hasAccess, isActive };
+  });
+
+  const activeCount = withStatus.filter((r) => r.isActive).length;
+  const inactiveCount = withStatus.length - activeCount;
+
+  const visible = withStatus.filter((r) => {
+    if (statusTab === 'active') return r.isActive;
+    if (statusTab === 'inactive') return !r.isActive;
+    return true;
+  });
+
+  const tabs: Array<{ key: StatusTab; label: string; count: number }> = [
+    { key: 'all', label: 'جميع الموكلين', count: withStatus.length },
+    { key: 'active', label: 'مفعّل', count: activeCount },
+    { key: 'inactive', label: 'غير مفعّل', count: inactiveCount },
+  ];
+
   return React.createElement('div',{className:"space-y-3"},
       // بحث
       React.createElement('div',{className:"relative"},
@@ -25,13 +55,23 @@ function PortalSection({ clientSearch, setClientSearch, filteredClients, portalA
         })
       ),
 
-      filteredClients.length === 0
-        ? React.createElement('div',{className:"text-center text-slate-500 text-xs py-10",'data-testid':'admin-portal-empty'},"لا يوجد موكلون")
-        : filteredClients.map((client: ClientRow) => {
-            const access = portalAccess.find((p: PortalAccessRow) => p.client_id === client.id);
-            const hasAccess = !!access;
-            const isActive = access?.is_active !== false;
+      // تابات الحالة
+      React.createElement('div',{className:"flex items-center gap-2",'data-testid':'admin-portal-status-tabs'},
+        tabs.map((t) => React.createElement('button',{
+          key:t.key,
+          onClick:()=>setStatusTab(t.key),
+          'data-testid':`admin-portal-tab-${t.key}`,
+          className:`px-3 py-1.5 rounded-xl text-[10px] font-black border transition-all active:scale-95 ${
+            statusTab===t.key
+              ? 'bg-[#C9A84C]/20 border-[#C9A84C]/40 text-[#C9A84C]'
+              : 'bg-white/5 border-white/10 text-slate-400'
+          }`
+        }, `${t.label} (${t.count})`))
+      ),
 
+      visible.length === 0
+        ? React.createElement('div',{className:"text-center text-slate-500 text-xs py-10",'data-testid':'admin-portal-empty'},"لا يوجد موكلون")
+        : visible.map(({ client, hasAccess, isActive }) => {
             return React.createElement('div',{
               key:client.id,
               'data-testid':'admin-portal-card',
