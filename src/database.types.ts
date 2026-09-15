@@ -1066,6 +1066,69 @@ export interface Database {
         // هنا (محتاجة استعلام تاني على information_schema)، فسايبينها فاضية.
         Relationships: []
       },
+      lawyer_guide_categories: {
+        Row: {
+          id: string
+          name_ar: string
+          icon: string | null
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name_ar: string
+          icon?: string | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name_ar?: string
+          icon?: string | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      },
+      lawyer_guide_links: {
+        Row: {
+          id: string
+          category_id: string
+          title: string
+          url: string
+          description: string | null
+          entity_type: string | null
+          last_verified_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          category_id: string
+          title: string
+          url: string
+          description?: string | null
+          entity_type?: string | null
+          last_verified_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          category_id?: string
+          title?: string
+          url?: string
+          description?: string | null
+          entity_type?: string | null
+          last_verified_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      },
       legal_categories: {
         Row: {
           id: string
