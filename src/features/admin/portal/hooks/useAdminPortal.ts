@@ -36,6 +36,31 @@ export function useAdminPortal(profile?: ProfileRow | null) {
   const [showAddPortalUser, setShowAddPortalUser] = useState(false);
   const [savingPortal, setSaving] = useState(false);
 
+  // 🐛 FIX (بوابة الموكل بتجيب موكلين ناقصين — 16 سبتمبر 2026): القايمة
+  // اللي القسم ده كان بيستخدمها (`clients` جوه AdminPanel) هي نفسها
+  // القايمة المرقّمة (PAGE_SIZE=15) المُحمّلة تدريجيًا لتاب "الموكلين"
+  // العادي (+ أي extraClients اتجابوا بالـid لسبب تاني) — يعني لو المستخدم
+  // لسه ما ضغطش "عرض المزيد" جوه تاب الموكلين، قسم البوابة كان بيشوف بس
+  // جزء بسيط من إجمالي الموكلين (21 من ٩١ مثلًا) بدل كلهم. القسم ده
+  // محتاج القايمة الكاملة دايمًا (مش نسخة مرقّمة) عشان هو أصلًا شاشة بحث/
+  // اختيار عميل واحد، مش قايمة للتصفح — فبنجيبها بشكل مستقل هنا، بنفس
+  // فكرة fetchPortalAccess تحت (نداء مستقل بس لما القسم يتفتح فعليًا).
+  const [portalClients, setPortalClients] = useState<ClientRow[]>([]);
+  const [portalClientsLoading, setPortalClientsLoading] = useState(false);
+
+  const fetchPortalClients = useCallback(async () => {
+    setPortalClientsLoading(true);
+    const { data } = await db
+      .from('clients')
+      .select('*')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+    // ⚡ full_name ممكن يكون لسه NULL لو migration المزامنة لسه ما
+    // اتنفذتش — نفس الـ fallback المستخدم في كل مكان تاني بالمشروع.
+    setPortalClients((data || []).map((c) => ({ ...c, full_name: c.full_name || c.client_name })));
+    setPortalClientsLoading(false);
+  }, []);
+
   const fetchPortalAccess = useCallback(async () => {
     // ملحوظة: لا نجيب pin ولا pin_hash هنا — الـ PIN مخزّن مُشفّر (hash)
     // ومفيش داعي نعرضه أصلاً، اللوحة بس بتحتاج تعرف مفعّل ولا لأ.
@@ -93,6 +118,7 @@ export function useAdminPortal(profile?: ProfileRow | null) {
     clientSearch, setClientSearch,
     showAddPortalUser, setShowAddPortalUser,
     savingPortal,
+    portalClients, portalClientsLoading, fetchPortalClients,
     fetchPortalAccess, handleSavePortal
   };
 }
