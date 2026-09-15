@@ -560,7 +560,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
           width:'5px', height:'5px', borderRadius:'50%',
           background:'#2dd4bf', boxShadow:'0 0 8px rgba(45,212,191,0.8)',
         }})
-      )
+      ),
       // صف 5.5: دليل المحامي — عريض (مقصور على السوبر أدمن فقط، مرحلة 3
       // من خطة "الموارد القانونية" — راجع تقرير الخطة)
       isSuperAdminUser && React.createElement('button',{
