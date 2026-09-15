@@ -40,9 +40,9 @@
 //   deleteLinkCategory  { id }   — Cascade: بيمسح كل الروابط اللي جواه
 //                                  (DB cascade، مفيش ملفات Storage)
 //   createLink      { category_id, title, url, description?,
-//                      entity_type?, last_verified_at? }
+//                      entity_type?, last_verified_at?, sort_order? }
 //   updateLink      { id, category_id?, title?, url?, description?,
-//                      entity_type?, last_verified_at? }
+//                      entity_type?, last_verified_at?, sort_order? }
 //   deleteLink      { id }
 //
 //  الخرج: دايمًا status 200 — { ok:true, ... } أو { error: "..." }
@@ -421,6 +421,7 @@ Deno.serve(async (req: Request) => {
           description: body.description ? String(body.description).trim() : null,
           entity_type: body.entity_type ? String(body.entity_type).trim() : null,
           last_verified_at: body.last_verified_at ? String(body.last_verified_at) : null,
+          sort_order: Number.isFinite(body.sort_order) ? Number(body.sort_order) : 0,
         });
         return json({ ok: true, link: Array.isArray(rows) ? rows[0] : rows });
       } catch (e) {
@@ -447,6 +448,7 @@ Deno.serve(async (req: Request) => {
       if (body.description !== undefined) patch.description = body.description ? String(body.description).trim() : null;
       if (body.entity_type !== undefined) patch.entity_type = body.entity_type ? String(body.entity_type).trim() : null;
       if (body.last_verified_at !== undefined) patch.last_verified_at = body.last_verified_at ? String(body.last_verified_at) : null;
+      if (body.sort_order !== undefined) patch.sort_order = Number(body.sort_order) || 0;
       try {
         const rows = await rest(`lawyer_guide_links?id=eq.${id}`, 'PATCH', patch);
         return json({ ok: true, link: Array.isArray(rows) ? rows[0] : rows });
