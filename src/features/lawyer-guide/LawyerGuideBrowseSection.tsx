@@ -14,32 +14,90 @@ interface LawyerGuideBrowseSectionProps {
   onManageLawyerGuide?: () => void;
 }
 
+// ⚡ NEW (اقتراح 2 — badge بعدد الخدمات + توسيع عند الضغط، 15 سبتمبر
+// 2026): الوصف (`description`) بيتخزن كنص حر بفواصل عربية "،" بين كل
+// خدمة والتانية (نفس تنسيق seed دليل المحامي). بنفكّكه هنا لعرضه —
+// صفر تغيير في القاعدة أو الـEdge Function، كله عرض بس.
+function splitServices(description: string | null | undefined): string[] {
+  if (!description) return [];
+  return description
+    .split('،')
+    .map((s) => s.trim().replace(/\.$/, ''))
+    .filter((s) => s.length > 0);
+}
+
+// عدّاد الخدمات بصيغة عربية سليمة (مفرد/مثنى/جمع) — بيتفعّل بس لو
+// عدد الخدمات المفكّكة 2 أو أكتر (أقل من كده الوصف بيتعرض زي ما هو).
+function formatServicesCount(count: number): string {
+  if (count === 2) return 'خدمتين';
+  if (count >= 3 && count <= 10) return `${count} خدمات`;
+  return `${count} خدمة`;
+}
+
 // بطاقة رابط — نسخة عرض/فتح بس (بدون تعديل/حذف/ترتيب، ده مقصور على
 // LawyerGuideSection.tsx بتاعة لوحة الإدارة). نفس هيكل FormCard بتاعة
-// الموسوعة (row واحد، p-3.5، rounded-2xl) — بس بدون معاينة/تحميل، زرار
-// واحد بس لفتح الرابط الخارجي.
+// الموسوعة (p-3.5، rounded-2xl) — بس بدون معاينة/تحميل.
+//
+// ⚡ NEW (اقتراح 2، 15 سبتمبر 2026): الكارت بقى `div` بدل `button`
+// (عشان زرار توسيع الخدمات بقى عنصر شقيق مش متداخل جوه `<button>`
+// تاني — الاتنين `<button>` جوه بعض مش صالح HTML-wise). فتح الرابط
+// بقى مقصور على زرار داخلي صريح (أيقونة+عنوان+ChevronLeft)، وزرار
+// عدد الخدمات منفصل تمامًا وبيوقف propagation عشان مايفتحش الرابط
+// بالغلط وقت التوسيع/الطي.
 function LinkCard({ link, onOpen, categoryLabel }: {
   link: LawyerGuideLinkRow;
   onOpen: () => void;
   categoryLabel?: string;
 }) {
-  return React.createElement('button', {
-    key: link.id, onClick: onOpen, 'data-testid': 'lawyer-guide-link-card',
-    className: 'w-full bg-premium-card border border-white/5 rounded-2xl p-3.5 flex items-center gap-3 text-right active:scale-[0.98] transition-transform',
+  const [expanded, setExpanded] = useState(false);
+  const services = splitServices(link.description);
+  const hasServicesList = services.length >= 2;
+
+  return React.createElement('div', {
+    key: link.id, 'data-testid': 'lawyer-guide-link-card',
+    className: 'w-full bg-premium-card border border-white/5 rounded-2xl p-3.5',
   },
-    React.createElement('div', {
-      className: 'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-amber-400/10 text-amber-400',
-    }, React.createElement(I.ExternalLink)),
-    React.createElement('div', { className: 'flex-1 min-w-0' },
-      React.createElement('p', { className: 'text-xs font-black text-white leading-tight truncate' }, link.title),
-      link.description && !categoryLabel && React.createElement('p', { className: 'text-[9.5px] text-slate-500 leading-snug line-clamp-1 mt-0.5' }, link.description),
-      categoryLabel && React.createElement('span', { 'data-testid': 'lawyer-guide-search-result-category', className: 'inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-400/10 text-amber-400 mt-0.5' }, categoryLabel),
-      React.createElement('div', { className: 'flex items-center gap-2 mt-1 flex-wrap' },
-        link.entity_type && React.createElement('span', { className: 'text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400' }, link.entity_type),
-        link.last_verified_at && React.createElement('span', { className: 'text-[9px] text-slate-600' }, `آخر مراجعة: ${link.last_verified_at}`)
+    React.createElement('button', {
+      onClick: onOpen, 'data-testid': 'lawyer-guide-link-open',
+      'aria-label': `فتح ${link.title}`,
+      className: 'w-full flex items-center gap-3 text-right active:scale-[0.98] transition-transform',
+    },
+      React.createElement('div', {
+        className: 'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-amber-400/10 text-amber-400',
+      }, React.createElement(I.ExternalLink)),
+      React.createElement('div', { className: 'flex-1 min-w-0' },
+        React.createElement('p', { className: 'text-xs font-black text-white leading-tight truncate' }, link.title),
+        // الوصف القديم (سطر واحد مقصوص) بيفضل بس لو مفيش خدمات متعددة
+        // اتفكّكت منه (احتياطي لأي وصف قصير بدون فواصل).
+        !hasServicesList && link.description && !categoryLabel && React.createElement('p', { className: 'text-[9.5px] text-slate-500 leading-snug line-clamp-1 mt-0.5' }, link.description),
+        categoryLabel && React.createElement('span', { 'data-testid': 'lawyer-guide-search-result-category', className: 'inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-400/10 text-amber-400 mt-0.5' }, categoryLabel)
+      ),
+      React.createElement(I.ChevronLeft)
+    ),
+    React.createElement('div', { className: 'flex items-center gap-2 mt-1.5 flex-wrap' },
+      link.entity_type && React.createElement('span', { className: 'text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-white/5 text-slate-400' }, link.entity_type),
+      link.last_verified_at && React.createElement('span', { className: 'text-[9px] text-slate-600' }, `آخر مراجعة: ${link.last_verified_at}`),
+      hasServicesList && React.createElement('button', {
+        onClick: (e: React.MouseEvent) => { e.stopPropagation(); setExpanded((v) => !v); },
+        'data-testid': 'lawyer-guide-link-services-toggle',
+        'aria-expanded': expanded, 'aria-label': expanded ? 'إخفاء الخدمات' : 'عرض الخدمات',
+        className: 'flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-teal-500/10 text-teal-400 active:scale-95 transition-transform',
+      },
+        formatServicesCount(services.length),
+        React.createElement(I.ChevronRight, { className: `w-3 h-3 transition-transform ${expanded ? '-rotate-90' : 'rotate-90'}` })
       )
     ),
-    React.createElement(I.ChevronLeft)
+    hasServicesList && expanded && React.createElement('ul', {
+      'data-testid': 'lawyer-guide-link-services-list',
+      className: 'mt-2 pr-1 space-y-1',
+    },
+      ...services.map((service, idx) => React.createElement('li', {
+        key: idx, className: 'flex items-start gap-1.5 text-[9.5px] text-slate-400 leading-snug',
+      },
+        React.createElement('span', { className: 'text-amber-400 leading-snug' }, '•'),
+        React.createElement('span', null, service)
+      ))
+    )
   );
 }
 
