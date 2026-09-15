@@ -46,7 +46,8 @@ function ClientPortalModal({ client, portalAccess, onSave, onClose, saving }: Cl
 
       // PIN
       React.createElement('div',null,
-        React.createElement('label',{className:"text-[10px] font-bold text-slate-400 block mb-2"},"رمز PIN (4 أرقام)"),
+        React.createElement('label',{className:"text-[10px] font-bold text-slate-400 block mb-2"},
+          existing ? "رمز PIN جديد (اختياري — سيبه فاضي لو مش عايز تغيّره)" : "رمز PIN (4 أرقام)"),
         React.createElement('div',{className:"flex gap-2"},
           React.createElement('input',{
             value:pin,
@@ -95,8 +96,16 @@ function ClientPortalModal({ client, portalAccess, onSave, onClose, saving }: Cl
       ),
 
       React.createElement('button',{
-        onClick:()=>onSave({client_id:client.id,pin,is_active:isActive,client_name:client.full_name || '—',email:client.email}),
-        disabled:saving||pin.length!==4,
+        // 🆕 FIX (مشكلة #2 — تقرير تشخيص بوابة الموكل، 15 سبتمبر 2026):
+        // لو فيه وصول مسجّل بالفعل (existing) وحقل الـPIN فاضي، نبعت
+        // pin:null بدل مانفرض PIN جديد — set_portal_pin بقت تقبل NULL
+        // وتسيب الـpin_hash القديم زي ما هو (راجع sql-migrations-phase33/01).
+        onClick:()=>onSave({client_id:client.id,pin:pin.length===4?pin:null,is_active:isActive,client_name:client.full_name || '—',email:client.email}),
+        // الزرار يتفعّل لو: (أ) فيه وصول مسجّل بالفعل وحقل الـPIN فاضي
+        // تمامًا (يبقى تبديل حالة فقط)، أو (ب) الـPIN المكتوب صحيح
+        // (4 أرقام بالظبط) — سواء لعميل جديد أو تحديث PIN لعميل قائم.
+        // أي حالة وسط (1-3 أرقام مكتوبة) تفضل معطّلة لحد ما يكمّل الرقم.
+        disabled:saving||(pin.length===0?!existing:pin.length!==4),
         'data-testid':'admin-portal-edit-save',
         className:"w-full py-3 rounded-xl text-xs font-black text-premium-bg bg-gradient-to-tr from-premium-gold to-[#E8C97A] shadow-lg active:scale-95 transition-transform disabled:opacity-50"
       },saving?'جاري الحفظ...':'حفظ الإعدادات')
