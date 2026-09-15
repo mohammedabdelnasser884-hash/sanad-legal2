@@ -4,6 +4,7 @@ import { logActivity } from '../../shared/lib/dataAccess';
 import { recordError, trackQueryOutcome } from '../../systemHealth';
 import { getEdgeFunctionErrorMessage, looksArabicUserMessage, type EdgeFunctionError } from '../../shared/lib/edgeFunctionErrors';
 import { I, SanadMark } from '../../constants';
+import { saveLocalUnlockPassword } from '../../lib/localAuthLock';
 
 import { Inp } from '@/shared/ui/Inp';
 
@@ -187,6 +188,11 @@ function LoginScreen({onLogin}: LoginScreenProps){
             return;
         }
         logActivity(db, 'تسجيل دخول', { entity_type: 'user', entity_id: data.user?.id, details: data.user?.email || null });
+        // 🆕 (خطة قفل الشاشة، 15 سبتمبر 2026): بنخزّن هاش محلي للباسورد
+        // الحالي عشان LockScreen يقدر يتحقق منه بعدين من غير نت — راجع
+        // lib/localAuthLock.ts. غير حابس (مش await) عمدًا: onLogin ميتأخرش
+        // بسبب عملية جانبية (فشلها المحتمل بيتبلع داخليًا على أي حال).
+        if (data.user?.id) void saveLocalUnlockPassword(data.user.id, pass);
         onLogin(data.user);
     };
 
