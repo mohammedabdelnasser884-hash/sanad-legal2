@@ -95,6 +95,7 @@ const I={
     ClipboardList:({className="w-5 h-5"}:{className?: string})=>React.createElement('svg',{className,fill:"none",viewBox:"0 0 24 24",strokeWidth:"1.5",stroke:"currentColor"},
         React.createElement('path',{strokeLinecap:"round",strokeLinejoin:"round",d:"M9 12h6m-6 4h6m-7 5h8a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08M9.26 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.18a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664M9.26 3.836A2.251 2.251 0 0 1 11.5 2.25h1a2.25 2.25 0 0 1 2.24 1.586m-5.98 0c-.376.023-.75.05-1.124.08C6.505 4.014 5.66 4.977 5.66 6.108V19.5A2.25 2.25 0 0 0 7.91 21.75"})
     ),
+    ExternalLink:({className="w-4 h-4"}:{className?: string})=>React.createElement('svg',{className,fill:"none",viewBox:"0 0 24 24",strokeWidth:"1.5",stroke:"currentColor"},React.createElement('path',{strokeLinecap:"round",strokeLinejoin:"round",d:"M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"})),
     Compass:({className="w-5 h-5"}:{className?: string})=>React.createElement('svg',{className,fill:"none",viewBox:"0 0 24 24",strokeWidth:"1.5",stroke:"currentColor"},
         React.createElement('path',{strokeLinecap:"round",strokeLinejoin:"round",d:"M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"}),
         React.createElement('path',{strokeLinecap:"round",strokeLinejoin:"round",d:"m14.5 9.5-2.1 4.9-4.9 2.1 2.1-4.9 4.9-2.1Z"})
