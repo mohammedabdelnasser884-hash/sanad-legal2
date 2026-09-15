@@ -4,11 +4,14 @@ import { useAutoLogout } from './useAutoLogout';
 import type { ProfileRow } from '../types';
 
 // ══════════════════════════════════════════════════════════════════
-// useAutoLogout.ts بيستخدم:
-//   - db.auth.signOut()                       [لما يعدّي 30 دقيقة خمول]
-//   - logActivity(db, 'تسجيل خروج تلقائي', ...) [قبل signOut]
-//   - toast(...)                               [بعد onLogout]
+// 🔒 UPDATE (خطة قفل الشاشة بدل تسجيل الخروج التلقائي، 15 سبتمبر 2026):
+// useAutoLogout.ts بقى بيستخدم:
+//   - logActivity(db, 'قفل تلقائي', ...)       [لما يعدّي 30 دقيقة خمول]
+//   - onLock()                                 [بدل signOut+onLogout القديمين]
+//   - toast(...)                               [بعد onLock]
 //   - window.addEventListener/removeEventListener مباشرة (مش عبر ref)
+// مبقاش بينادي db.auth.signOut() خالص — القفل محلي بالكامل الآن (راجع
+// LockScreen.tsx + lib/localAuthLock.ts)، والـsession الحقيقي فاضل زي ما هو.
 // IDLE_TIMEOUT ثابت جوه الكود نفسه = 30 * 60 * 1000 (30 دقيقة) — مش قابل للتخصيص.
 // ══════════════════════════════════════════════════════════════════
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -36,98 +39,96 @@ describe('useAutoLogout', () => {
     vi.useRealTimers();
   });
 
-  it('profile:null → مفيش أي مستمع أحداث بيتسجل ومفيش أي logout حتى بعد وقت طويل', () => {
+  it('profile:null → مفيش أي مستمع أحداث بيتسجل ومفيش أي قفل حتى بعد وقت طويل', () => {
     const addSpy = vi.spyOn(window, 'addEventListener');
-    const onLogout = vi.fn();
-    renderHook(() => useAutoLogout(null, onLogout));
+    const onLock = vi.fn();
+    renderHook(() => useAutoLogout(null, onLock));
     expect(addSpy).not.toHaveBeenCalled();
     vi.advanceTimersByTime(IDLE_TIMEOUT_MS * 2);
-    expect(onLogout).not.toHaveBeenCalled();
+    expect(onLock).not.toHaveBeenCalled();
     expect(signOut).not.toHaveBeenCalled();
     addSpy.mockRestore();
   });
 
-  it('profile موجود → 30 دقيقة خمول كاملة من غير أي نشاط → logActivity ثم signOut ثم onLogout ثم toast، بنفس الترتيب', async () => {
-    const onLogout = vi.fn();
-    renderHook(() => useAutoLogout(PROFILE, onLogout));
+  it('profile موجود → 30 دقيقة خمول كاملة من غير أي نشاط → logActivity ثم onLock ثم toast، بنفس الترتيب (من غير أي signOut حقيقي)', async () => {
+    const onLock = vi.fn();
+    renderHook(() => useAutoLogout(PROFILE, onLock));
 
     await vi.advanceTimersByTimeAsync(IDLE_TIMEOUT_MS);
 
-    expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'تسجيل خروج تلقائي', {
+    expect(logActivity).toHaveBeenCalledWith(expect.anything(), 'قفل تلقائي', {
       entity_type: 'user',
-      details: 'خروج تلقائي بعد 30 دقيقة عدم نشاط',
+      details: 'قفل الشاشة تلقائيًا بعد 30 دقيقة عدم نشاط',
     });
-    expect(signOut).toHaveBeenCalledTimes(1);
-    expect(onLogout).toHaveBeenCalledTimes(1);
-    expect(toast).toHaveBeenCalledWith('⏱ تم تسجيل الخروج تلقائياً بسبب عدم النشاط', true);
+    expect(signOut).not.toHaveBeenCalled();
+    expect(onLock).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith('🔒 اتقفلت الشاشة بسبب عدم النشاط — ادخل كلمة السر للمتابعة', true);
 
     const logOrder = logActivity.mock.invocationCallOrder[0];
-    const signOutOrder = signOut.mock.invocationCallOrder[0];
-    const onLogoutOrder = onLogout.mock.invocationCallOrder[0];
-    expect(logOrder).toBeLessThan(signOutOrder);
-    expect(signOutOrder).toBeLessThan(onLogoutOrder);
+    const onLockOrder = onLock.mock.invocationCallOrder[0];
+    expect(logOrder).toBeLessThan(onLockOrder);
   });
 
-  it('نشاط (mousemove) قبل ما الـ 30 دقيقة تخلص بيصفّر العداد — مفيش logout عند نقطة الـ 30 دقيقة الأصلية', async () => {
-    const onLogout = vi.fn();
-    renderHook(() => useAutoLogout(PROFILE, onLogout));
+  it('نشاط (mousemove) قبل ما الـ 30 دقيقة تخلص بيصفّر العداد — مفيش قفل عند نقطة الـ 30 دقيقة الأصلية', async () => {
+    const onLock = vi.fn();
+    renderHook(() => useAutoLogout(PROFILE, onLock));
 
     await vi.advanceTimersByTimeAsync(20 * 60 * 1000); // 20 دقيقة
     window.dispatchEvent(new Event('mousemove'));
     await vi.advanceTimersByTimeAsync(20 * 60 * 1000); // لغاية 40 دقيقة من البداية، لكن 20 بس من إعادة الضبط
 
-    expect(onLogout).not.toHaveBeenCalled();
+    expect(onLock).not.toHaveBeenCalled();
     expect(signOut).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(10 * 60 * 1000); // 30 دقيقة كاملة من إعادة الضبط
-    expect(onLogout).toHaveBeenCalledTimes(1);
+    expect(onLock).toHaveBeenCalledTimes(1);
   });
 
   it('كل نوع من أنواع الأحداث المسجلة (click مثلًا) بيصفّر العداد برضه', async () => {
-    const onLogout = vi.fn();
-    renderHook(() => useAutoLogout(PROFILE, onLogout));
+    const onLock = vi.fn();
+    renderHook(() => useAutoLogout(PROFILE, onLock));
 
     await vi.advanceTimersByTimeAsync(29 * 60 * 1000);
     window.dispatchEvent(new Event('click'));
     await vi.advanceTimersByTimeAsync(29 * 60 * 1000);
-    expect(onLogout).not.toHaveBeenCalled();
+    expect(onLock).not.toHaveBeenCalled();
   });
 
-  it('unmount قبل ما الوقت يخلص → التايمر بيتنضّف والمستمعين بيتشالوا، ومفيش logout بعد كده خالص', async () => {
+  it('unmount قبل ما الوقت يخلص → التايمر بيتنضّف والمستمعين بيتشالوا، ومفيش قفل بعد كده خالص', async () => {
     const removeSpy = vi.spyOn(window, 'removeEventListener');
-    const onLogout = vi.fn();
-    const { unmount } = renderHook(() => useAutoLogout(PROFILE, onLogout));
+    const onLock = vi.fn();
+    const { unmount } = renderHook(() => useAutoLogout(PROFILE, onLock));
 
     await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
     unmount();
     expect(removeSpy).toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(IDLE_TIMEOUT_MS * 2);
-    expect(onLogout).not.toHaveBeenCalled();
+    expect(onLock).not.toHaveBeenCalled();
     expect(signOut).not.toHaveBeenCalled();
     removeSpy.mockRestore();
   });
 
-  it('تغيير profile من null لموجود بين إعادتي رندر → effect بيتفعّل من جديد ويبدأ يعدّ (مفيش logout فوري)', async () => {
-    const onLogout = vi.fn();
-    const { rerender } = renderHook(({ profile }) => useAutoLogout(profile, onLogout), {
+  it('تغيير profile من null لموجود بين إعادتي رندر → effect بيتفعّل من جديد ويبدأ يعدّ (مفيش قفل فوري)', async () => {
+    const onLock = vi.fn();
+    const { rerender } = renderHook(({ profile }) => useAutoLogout(profile, onLock), {
       initialProps: { profile: null as ProfileRow | null },
     });
     rerender({ profile: PROFILE });
     await vi.advanceTimersByTimeAsync(IDLE_TIMEOUT_MS - 1000);
-    expect(onLogout).not.toHaveBeenCalled();
+    expect(onLock).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1000);
-    expect(onLogout).toHaveBeenCalledTimes(1);
+    expect(onLock).toHaveBeenCalledTimes(1);
   });
 
-  it('تغيير profile من موجود لـ null بين إعادتي رندر → التايمر القديم بيتلغي ومفيش logout حتى لو الوقت الأصلي عدّى', async () => {
-    const onLogout = vi.fn();
-    const { rerender } = renderHook(({ profile }) => useAutoLogout(profile, onLogout), {
+  it('تغيير profile من موجود لـ null بين إعادتي رندر → التايمر القديم بيتلغي ومفيش قفل حتى لو الوقت الأصلي عدّى', async () => {
+    const onLock = vi.fn();
+    const { rerender } = renderHook(({ profile }) => useAutoLogout(profile, onLock), {
       initialProps: { profile: PROFILE as ProfileRow | null },
     });
     await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
     rerender({ profile: null });
     await vi.advanceTimersByTimeAsync(IDLE_TIMEOUT_MS);
-    expect(onLogout).not.toHaveBeenCalled();
+    expect(onLock).not.toHaveBeenCalled();
   });
 });
