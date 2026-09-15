@@ -59,10 +59,15 @@ test('تعديل بوابة موكل تجريبي بعد إعدادها: تعط�
   await expect(card.first()).toContainText('✓ مفعّل');
 
   // تعديل: الزرار بقى نصه "تعديل"، وتعطيل الحالة
+  // 🆕 (فيكس مشكلة #2 — تقرير تشخيص بوابة الموكل، ١٥ سبتمبر ٢٠٢٦):
+  // حقل الـPIN بيفضل فاضي عمدًا (مش بنولّد/نكتب PIN جديد) — الزرار
+  // المفروض يتفعّل برضه لأن فيه وصول مسجّل بالفعل، وset_portal_pin
+  // بقت تقبل p_pin:null وتسيب الـPIN القديم زي ما هو.
   await expect(card.first().getByTestId('admin-portal-setup-button')).toHaveText('تعديل');
   await card.first().getByTestId('admin-portal-setup-button').click();
+  await expect(page.getByTestId('admin-portal-edit-pin')).toHaveValue('');
   await page.getByTestId('admin-portal-edit-active-toggle').click();
-  await page.getByTestId('admin-portal-edit-genpin').click(); // PIN مطلوب دايمًا عشان زرار الحفظ يتفعّل
+  await expect(page.getByTestId('admin-portal-edit-save')).toBeEnabled();
   await page.getByTestId('admin-portal-edit-save').click();
 
   await expectToast(page, '✅ تم حفظ إعدادات بوابة ' + name);
