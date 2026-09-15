@@ -74,10 +74,11 @@ const SOCIAL_FIELDS: FieldDef[] = [
 ];
 
 interface OnboardingSetupScreenProps {
+    email: string;
     onCompleted: () => void;
 }
 
-function OnboardingSetupScreen({ onCompleted }: OnboardingSetupScreenProps) {
+function OnboardingSetupScreen({ email, onCompleted }: OnboardingSetupScreenProps) {
     const [newPass, setNewPass] = useState('');
     const [confirmPass, setConfirmPass] = useState('');
     const [showPass, setShowPass] = useState(false);
@@ -113,6 +114,24 @@ function OnboardingSetupScreen({ onCompleted }: OnboardingSetupScreenProps) {
             return;
         }
         recordSuccess('onboarding_otp_complete');
+
+        // ⚡ NEW (باج جلسة onboarding ميتة، 15 سبتمبر 2026): تغيير الباسورد
+        // جوه onboarding-otp (action:complete) بيستخدم admin API، وده على
+        // Supabase المستضافة بيُلغي جلسة GoTrue الحالية فورًا (auth#1579).
+        // access_token القديم يفضل شكليًا صالح (توقيعه سليم) فأي فحص محلي
+        // للـJWT (زي RLS) يفضل شغال، لكن أي فانكشن بتعمل فحص حي عند GoTrue
+        // (زي encyclopedia-download عن طريق /auth/v1/user) بترفضه 401.
+        // الحل: نعمل نفس اللي بيحصل في تسجيل الدخول اليدوي — ننده على
+        // office-login بالباسورد الجديد ونثبّت الجلسة الناتجة بـsetSession
+        // قبل onCompleted، عشان أي مكتب جديد يدخل بجلسة حقيقية من أول لحظة.
+        const { data: loginData, error: loginErr } = await db.functions.invoke('office-login', {
+            body: { action: 'login', email, password: newPass },
+        });
+        if (loginErr || loginData?.error || !loginData?.access_token) {
+            recordError('onboarding_otp_relogin', loginErr?.message || loginData?.error || 'رد غير متوقع من office-login');
+        } else {
+            await db.auth.setSession({ access_token: loginData.access_token, refresh_token: loginData.refresh_token });
+        }
         onCompleted();
     };
 
