@@ -82,6 +82,7 @@ svg { display: block; vertical-align: middle; }
 .gap-y-2 { row-gap: 0.5rem; }
 .space-y-0\.5 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.125rem; }
 .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.5rem; }
+.space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.75rem; }
 .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
 .divide-y > :not([hidden]) ~ :not([hidden]) { border-top-width: 1px; }
 .divide-white\/5 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(255 255 255 / 0.05); }
@@ -110,6 +111,14 @@ svg { display: block; vertical-align: middle; }
 .h-12 { height: 3rem; }
 .h-16 { height: 4rem; }
 .min-h-screen { min-height: 100vh; }
+/* ⚡ FIX (نفس مشكلة تداخل هيدر/فوتر المودالات، 15 سبتمبر 2026): زي
+   max-h-[92vh]، الكلاس ده كان مستخدم في كل المودالات السبعة (على جسم
+   المودال، جنب flex-1) بس مكانش متعرّف هنا — وهو الأهم فعليًا: من غيره
+   عنصر flex-1 بيفضل عنده حد أدنى ارتفاع = ارتفاع محتواه الطبيعي (سلوك
+   افتراضي في الفلكس بوكس)، فمش بيقدر ينضغط جوه سقف الـmax-height، فبيفضل
+   يكبّر المودال كله بدل ما يسكرول لوحده جوّاه. ده السبب الحقيقي وراء
+   تداخل الهيدر/الفوتر — إضافة max-h-[92vh] لوحدها ماكانتش كفاية من غيره. */
+.min-h-0 { min-height: 0px; }
 .min-w-0 { min-width: 0px; }
 .min-w-\[200px\] { min-width: 200px; }
 .max-w-sm { max-width: 24rem; }
@@ -151,6 +160,12 @@ svg { display: block; vertical-align: middle; }
 .pl-3 { padding-left: 0.75rem; }
 .pr-9 { padding-right: 2.25rem; }
 .mx-auto { margin-left: auto; margin-right: auto; }
+/* ⚡ FIX (نفس مجموعة إصلاحات المودالات، 15 سبتمبر 2026): مستخدم على كارت
+   كل مودال (my-auto) عشان يفضل متوسّط رأسيًا جوه الـbackdrop القابل
+   للسكرول حتى لو المحتوى طويل — من غيره التوسيط بيعتمد بس على
+   items-center بتاعة الأب، اللي بتنكسر (بتلزّق العنصر بالحافة) لما
+   يكون فيه overflow فعلي على الأب. */
+.my-auto { margin-top: auto; margin-bottom: auto; }
 .mb-1 { margin-bottom: 0.25rem; }
 .mb-1\.5 { margin-bottom: 0.375rem; }
 .mb-2 { margin-bottom: 0.5rem; }
