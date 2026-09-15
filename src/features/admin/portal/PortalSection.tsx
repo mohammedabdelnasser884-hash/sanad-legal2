@@ -8,11 +8,12 @@ interface PortalSectionProps {
   filteredClients: ClientRow[];
   portalAccess: PortalAccessRow[];
   setPortalClient: React.Dispatch<React.SetStateAction<ClientRow | null>>;
+  loading?: boolean;
 }
 
 type StatusTab = 'all' | 'active' | 'inactive';
 
-function PortalSection({ clientSearch, setClientSearch, filteredClients, portalAccess, setPortalClient }: PortalSectionProps) {
+function PortalSection({ clientSearch, setClientSearch, filteredClients, portalAccess, setPortalClient, loading }: PortalSectionProps) {
   const [statusTab, setStatusTab] = useState<StatusTab>('all');
 
   // ⚡ تصنيف موحّد لكل عميل: مفعّل = عنده وصول وهو شغال. غير مفعّل = أي
@@ -69,7 +70,9 @@ function PortalSection({ clientSearch, setClientSearch, filteredClients, portalA
         }, `${t.label} (${t.count})`))
       ),
 
-      visible.length === 0
+      loading
+        ? React.createElement('div',{className:"text-center text-slate-500 text-xs py-10",'data-testid':'admin-portal-loading'},"جاري تحميل الموكلين...")
+        : visible.length === 0
         ? React.createElement('div',{className:"text-center text-slate-500 text-xs py-10",'data-testid':'admin-portal-empty'},"لا يوجد موكلون")
         : visible.map(({ client, hasAccess, isActive }) => {
             return React.createElement('div',{
