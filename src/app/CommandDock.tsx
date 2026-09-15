@@ -7,6 +7,14 @@ interface CommandDockProps {
     setTab: (tab: TabName) => void;
     showMore: boolean;
     setShowMore: React.Dispatch<React.SetStateAction<boolean>>;
+    // ⚡ NEW (خطة "الموارد القانونية"، مرحلة 4 — 15 سبتمبر 2026): بوكس
+    // فرعي منبثق (نفس تصميم بوكس "المزيد")، بيفتح من زرار "الموارد
+    // القانونية" جوه بوكس "المزيد" نفسه، فيه اختيارين: "الصيغ والنماذج"
+    // (تاب 'encyclopedia' القديم، بدون أي تغيير في منطقه) و"دليل المحامي"
+    // (تاب 'lawyerGuide' الجديد). الحالة مرفوعة لـApp.tsx زي showMore
+    // بالظبط، عشان تتصفّر تلقائيًا مع أي تنقّل زي باقي المودالات المحلية.
+    showResourcesPicker: boolean;
+    setShowResourcesPicker: React.Dispatch<React.SetStateAction<boolean>>;
     isAdmin: boolean;
     navRef: (el: HTMLElement | null) => void;
     setShowAI: (v: boolean) => void;
@@ -20,12 +28,56 @@ interface CommandDockProps {
 //  الكود بالظبط، غيّرنا بس الاعتماد من closure لـ props.
 // ─────────────────────────────────────────────────────────
 function CommandDock({
-    tab, setTab, showMore, setShowMore, isAdmin, navRef,
+    tab, setTab, showMore, setShowMore, showResourcesPicker, setShowResourcesPicker, isAdmin, navRef,
     setShowAI, setSessionsInitialTab, setRemindersInitialFilter,
 }: CommandDockProps) {
+    // "الموارد القانونية" بتبان مفعّلة (نفس تأثير active بتاع تاب) لو
+    // المستخدم فاتح أي واحد من قسميها حاليًا، أو البوكس الفرعي نفسه مفتوح.
+    const resourcesActive = showResourcesPicker || tab === 'encyclopedia' || tab === 'lawyerGuide';
+
     return React.createElement('div', { className: 'fixed bottom-0 inset-x-0 z-50 flex flex-col items-center pb-3 px-3 pointer-events-none' },
 
-        showMore && React.createElement('div', {
+        // ── بوكس "الموارد القانونية" الفرعي — نفس تصميم بوكس "المزيد"
+        // بالظبط، بس باختيارين بس (الصيغ والنماذج / دليل المحامي). بيحل
+        // محل بوكس "المزيد" مؤقتًا (مش فوقه) طول ما هو مفتوح. ──
+        showResourcesPicker && React.createElement('div', {
+            className: 'pointer-events-auto w-full max-w-sm mb-2 rounded-2xl overflow-hidden relative z-50',
+            style: { background: 'rgba(6,12,26,0.97)', border: '1px solid rgba(212,175,55,0.18)', backdropFilter: 'blur(24px)', boxShadow: '0 -8px 40px rgba(0,0,0,0.7)', animation: 'slideUp 0.22s ease' }
+        },
+            React.createElement('div', { className: 'px-3 pt-3 pb-1 flex items-center gap-2' },
+                React.createElement('button', {
+                    onClick: () => { setShowResourcesPicker(false); setShowMore(true); },
+                    'data-testid': 'nav-resources-back', 'aria-label': 'رجوع',
+                    className: 'w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center text-slate-400 active:scale-90 transition-transform',
+                }, React.createElement('svg', { className: 'w-3.5 h-3.5', fill: 'none', viewBox: '0 0 24 24', strokeWidth: '2.5', stroke: 'currentColor' },
+                    React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'M8.25 4.5l7.5 7.5-7.5 7.5' }))),
+                React.createElement('p', { className: 'text-[10px] font-black text-slate-500 text-right' }, 'الموارد القانونية')
+            ),
+            React.createElement('div', { className: 'grid grid-cols-2 gap-2 px-3 pb-4' },
+                ...[
+                    { tab: 'encyclopedia' as TabName, icon: I.Doc,   label: 'الصيغ والنماذج' },
+                    { tab: 'lawyerGuide'  as TabName, icon: I.Scale, label: 'دليل المحامي' },
+                ].map((item) => React.createElement('button', {
+                    key: item.tab,
+                    onClick: () => { setTab(item.tab); setShowResourcesPicker(false); },
+                    'data-testid': 'nav-more-' + item.tab,
+                    className: `flex flex-col items-center gap-2 py-3.5 rounded-xl transition-all active:scale-95 ${tab === item.tab ? 'bg-white/8 ring-1 ring-white/10' : ''}`,
+                },
+                    React.createElement('div', { className: `w-12 h-12 rounded-2xl flex items-center justify-center ${tab === item.tab ? 'bg-amber-500/25' : 'bg-amber-500/15'}` },
+                        React.createElement(item.icon, { className: `w-6 h-6 ${tab === item.tab ? 'text-amber-400' : 'text-amber-300'}` })
+                    ),
+                    React.createElement('span', { className: `text-[10px] font-bold ${tab === item.tab ? 'text-amber-400' : 'text-amber-300'}` }, item.label)
+                ))
+            )
+        ),
+
+        showResourcesPicker && React.createElement('div', {
+            className: 'pointer-events-auto fixed inset-0 z-40',
+            style: { background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' },
+            onClick: () => setShowResourcesPicker(false)
+        }),
+
+        showMore && !showResourcesPicker && React.createElement('div', {
             className: 'pointer-events-auto w-full max-w-sm mb-2 rounded-2xl overflow-hidden relative z-50',
             style: { background: 'rgba(6,12,26,0.97)', border: '1px solid rgba(212,175,55,0.18)', backdropFilter: 'blur(24px)', boxShadow: '0 -8px 40px rgba(0,0,0,0.7)', animation: 'slideUp 0.22s ease' }
         },
@@ -34,29 +86,38 @@ function CommandDock({
             ),
             React.createElement('div', { className: 'grid grid-cols-4 gap-2 px-3 pb-4' },
                 ...[
-                    { tab: 'clients' as TabName,   icon: I.Person, label: 'الموكلين',    color: 'text-emerald-400', inactiveBg: 'bg-emerald-500/15', inactiveColor: 'text-emerald-300', activeBg: 'bg-emerald-500/25' },
-                    { tab: 'documents' as TabName, icon: I.Folder, label: 'المستندات',   color: 'text-purple-400',  inactiveBg: 'bg-purple-500/15',  inactiveColor: 'text-purple-300',  activeBg: 'bg-purple-500/25' },
-                    // ⚡ NEW (تصفح "الموسوعة القانونية" لكل المستخدمين — نسخة القراءة/
-                    // التحميل بس، مقابل قسم الإدارة الكامل المقصور على سوبر أدمن في
-                    // AdminPanel). متاح للكل عمدًا (من غير أي شرط isAdmin)، لأن
-                    // القراءة أصلاً مفتوحة لأي authenticated في RLS الجدولين.
-                    { tab: 'encyclopedia' as TabName, icon: I.Scale, label: 'الموسوعة القانونية', color: 'text-amber-400', inactiveBg: 'bg-amber-500/15', inactiveColor: 'text-amber-300', activeBg: 'bg-amber-500/25' },
+                    { tab: 'clients' as TabName,   icon: I.Person, label: 'الموكلين',    color: 'text-emerald-400', inactiveBg: 'bg-emerald-500/15', inactiveColor: 'text-emerald-300', activeBg: 'bg-emerald-500/25', isResourcesTrigger: false },
+                    { tab: 'documents' as TabName, icon: I.Folder, label: 'المستندات',   color: 'text-purple-400',  inactiveBg: 'bg-purple-500/15',  inactiveColor: 'text-purple-300',  activeBg: 'bg-purple-500/25', isResourcesTrigger: false },
+                    // ⚡ UPDATED (خطة "الموارد القانونية"، مرحلة 4 — 15 سبتمبر 2026):
+                    // كان زرار "الموسوعة القانونية" بينقّل مباشرة لتاب 'encyclopedia'.
+                    // بقى دلوقتي زرار أب "الموارد القانونية" بيفتح البوكس الفرعي فوق
+                    // (فيه "الصيغ والنماذج" و"دليل المحامي")، بدل التنقل المباشر —
+                    // isResourcesTrigger بيتفحص في onClick تحت بدل استدعاء setTab.
+                    // لسه متاح للكل عمدًا (من غير أي شرط isAdmin)، لأن القراءة أصلاً
+                    // مفتوحة لأي authenticated في RLS جداول القسمين.
+                    { tab: 'encyclopedia' as TabName, icon: I.Scale, label: 'الموارد القانونية', color: 'text-amber-400', inactiveBg: 'bg-amber-500/15', inactiveColor: 'text-amber-300', activeBg: 'bg-amber-500/25', isResourcesTrigger: true },
                     // ⚡ NEW (خطة تفعيل الصلاحيات التفصيلية، مرحلة 3): can_view_fees
                     // مقفول بلا استثناء لغير admin (قرار 2.1) = نفس isAdmin دايمًا —
                     // بالتالي زرار "الأتعاب" اتلحق بنفس شرط "لوحة الإدارة" تحت.
-                    ...(isAdmin ? [{ tab: 'fees' as TabName, icon: I.Money, label: 'الأتعاب', color: 'text-amber-300', inactiveBg: 'bg-amber-500/15', inactiveColor: 'text-amber-300', activeBg: 'bg-amber-500/25' }] : []),
-                    ...(isAdmin ? [{ tab: 'admin' as TabName, icon: I.Shield, label: 'لوحة الإدارة', color: 'text-red-400', inactiveBg: 'bg-red-500/15', inactiveColor: 'text-red-300', activeBg: 'bg-red-500/25' }] : []),
-                ].map((item) => React.createElement('button', {
+                    ...(isAdmin ? [{ tab: 'fees' as TabName, icon: I.Money, label: 'الأتعاب', color: 'text-amber-300', inactiveBg: 'bg-amber-500/15', inactiveColor: 'text-amber-300', activeBg: 'bg-amber-500/25', isResourcesTrigger: false }] : []),
+                    ...(isAdmin ? [{ tab: 'admin' as TabName, icon: I.Shield, label: 'لوحة الإدارة', color: 'text-red-400', inactiveBg: 'bg-red-500/15', inactiveColor: 'text-red-300', activeBg: 'bg-red-500/25', isResourcesTrigger: false }] : []),
+                ].map((item) => {
+                    const isActive = item.isResourcesTrigger ? resourcesActive : tab === item.tab;
+                    return React.createElement('button', {
                     key: item.tab,
-                    onClick: () => { setTab(item.tab); setShowMore(false); },
-                    'data-testid': 'nav-more-' + item.tab,
-                    className: `flex flex-col items-center gap-2 py-3.5 rounded-xl transition-all active:scale-95 ${tab === item.tab ? 'bg-white/8 ring-1 ring-white/10' : ''}`,
+                    onClick: () => {
+                        if (item.isResourcesTrigger) { setShowMore(false); setShowResourcesPicker(true); return; }
+                        setTab(item.tab); setShowMore(false);
+                    },
+                    'data-testid': item.isResourcesTrigger ? 'nav-more-resources' : 'nav-more-' + item.tab,
+                    className: `flex flex-col items-center gap-2 py-3.5 rounded-xl transition-all active:scale-95 ${isActive ? 'bg-white/8 ring-1 ring-white/10' : ''}`,
                 },
-                    React.createElement('div', { className: `w-12 h-12 rounded-2xl flex items-center justify-center ${tab === item.tab ? item.activeBg : item.inactiveBg}` },
-                        React.createElement(item.icon, { className: `w-6 h-6 ${tab === item.tab ? item.color : item.inactiveColor}` })
+                    React.createElement('div', { className: `w-12 h-12 rounded-2xl flex items-center justify-center ${isActive ? item.activeBg : item.inactiveBg}` },
+                        React.createElement(item.icon, { className: `w-6 h-6 ${isActive ? item.color : item.inactiveColor}` })
                     ),
-                    React.createElement('span', { className: `text-[10px] font-bold ${tab === item.tab ? item.color : item.inactiveColor}` }, item.label)
-                ))
+                    React.createElement('span', { className: `text-[10px] font-bold ${isActive ? item.color : item.inactiveColor}` }, item.label)
+                    );
+                })
             )
         ),
 
@@ -154,21 +215,21 @@ function CommandDock({
             ),
             // المزيد
             React.createElement('button', {
-                onClick: () => setShowMore((v) => !v),
+                onClick: () => { setShowResourcesPicker(false); setShowMore((v) => !v); },
                 'data-testid': 'nav-more-toggle',
                 className: 'flex flex-col items-center justify-center gap-[3px] flex-1 h-[50px] rounded-[18px] transition-all duration-200 active:scale-90 relative',
-                style: (showMore || ['clients', 'fees', 'documents', 'encyclopedia', 'admin'].includes(tab)) ? { background: 'rgba(212,175,55,0.1)' } : {}
+                style: (showMore || showResourcesPicker || ['clients', 'fees', 'documents', 'encyclopedia', 'lawyerGuide', 'admin'].includes(tab)) ? { background: 'rgba(212,175,55,0.1)' } : {}
             },
                 React.createElement('svg', {
-                    className: `w-6 h-6 transition-all duration-200 ${(showMore || ['clients', 'fees', 'documents', 'encyclopedia', 'admin'].includes(tab)) ? 'text-premium-gold -translate-y-[1px]' : 'text-white/80'}`,
+                    className: `w-6 h-6 transition-all duration-200 ${(showMore || showResourcesPicker || ['clients', 'fees', 'documents', 'encyclopedia', 'lawyerGuide', 'admin'].includes(tab)) ? 'text-premium-gold -translate-y-[1px]' : 'text-white/80'}`,
                     fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', strokeWidth: '2'
                 },
                     React.createElement('circle', { cx: '5',  cy: '12', r: '1.5', fill: 'currentColor' }),
                     React.createElement('circle', { cx: '12', cy: '12', r: '1.5', fill: 'currentColor' }),
                     React.createElement('circle', { cx: '19', cy: '12', r: '1.5', fill: 'currentColor' })
                 ),
-                React.createElement('span', { className: `text-[9.5px] font-bold transition-colors duration-200 ${(showMore || ['clients', 'fees', 'documents', 'encyclopedia', 'admin'].includes(tab)) ? 'text-premium-gold' : 'text-white/70'}` }, 'المزيد'),
-                (showMore || ['clients', 'fees', 'documents', 'encyclopedia', 'admin'].includes(tab)) && React.createElement('div', { className: 'absolute bottom-[5px] left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full', style: { background: '#D4AF37', boxShadow: '0 0 10px 3px rgba(212,175,55,0.5)', animation: 'glowPulse 2.5s ease-in-out infinite' } })
+                React.createElement('span', { className: `text-[9.5px] font-bold transition-colors duration-200 ${(showMore || showResourcesPicker || ['clients', 'fees', 'documents', 'encyclopedia', 'lawyerGuide', 'admin'].includes(tab)) ? 'text-premium-gold' : 'text-white/70'}` }, 'المزيد'),
+                (showMore || showResourcesPicker || ['clients', 'fees', 'documents', 'encyclopedia', 'lawyerGuide', 'admin'].includes(tab)) && React.createElement('div', { className: 'absolute bottom-[5px] left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full', style: { background: '#D4AF37', boxShadow: '0 0 10px 3px rgba(212,175,55,0.5)', animation: 'glowPulse 2.5s ease-in-out infinite' } })
             )
         )
     );
