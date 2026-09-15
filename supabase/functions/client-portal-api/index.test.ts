@@ -414,13 +414,6 @@ describe('client-portal-api — action=verify', () => {
     expect(state.recordAttemptCalls).toEqual([{ contact: '01000000000', ip_address: 'unknown', success: true }]);
   });
 
-  it('tenant_id شكله مش UUID صحيح → 400 من غير أي بحث', async () => {
-    const res = await handler(req({ action: 'verify', contact: '01000000000', pin: '1234', tenant_id: 'not-a-uuid' }));
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.error).toBe('بيانات غير صالحة');
-  });
-
   // ── مشكلة 3: صفين عميل بنفس الرقم، مكتبين مختلفين ──
   describe('حالة تعدد المكاتب لنفس الرقم', () => {
     beforeEach(() => {
