@@ -14,19 +14,40 @@ interface LawyerGuideSectionProps {
   setGuideLinkModalCategoryId: React.Dispatch<React.SetStateAction<string | null>>;
   setShowGuideLinkModal: React.Dispatch<React.SetStateAction<boolean>>;
   setConfirmDeleteGuideLink: React.Dispatch<React.SetStateAction<LawyerGuideLinkRow | null>>;
+  reordering: boolean;
+  handleReorderGuideLink: (link: LawyerGuideLinkRow, direction: 'up' | 'down') => void;
 }
 
-// بطاقة رابط — بتتكرر جوه أي تصنيف مفتوح
-function LinkCard({ link, onEdit, onDelete }: {
+// بطاقة رابط — بتتكرر جوه أي تصنيف مفتوح. أزرار "لأعلى/لأسفل" اختيارية
+// (بترتيب يدوي — قرار #1 محسوم) بتظهر بس جوه تصنيف مفتوح، مش في نتائج
+// البحث اللي بتخلط روابط من تصنيفات مختلفة (الترتيب هناك مالوش معنى).
+function LinkCard({ link, onEdit, onDelete, onMoveUp, onMoveDown, reordering }: {
   link: LawyerGuideLinkRow;
   onEdit: () => void;
   onDelete: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  reordering?: boolean;
 }) {
   return React.createElement('div', {
     key: link.id, 'data-testid': 'admin-lawyer-guide-link-card',
     className: 'bg-premium-card border border-white/5 rounded-2xl p-3.5 space-y-2',
   },
     React.createElement('div', { className: 'flex items-start gap-2.5' },
+      (onMoveUp || onMoveDown) && React.createElement('div', { className: 'flex flex-col gap-1 shrink-0' },
+        React.createElement('button', {
+          onClick: onMoveUp, disabled: !onMoveUp || reordering,
+          'data-testid': 'admin-lawyer-guide-link-move-up',
+          className: 'w-6 h-6 rounded-md bg-white/5 border border-white/10 text-slate-300 flex items-center justify-center disabled:opacity-25 active:scale-90 transition-transform',
+        }, React.createElement('svg', { className: 'w-3 h-3', fill: 'none', viewBox: '0 0 24 24', strokeWidth: '2.5', stroke: 'currentColor' },
+          React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'M4.5 15.75l7.5-7.5 7.5 7.5' }))),
+        React.createElement('button', {
+          onClick: onMoveDown, disabled: !onMoveDown || reordering,
+          'data-testid': 'admin-lawyer-guide-link-move-down',
+          className: 'w-6 h-6 rounded-md bg-white/5 border border-white/10 text-slate-300 flex items-center justify-center disabled:opacity-25 active:scale-90 transition-transform',
+        }, React.createElement('svg', { className: 'w-3 h-3', fill: 'none', viewBox: '0 0 24 24', strokeWidth: '2.5', stroke: 'currentColor' },
+          React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', d: 'M19.5 8.25l-7.5 7.5-7.5-7.5' })))
+      ),
       React.createElement('div', { className: 'w-8 h-8 rounded-xl bg-amber-400/10 flex items-center justify-center text-amber-400 shrink-0' },
         React.createElement(I.ExternalLink)
       ),
@@ -96,6 +117,7 @@ function LawyerGuideSection({
   loadingLawyerGuide, guideCategories, guideLinks,
   setEditingGuideCategory, setShowGuideCategoryModal, setConfirmDeleteGuideCategory,
   setEditingGuideLink, setGuideLinkModalCategoryId, setShowGuideLinkModal, setConfirmDeleteGuideLink,
+  reordering, handleReorderGuideLink,
 }: LawyerGuideSectionProps) {
   // مستوى واحد بس — activeCategoryId يمثل التصنيف المفتوح حاليًا، null = القائمة الرئيسية
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
@@ -182,14 +204,16 @@ function LawyerGuideSection({
             }))
       ),
 
-      // ── داخل تصنيف: روابطه ──
+      // ── داخل تصنيف: روابطه (بالترتيب اليدوي — أزرار لأعلى/لأسفل) ──
       activeCategory && (
         linksOf(activeCategory.id).length === 0
           ? React.createElement('div', { 'data-testid': 'admin-lawyer-guide-empty', className: 'bg-premium-card border border-white/5 rounded-xl p-10 text-center text-slate-500 text-xs' }, 'التصنيف فارغ حاليًا')
-          : linksOf(activeCategory.id).map((link) => React.createElement(LinkCard, {
-              key: link.id, link,
+          : linksOf(activeCategory.id).map((link, idx, arr) => React.createElement(LinkCard, {
+              key: link.id, link, reordering,
               onEdit: () => { setEditingGuideLink(link); setGuideLinkModalCategoryId(null); setShowGuideLinkModal(true); },
               onDelete: () => setConfirmDeleteGuideLink(link),
+              onMoveUp: idx > 0 ? () => handleReorderGuideLink(link, 'up') : undefined,
+              onMoveDown: idx < arr.length - 1 ? () => handleReorderGuideLink(link, 'down') : undefined,
             }))
       )
     )
