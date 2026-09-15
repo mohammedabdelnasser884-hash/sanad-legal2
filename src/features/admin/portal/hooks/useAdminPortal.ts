@@ -16,9 +16,13 @@ export type PortalAccessRow = {
 };
 
 // شكل البيانات الفعلي اللي بتبعته AddPortalUserModal.tsx / ClientPortalModal.tsx لـ onSave
+// 🆕 (مشكلة #2 — تقرير تشخيص بوابة الموكل): pin بقى ممكن يبقى null —
+// ده معناه "سيب الـPIN الحالي زي ما هو" (ClientPortalModal.tsx بيبعتها
+// كده لما يعدّل حالة التفعيل بس لعميل عنده بوابة مفعّلة بالفعل).
+// AddPortalUserModal.tsx (عميل جديد) لسه بيبعت string كامل زي الأول.
 export interface PortalSaveForm {
   client_id: string;
-  pin: string;
+  pin: string | null;
   is_active: boolean;
   client_name: string;
   email: string | null;
