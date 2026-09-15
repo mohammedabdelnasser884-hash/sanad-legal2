@@ -668,7 +668,13 @@ function App() {
     }
     if (profile.onboarding_status === 'pending_setup') {
         return React.createElement(OnboardingSetupScreen, {
-            email: profile.email,
+            // ⚡ profile.email/authUser.email متعرّفين string | null في الأنواع
+            // (عمود قابل للـnull في قاعدة البيانات)، لكن عمليًا محال يبقى فاضي
+            // هنا — المستخدم لسه واصل من OnboardingVerifyScreen اللي بتأكد
+            // إيميله بالـOTP. الـ '' fallback حماية للأنواع بس؛ لو حصل (نادر
+            // جدًا) office-login هيرفضها بهدوء وrecordError هيسجلها من غير ما
+            // يوقف رحلة onboarding (نفس سلوك أي فشل تاني في الخطوة دي).
+            email: profile.email ?? authUser.email ?? '',
             onCompleted: () => setProfile((p) => (p ? { ...p, onboarding_status: 'completed' } : p)),
         });
     }
