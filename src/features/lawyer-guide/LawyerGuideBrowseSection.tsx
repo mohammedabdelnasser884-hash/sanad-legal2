@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { I } from '../../constants';
 import { useNestedModalBackButton } from '../../shared/lib/useNestedModalBackButton';
+import { matchesSearchWords } from '../../shared/lib/textSearch';
 import type { LawyerGuideCategoryRow, LawyerGuideLinkRow } from '../../types';
 
 interface LawyerGuideBrowseSectionProps {
@@ -137,16 +138,22 @@ function LawyerGuideBrowseSection({
 
   useNestedModalBackButton(activeCategory !== null, () => setActiveCategoryId(null));
 
+  const categoryLabelFor = (categoryId: string) =>
+    categories.find((c) => c.id === categoryId)?.name_ar || '';
+
+  // ── البحث: مستقل تمامًا بذاته — مش جزء من البحث العام
+  // (useUniversalSearch) ومش بيتقاطع مع بحث الموسوعة. نطاق المطابقة هنا
+  // أوسع من الموسوعة عمدًا: بيشمل entity_type (وزارة/هيئة/بنك...) واسم
+  // التصنيف كمان، مش بس العنوان والوصف — عشان "بنك" أو "هيئة" يرجّعوا كل
+  // الجهات من النوع ده حتى لو الكلمة نفسها مش مكتوبة في العنوان/الوصف. ──
   const trimmedQuery = searchQuery.trim();
   const isSearching = trimmedQuery.length > 0;
   const searchResults = isSearching
-    ? links.filter((l) =>
-        l.title.toLowerCase().includes(trimmedQuery.toLowerCase())
-        || (l.description || '').toLowerCase().includes(trimmedQuery.toLowerCase())
-      )
+    ? links.filter((l) => matchesSearchWords(
+        `${l.title} ${l.description || ''} ${l.entity_type || ''} ${categoryLabelFor(l.category_id)}`,
+        trimmedQuery,
+      ))
     : [];
-  const categoryLabelFor = (categoryId: string) =>
-    categories.find((c) => c.id === categoryId)?.name_ar || '';
   useNestedModalBackButton(isSearching, () => setSearchQuery(''));
 
   if (loadingLawyerGuide) {
