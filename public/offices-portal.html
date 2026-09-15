@@ -538,6 +538,47 @@
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════ -->
+<!--  مودال رسايل واتساب جاهزة (اشتراك/تجديد/طارئ)           -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="message-modal" class="hidden fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4 overflow-y-auto">
+  <div class="bg-premium-card border border-white/10 rounded-3xl w-full max-w-lg overflow-hidden slide-enter flex flex-col max-h-[92vh] my-auto">
+    <div class="bg-[#070d1a] px-5 py-4 border-b border-white/5 flex items-center justify-between shrink-0">
+      <div>
+        <h3 class="text-sm font-black text-white">رسالة جاهزة للمكتب</h3>
+        <p id="message-modal-office" class="text-[10px] text-slate-500 font-bold mt-0.5"></p>
+      </div>
+      <button onclick="closeMessageModal()" class="w-8 h-8 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center text-slate-400 active:scale-95 transition-transform">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
+      <div>
+        <label class="text-[10px] font-black text-slate-400 block mb-2">اختر القالب</label>
+        <div id="message-template-list" class="space-y-3"></div>
+      </div>
+      <div>
+        <label class="text-[10px] font-black text-slate-400 block mb-1">نص الرسالة (قابل للتعديل قبل الإرسال)</label>
+        <textarea id="message-text" rows="7" placeholder="اختر قالب من فوق، أو اكتب رسالتك هنا مباشرة..."
+          class="w-full bg-[#070d1a] border border-white/5 rounded-xl px-4 py-3 text-xs text-white font-bold resize-none leading-relaxed"></textarea>
+      </div>
+      <p id="message-no-phone-note" class="hidden text-[10px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
+        ⚠️ مفيش رقم هاتف مسجّل لهذا المكتب — تقدر تنسخ النص بس مش تبعته من هنا مباشرة.
+      </p>
+    </div>
+    <div class="bg-[#070d1a] px-5 py-4 border-t border-white/5 grid grid-cols-2 gap-2 shrink-0">
+      <button onclick="copyMessageText()" id="message-copy-btn"
+        class="w-full py-2.5 bg-white/5 border border-white/5 text-slate-200 rounded-xl font-black text-xs active:scale-95 transition-transform">
+        📋 نسخ النص
+      </button>
+      <button onclick="sendMessageViaWhatsApp()" id="message-send-btn"
+        class="w-full py-2.5 bg-gradient-to-tr from-emerald-600 to-emerald-400 text-white rounded-xl font-black text-xs active:scale-95 transition-transform">
+        💬 إرسال واتساب
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[99] px-4 py-2.5 rounded-2xl text-xs font-black text-white shadow-xl min-w-[200px] text-center transition-all"></div>
 
@@ -665,6 +706,123 @@ function esc(s) {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
 }
+
+// ══════════════════════════════════════════════════════
+//  رسايل واتساب جاهزة لمدير المكتب (اشتراك/تجديد/طارئ)
+//  15 قالب ثابت مقسّمين على 5 فئات — بدون AI عمدًا (رسايل رسمية
+//  متكررة بنفس الصيغة تقريبًا، القالب الثابت أسرع وأضمن من توليد
+//  حر). كل قالب بيتعبّى ببيانات المكتب المتاحة فعليًا فى allTenants
+//  (subscription_due_at/trial_ends_at/subscription_plan)، والنص
+//  الناتج قابل للتعديل اليدوي بالكامل قبل الإرسال (textarea فى
+//  المودال) — تعديل القوالب نفسها فى الكود ده لحد ما نحتاج شاشة
+//  إعدادات منفصلة لاحقًا.
+// ══════════════════════════════════════════════════════
+
+const MESSAGE_TEMPLATE_CATEGORIES = [
+  { id: 'trial',   label: 'الفترة التجريبية' },
+  { id: 'renewal', label: 'التجديد والاستحقاق' },
+  { id: 'confirm', label: 'تأكيدات' },
+  { id: 'account', label: 'إجراءات الحساب' },
+  { id: 'general', label: 'طارئ وعام' },
+];
+
+function mtDaysLeft(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr); d.setHours(0, 0, 0, 0);
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  return Math.ceil((d - now) / (1000 * 60 * 60 * 24));
+}
+function mtAddDays(dateStr, days) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr); d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function mtDayWord(n) { return Math.abs(n) === 1 ? 'يوم' : 'أيام'; }
+function mtPlan(t) { return PLAN_LABEL[t.subscription_plan] || t.subscription_plan || 'باقتكم'; }
+function mtDue(t) { return t.subscription_due_at ? t.subscription_due_at.slice(0, 10) : '—'; }
+function mtTrialEnd(t) { return t.trial_ends_at ? t.trial_ends_at.slice(0, 10) : '—'; }
+
+const SANAD_SIGNATURE = 'فريق سَنَد';
+
+const MESSAGE_TEMPLATES = [
+  // ── الفترة التجريبية ──────────────────────────────────
+  {
+    id: 'trial_welcome', category: 'trial', label: '🎉 ترحيب ببداية التجربة',
+    build: (t) => `مرحبًا بمكتب ${t.name} في سَنَد! 🎉\nتم تفعيل فترتكم التجريبية المجانية، وسارية لحد ${mtTrialEnd(t)}.\nخلال الفترة دي تقدروا تجربوا النظام بكل مميزاته من غير أي التزام. لو احتجتوا أي مساعدة في البداية، إحنا موجودين.\n\n${SANAD_SIGNATURE}`,
+  },
+  {
+    id: 'trial_reminder', category: 'trial', label: '⏳ تذكير باقتراب انتهاء التجربة',
+    build: (t) => {
+      const d = mtDaysLeft(t.trial_ends_at);
+      const daysLine = d !== null ? `هتنتهي بعد ${d} ${mtDayWord(d)} (بتاريخ ${mtTrialEnd(t)})` : `هتنتهي قريبًا (${mtTrialEnd(t)})`;
+      return `تحية طيبة لمكتب ${t.name}،\nفترتكم التجريبية في سَنَد ${daysLine}.\nعشان تفضلوا مستخدمين النظام بدون أي انقطاع، يُفضّل تفعيل باقة مناسبة قبل الموعد ده. مستعدين نساعدكم تختاروا الباقة الأنسب لو حابين.\n\n${SANAD_SIGNATURE}`;
+    },
+  },
+  {
+    id: 'trial_ended_viewonly', category: 'trial', label: '👁 التجربة خلصت (مشاهدة فقط)',
+    build: (t) => `مرحبًا مكتب ${t.name}،\nالفترة التجريبية خلصت، والحساب دلوقتي في وضع "مشاهدة فقط" — تقدروا تشوفوا بياناتكم القديمة بس مينفعش تضيفوا أو تعدّلوا حاجة جديدة.\nلتفعيل باقة مدفوعة والرجوع للاستخدام الكامل، تواصلوا معانا في أقرب وقت.\n\n${SANAD_SIGNATURE}`,
+  },
+
+  // ── التجديد والاستحقاق ────────────────────────────────
+  {
+    id: 'renewal_soon', category: 'renewal', label: '📅 تذكير تجديد قريب',
+    build: (t) => {
+      const d = mtDaysLeft(t.subscription_due_at);
+      const daysLine = d !== null ? `هتستحق التجديد بعد ${d} ${mtDayWord(d)} (بتاريخ ${mtDue(t)})` : `هتستحق التجديد قريبًا (${mtDue(t)})`;
+      return `تحية طيبة لمكتب ${t.name}،\nباقتكم (${mtPlan(t)}) ${daysLine}.\nياريت نتأكد من التجديد قبل الموعد عشان تفضل خدمتكم متواصلة بدون أي انقطاع.\n\n${SANAD_SIGNATURE}`;
+    },
+  },
+  {
+    id: 'renewal_due_now', category: 'renewal', label: '🔔 الاستحقاق اليوم/غدًا',
+    build: (t) => `تنبيه مهم لمكتب ${t.name} 🔔\nباقتكم (${mtPlan(t)}) بتستحق التجديد النهاردة (${mtDue(t)}). ياريت نتم التجديد في أقرب وقت ممكن عشان مايحصلش أي تأثير على استخدامكم للنظام.\n\n${SANAD_SIGNATURE}`,
+  },
+  {
+    id: 'grace_period', category: 'renewal', label: '⏳ فترة سماح (تأخر عن الاستحقاق)',
+    build: (t) => `مرحبًا مكتب ${t.name}،\nميعاد تجديد اشتراككم فات (${mtDue(t)}) وحسابكم دلوقتي في فترة سماح لحد ${mtAddDays(t.subscription_due_at, 7)}.\nبعد فترة السماح لو مافيش تجديد، الحساب هيتحول لوضع مشاهدة فقط. ياريت نجدد بأسرع وقت ممكن.\n\n${SANAD_SIGNATURE}`,
+  },
+  {
+    id: 'readonly_warning', category: 'renewal', label: '👁 تحذير مشاهدة فقط (تأخر أكتر)',
+    build: (t) => `مرحبًا مكتب ${t.name}،\nحسابكم دلوقتي في وضع "مشاهدة فقط" بسبب تأخر تجديد الاشتراك (كان مستحق ${mtDue(t)}). تقدروا تشوفوا بياناتكم بس مينفعش تضيفوا أو تعدّلوا حاجة جديدة.\nلو مافيش تجديد قريب، الحساب هيتقفل نهائيًا. تواصلوا معانا فورًا لتجنب ده.\n\n${SANAD_SIGNATURE}`,
+  },
+  {
+    id: 'locked_notice', category: 'renewal', label: '🔒 إشعار قفل نهائي',
+    build: (t) => `مكتب ${t.name}،\nبسبب استمرار تأخر التجديد، تم قفل حسابكم نهائيًا في سَنَد.\nلإعادة تفعيل الحساب واسترجاع الوصول الكامل لبياناتكم، تواصلوا معانا في أقرب وقت لتسوية الاشتراك.\n\n${SANAD_SIGNATURE}`,
+  },
+
+  // ── تأكيدات ───────────────────────────────────────────
+  {
+    id: 'payment_confirmed', category: 'confirm', label: '✅ تأكيد استلام الدفع والتجديد',
+    build: (t) => `مرحبًا مكتب ${t.name}،\nتم استلام دفعتكم بنجاح، وتم تجديد باقتكم (${mtPlan(t)}) وسارية لحد ${mtDue(t)}. ✅\nشكرًا لثقتكم في سَنَد، ونتمنى لكم استخدام موفّق.\n\n${SANAD_SIGNATURE}`,
+  },
+  {
+    id: 'plan_upgraded', category: 'confirm', label: '⬆️ تأكيد ترقية الباقة',
+    build: (t) => `مرحبًا مكتب ${t.name}،\nتم ترقية باقتكم بنجاح إلى ${mtPlan(t)}. ✅ الباقة الجديدة سارية لحد ${mtDue(t)}.\nمبروك الترقية! لو احتجتوا أي مساعدة في استخدام المميزات الجديدة، إحنا موجودين.\n\n${SANAD_SIGNATURE}`,
+  },
+  {
+    id: 'plan_downgraded', category: 'confirm', label: '⬇️ تأكيد تغيير/تنزيل الباقة',
+    build: (t) => `مرحبًا مكتب ${t.name}،\nتم تنفيذ طلبكم بتغيير الباقة إلى ${mtPlan(t)}، وسارية لحد ${mtDue(t)}.\nلو احتجتوا أي توضيح بخصوص حدود الباقة الجديدة، تواصلوا معانا.\n\n${SANAD_SIGNATURE}`,
+  },
+
+  // ── إجراءات الحساب ────────────────────────────────────
+  {
+    id: 'account_suspended', category: 'account', label: '⏸ إشعار إيقاف الحساب',
+    build: (t) => `مكتب ${t.name}،\nنود إعلامكم إن حسابكم في سَنَد تم إيقافه مؤقتًا. لمعرفة السبب أو لإعادة التفعيل، تواصلوا معانا في أقرب وقت.\n\n${SANAD_SIGNATURE}`,
+  },
+  {
+    id: 'account_reactivated', category: 'account', label: '▶️ إشعار إعادة تفعيل الحساب',
+    build: (t) => `مرحبًا مكتب ${t.name}،\nحسابكم في سَنَد تم إعادة تفعيله بنجاح، وتقدروا تستخدموا النظام بشكل طبيعي دلوقتي. ✅\n\n${SANAD_SIGNATURE}`,
+  },
+
+  // ── طارئ وعام ─────────────────────────────────────────
+  {
+    id: 'maintenance', category: 'general', label: '⚠️ صيانة مجدولة / انقطاع مؤقت',
+    build: (t) => `تنبيه لمكتب ${t.name} ⚠️\nهيكون في صيانة مجدولة على نظام سَنَد ممكن تتسبب في انقطاع مؤقت للخدمة [حدّد الموعد والمدة هنا]. سيتم استرجاع الخدمة بالكامل بعد انتهاء الصيانة.\nنعتذر عن أي إزعاج ونشكر تفهمكم.\n\n${SANAD_SIGNATURE}`,
+  },
+  {
+    id: 'custom_blank', category: 'general', label: '✏️ رسالة مخصّصة (فاضية)',
+    build: (t) => ``,
+  },
+];
 
 // ─── State ────────────────────────────────────────────
 let allTenants    = [];
@@ -1034,10 +1192,16 @@ function renderAlerts() {
                   <p style="font-size:11px;font-weight:900;color:white">${esc(t.name)}</p>
                   <span style="color:${subState === 'locked' ? '#7f1d1d' : '#fb923c'}"> — ${stateLabel[subState]}</span>
                 </div>
-                <button onclick="openConfirmPaymentModal('${t.id}')"
-                  style="font-size:10px;font-weight:900;color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
-                  تجديد ↗
-                </button>
+                <div style="display:flex;gap:6px;flex-shrink:0">
+                  <button onclick="openMessageModal('${t.id}','${subState === 'locked' ? 'locked_notice' : subState === 'readonly' ? 'readonly_warning' : 'grace_period'}')"
+                    style="font-size:10px;font-weight:900;color:#C9A84C;background:rgba(200,168,75,0.1);border:1px solid rgba(200,168,75,0.25);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
+                    💬 رسالة
+                  </button>
+                  <button onclick="openConfirmPaymentModal('${t.id}')"
+                    style="font-size:10px;font-weight:900;color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
+                    تجديد ↗
+                  </button>
+                </div>
               </div>
           `).join('')}
         </div>
@@ -1069,10 +1233,16 @@ function renderAlerts() {
                   <p style="font-size:11px;font-weight:900;color:white">${esc(t.name)}</p>
                   <span style="color:#fbbf24"> — باقي ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'أيام'}</span>
                 </div>
-                <button onclick="openConfirmPaymentModal('${t.id}')"
-                  style="font-size:10px;font-weight:900;color:#fbbf24;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
-                  تجديد ↗
-                </button>
+                <div style="display:flex;gap:6px;flex-shrink:0">
+                  <button onclick="openMessageModal('${t.id}','${daysLeft <= 1 ? 'renewal_due_now' : 'renewal_soon'}')"
+                    style="font-size:10px;font-weight:900;color:#C9A84C;background:rgba(200,168,75,0.1);border:1px solid rgba(200,168,75,0.25);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
+                    💬 رسالة
+                  </button>
+                  <button onclick="openConfirmPaymentModal('${t.id}')"
+                    style="font-size:10px;font-weight:900;color:#fbbf24;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
+                    تجديد ↗
+                  </button>
+                </div>
               </div>
             `;
           }).join('')}
@@ -1095,10 +1265,16 @@ function renderAlerts() {
           ${trialExpired.map(t => `
               <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.2);border-radius:12px;padding:8px 12px">
                 <p style="font-size:11px;font-weight:900;color:white">${esc(t.name)}</p>
-                <button onclick="openConfirmPaymentModal('${t.id}')"
-                  style="font-size:10px;font-weight:900;color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
-                  تفعيل باقة ↗
-                </button>
+                <div style="display:flex;gap:6px;flex-shrink:0">
+                  <button onclick="openMessageModal('${t.id}','trial_ended_viewonly')"
+                    style="font-size:10px;font-weight:900;color:#C9A84C;background:rgba(200,168,75,0.1);border:1px solid rgba(200,168,75,0.25);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
+                    💬 رسالة
+                  </button>
+                  <button onclick="openConfirmPaymentModal('${t.id}')"
+                    style="font-size:10px;font-weight:900;color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
+                    تفعيل باقة ↗
+                  </button>
+                </div>
               </div>
           `).join('')}
         </div>
@@ -1125,10 +1301,16 @@ function renderAlerts() {
                   <p style="font-size:11px;font-weight:900;color:white">${esc(t.name)}</p>
                   <span style="color:#fbbf24"> — باقي ${daysLeft} ${daysLeft === 1 ? 'يوم' : 'أيام'}</span>
                 </div>
-                <button onclick="openConfirmPaymentModal('${t.id}')"
-                  style="font-size:10px;font-weight:900;color:#fbbf24;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
-                  تفعيل باقة ↗
-                </button>
+                <div style="display:flex;gap:6px;flex-shrink:0">
+                  <button onclick="openMessageModal('${t.id}','trial_reminder')"
+                    style="font-size:10px;font-weight:900;color:#C9A84C;background:rgba(200,168,75,0.1);border:1px solid rgba(200,168,75,0.25);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
+                    💬 رسالة
+                  </button>
+                  <button onclick="openConfirmPaymentModal('${t.id}')"
+                    style="font-size:10px;font-weight:900;color:#fbbf24;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);border-radius:8px;padding:4px 10px;cursor:pointer;white-space:nowrap">
+                    تفعيل باقة ↗
+                  </button>
+                </div>
               </div>
             `;
           }).join('')}
@@ -1258,6 +1440,10 @@ function renderTable() {
               <span style="font-size:9px;font-weight:900;color:#25d366">واتساب</span>
             </a>
           ` : ''}
+          <button onclick="openMessageModal('${t.id}')" title="رسالة جاهزة"
+            style="display:inline-flex;align-items:center;gap:4px;background:rgba(200,168,75,0.1);border:1px solid rgba(200,168,75,0.25);border-radius:7px;padding:3px 8px;cursor:pointer">
+            <span style="font-size:9px;font-weight:900;color:#C9A84C">💬 رسالة</span>
+          </button>
         </div>
       </td>
       <td class="py-3 px-4">
@@ -1396,6 +1582,7 @@ function buildOfficeDetailHTML(t) {
       ${infoRow('الباقة', `<span style="color:${PLAN_COLOR[t.subscription_plan]||'#94a3b8'}">${PLAN_LABEL[t.subscription_plan]||t.subscription_plan}</span>${subStatusBadge}`)}
       ${infoRow('الحالة', `${STATUS_BADGE[t.status]||t.status}${onboardingRow ? `<div class="mt-1">${onboardingRow}</div>` : ''}`)}
       ${infoRow('الهاتف', t.phone ? `${esc(t.phone)}${t.phone ? ` &nbsp;<a href="https://wa.me/${t.phone.replace(/[^0-9]/g,'')}" target="_blank" class="text-emerald-400">واتساب ↗</a>` : ''}` : '—')}
+      ${infoRow('رسالة جاهزة', `<button onclick="closeOfficeDetailModal(); openMessageModal('${t.id}')" style="font-size:10px;font-weight:900;color:#C9A84C;background:rgba(200,168,75,0.1);border:1px solid rgba(200,168,75,0.25);border-radius:7px;padding:3px 10px;cursor:pointer">💬 اختار قالب وابعت</button>`)}
       ${infoRow('تاريخ الإنشاء', t.created_at ? t.created_at.slice(0,10) : '—')}
       ${infoRow('انتهاء التجربة', trialRow)}
       ${t.subscription_due_at ? infoRow('استحقاق التجديد', t.subscription_due_at.slice(0,10)) : ''}
@@ -1455,6 +1642,91 @@ function closeStatsModal() {
 }
 function closeOfficeDetailModal() {
   hideModal('office-detail-modal');
+}
+
+// ─── مودال رسايل واتساب جاهزة (اشتراك/تجديد/طارئ) ────────
+let messageModalTenantId = null;
+let messageModalSelectedTemplateId = null;
+
+function renderMessageTemplateList() {
+  const wrap = document.getElementById('message-template-list');
+  wrap.innerHTML = MESSAGE_TEMPLATE_CATEGORIES.map(cat => {
+    const items = MESSAGE_TEMPLATES.filter(m => m.category === cat.id);
+    if (!items.length) return '';
+    return `
+      <div>
+        <p style="font-size:9px;font-weight:900;color:#64748b;margin-bottom:5px">${cat.label}</p>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          ${items.map(m => `
+            <button type="button" onclick="selectMessageTemplate('${m.id}')" data-template-btn="${m.id}"
+              style="text-align:right;font-size:11px;font-weight:800;padding:8px 12px;border-radius:10px;cursor:pointer;transition:transform .1s;${
+                messageModalSelectedTemplateId === m.id
+                  ? 'background:rgba(200,168,75,0.15);border:1px solid rgba(200,168,75,0.4);color:#C9A84C'
+                  : 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);color:#e2e8f0'
+              }">
+              ${m.label}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// يفتح المودال لمكتب معيّن. presetTemplateId اختياري — يستخدم لما الزرار
+// جاي من كارت تنبيه (تذكير تجديد قريب/متأخر...) عشان يفتح على القالب
+// المناسب مباشرة بدل ما الأدمن يدور عليه فى القايمة.
+function openMessageModal(tenantId, presetTemplateId) {
+  const t = allTenants.find(x => x.id === tenantId);
+  if (!t) return;
+  messageModalTenantId = tenantId;
+  messageModalSelectedTemplateId = null;
+  document.getElementById('message-modal-office').textContent = t.name || '';
+  document.getElementById('message-text').value = '';
+  const noPhoneNote = document.getElementById('message-no-phone-note');
+  const waPhone = (t.phone || '').replace(/[^0-9]/g, '');
+  noPhoneNote.classList.toggle('hidden', !!waPhone);
+  document.getElementById('message-send-btn').disabled = !waPhone;
+  document.getElementById('message-send-btn').style.opacity = waPhone ? '1' : '0.4';
+  renderMessageTemplateList();
+  if (presetTemplateId) selectMessageTemplate(presetTemplateId);
+  showModal('message-modal');
+}
+
+function selectMessageTemplate(templateId) {
+  const t = allTenants.find(x => x.id === messageModalTenantId);
+  const tpl = MESSAGE_TEMPLATES.find(m => m.id === templateId);
+  if (!t || !tpl) return;
+  messageModalSelectedTemplateId = templateId;
+  document.getElementById('message-text').value = tpl.build(t);
+  renderMessageTemplateList(); // لتحديث تظليل القالب المختار
+}
+
+function closeMessageModal() {
+  hideModal('message-modal');
+  messageModalTenantId = null;
+  messageModalSelectedTemplateId = null;
+}
+
+async function copyMessageText() {
+  const text = document.getElementById('message-text').value;
+  if (!text.trim()) { showToast('اكتب أو اختار رسالة الأول', true); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('✅ تم نسخ النص');
+  } catch (e) {
+    showToast('تعذّر النسخ — انسخ النص يدويًا', true);
+  }
+}
+
+function sendMessageViaWhatsApp() {
+  const t = allTenants.find(x => x.id === messageModalTenantId);
+  const text = document.getElementById('message-text').value;
+  if (!text.trim()) { showToast('اكتب أو اختار رسالة الأول', true); return; }
+  const waPhone = (t?.phone || '').replace(/[^0-9]/g, '');
+  if (!waPhone) { showToast('⚠️ مفيش رقم هاتف مسجّل لهذا المكتب', true); return; }
+  const url = `https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`;
+  window.open(url, '_blank');
 }
 
 // ─── فك قفل/تجميد الـ Onboarding لمكتب ──────────────────
