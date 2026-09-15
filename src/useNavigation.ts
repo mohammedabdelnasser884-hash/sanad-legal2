@@ -28,6 +28,7 @@ export type TabName =
   | 'team'
   | 'documents'
   | 'encyclopedia'
+  | 'lawyerGuide'
   | 'admin';
 
 export type ModalName =
@@ -55,9 +56,14 @@ export type ModalName =
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
+// ⚡ NEW (خطة "إعادة هيكلة الموسوعة القانونية إلى الموارد القانونية"،
+// مرحلة 4 — 15 سبتمبر 2026): 'lawyerGuide' تاب مستقل شقيق لـ'encyclopedia'
+// (اللي بقى يمثّل "الصيغ والنماذج" بس دلوقتي، بدون أي تغيير في منطقه أو
+// بياناته). الاتنين بيتفتحوا من بوكس منبثق واحد ("الموارد القانونية")
+// في CommandDock.tsx، مش تاب مباشر في شريط الموبايل — راجع navConfig.ts.
 const VALID_TABS: TabName[] = [
   'dashboard', 'cases', 'clients', 'calendar',
-  'fees', 'reminders', 'team', 'documents', 'encyclopedia', 'admin',
+  'fees', 'reminders', 'team', 'documents', 'encyclopedia', 'lawyerGuide', 'admin',
 ];
 
 const TAB_PATHS: Record<TabName, string> = {
@@ -70,6 +76,7 @@ const TAB_PATHS: Record<TabName, string> = {
   team:       '/team',
   documents:  '/documents',
   encyclopedia: '/encyclopedia',
+  lawyerGuide: '/lawyer-guide',
   admin:      '/admin',
 };
 
