@@ -11,11 +11,14 @@ import EncyclopediaCategoryModal from './encyclopedia/EncyclopediaCategoryModal'
 import EncyclopediaFormModal from './encyclopedia/EncyclopediaFormModal';
 import EncyclopediaBatchUploadModal from './encyclopedia/EncyclopediaBatchUploadModal';
 import EncyclopediaBulkMoveModal from './encyclopedia/EncyclopediaBulkMoveModal';
-import type { ProfileRow, ClientRow, LawRow, LegalCategoryRow, EncyclopediaCategoryRow, EncyclopediaFormRow } from '../../types';
+import LawyerGuideCategoryModal from './lawyer-guide/LawyerGuideCategoryModal';
+import LawyerGuideLinkModal from './lawyer-guide/LawyerGuideLinkModal';
+import type { ProfileRow, ClientRow, LawRow, LegalCategoryRow, EncyclopediaCategoryRow, EncyclopediaFormRow, LawyerGuideCategoryRow, LawyerGuideLinkRow } from '../../types';
 import type { EditUserForm, AddUserForm, ChangePasswordPayload } from './users/hooks/useAdminUsers';
 import type { PortalAccessRow, PortalSaveForm } from './portal/hooks/useAdminPortal';
 import type { LawForm } from './legal-library/hooks/useAdminLegalLibrary';
 import type { EncyclopediaCategoryForm, EncyclopediaFormFormValues, EncyclopediaBatchFileResult } from './encyclopedia/hooks/useAdminEncyclopedia';
+import type { LawyerGuideCategoryForm, LawyerGuideLinkForm } from './lawyer-guide/hooks/useAdminLawyerGuide';
 
 // مودالز مستقلة عن قسم العرض الحالي (section) — بتتفتح فوق أي قسم أو من غير قسم مفتوح خالص.
 // اتنقلت هنا بنفس المنطق تمامًا من AdminPanel.tsx (صفر تغيير سلوك) عشان تخفيف حجم الملف الرئيسي.
@@ -122,6 +125,35 @@ interface AdminPanelModalsProps {
   setBulkMoveForms: (f: EncyclopediaFormRow[] | null) => void;
   bulkMoving: boolean;
   handleBulkMoveForms: (forms: EncyclopediaFormRow[], targetCategoryId: string) => void;
+
+  // إضافة / تعديل تصنيف في دليل المحامي
+  showGuideCategoryModal: boolean;
+  setShowGuideCategoryModal: (v: boolean) => void;
+  editingGuideCategory: LawyerGuideCategoryRow | null;
+  setEditingGuideCategory: (c: LawyerGuideCategoryRow | null) => void;
+  savingGuideCategory: boolean;
+  handleSaveGuideCategory: (form: LawyerGuideCategoryForm) => void;
+
+  // تأكيد حذف تصنيف من دليل المحامي
+  confirmDeleteGuideCategory: LawyerGuideCategoryRow | null;
+  setConfirmDeleteGuideCategory: (c: LawyerGuideCategoryRow | null) => void;
+  handleDeleteGuideCategory: (category: LawyerGuideCategoryRow) => void;
+
+  // إضافة / تعديل رابط في دليل المحامي
+  showGuideLinkModal: boolean;
+  setShowGuideLinkModal: (v: boolean) => void;
+  editingGuideLink: LawyerGuideLinkRow | null;
+  setEditingGuideLink: (l: LawyerGuideLinkRow | null) => void;
+  guideLinkModalCategoryId: string | null;
+  setGuideLinkModalCategoryId: (id: string | null) => void;
+  guideCategories: LawyerGuideCategoryRow[];
+  savingGuideLink: boolean;
+  handleSaveGuideLink: (form: LawyerGuideLinkForm) => void;
+
+  // تأكيد حذف رابط من دليل المحامي
+  confirmDeleteGuideLink: LawyerGuideLinkRow | null;
+  setConfirmDeleteGuideLink: (l: LawyerGuideLinkRow | null) => void;
+  handleDeleteGuideLink: (link: LawyerGuideLinkRow) => void;
 }
 
 export default function AdminPanelModals(props: AdminPanelModalsProps) {
@@ -144,6 +176,13 @@ export default function AdminPanelModals(props: AdminPanelModalsProps) {
     batchUploading, batchProgress, batchResults, setBatchResults, handleUploadBatch,
     confirmBulkDeleteForms, setConfirmBulkDeleteForms, bulkDeleting, handleBulkDeleteForms,
     bulkMoveForms, setBulkMoveForms, bulkMoving, handleBulkMoveForms,
+    showGuideCategoryModal, setShowGuideCategoryModal, editingGuideCategory, setEditingGuideCategory,
+    savingGuideCategory, handleSaveGuideCategory,
+    confirmDeleteGuideCategory, setConfirmDeleteGuideCategory, handleDeleteGuideCategory,
+    showGuideLinkModal, setShowGuideLinkModal, editingGuideLink, setEditingGuideLink,
+    guideLinkModalCategoryId, setGuideLinkModalCategoryId, guideCategories,
+    savingGuideLink, handleSaveGuideLink,
+    confirmDeleteGuideLink, setConfirmDeleteGuideLink, handleDeleteGuideLink,
   } = props;
 
   return React.createElement(React.Fragment, null,
@@ -308,6 +347,53 @@ export default function AdminPanelModals(props: AdminPanelModalsProps) {
       moving: bulkMoving,
       onMove: handleBulkMoveForms,
       onClose: () => setBulkMoveForms(null),
-    })
+    }),
+
+    // مودال إضافة / تعديل تصنيف في دليل المحامي
+    showGuideCategoryModal && React.createElement(LawyerGuideCategoryModal, {
+      editingCategory: editingGuideCategory,
+      saving: savingGuideCategory,
+      onSave: handleSaveGuideCategory,
+      onClose: () => { setShowGuideCategoryModal(false); setEditingGuideCategory(null); }
+    }),
+
+    // تأكيد حذف تصنيف من دليل المحامي (Cascade — بيشيل كل الروابط اللي جواه)
+    confirmDeleteGuideCategory && createPortal(React.createElement(DeleteConfirmModal, {
+      title: "حذف هذا التصنيف؟",
+      itemName: confirmDeleteGuideCategory.name_ar || '—',
+      itemType: "التصنيف",
+      mode: "delete",
+      loading: savingGuideCategory,
+      deleteConsequences: ["سيُحذف التصنيف وكل الروابط الموجودة بداخله نهائياً"],
+      onConfirm: () => handleDeleteGuideCategory(confirmDeleteGuideCategory),
+      onCancel: () => setConfirmDeleteGuideCategory(null),
+      inputTestId: 'admin-lawyer-guide-category-delete-input',
+      confirmTestId: 'admin-lawyer-guide-category-delete-confirm',
+      cancelTestId: 'admin-lawyer-guide-category-delete-cancel'
+    }), document.body),
+
+    // مودال إضافة / تعديل رابط في دليل المحامي
+    showGuideLinkModal && React.createElement(LawyerGuideLinkModal, {
+      categories: guideCategories,
+      editingLink: editingGuideLink,
+      defaultCategoryId: guideLinkModalCategoryId,
+      saving: savingGuideLink,
+      onSave: handleSaveGuideLink,
+      onClose: () => { setShowGuideLinkModal(false); setEditingGuideLink(null); setGuideLinkModalCategoryId(null); }
+    }),
+
+    // تأكيد حذف رابط من دليل المحامي
+    confirmDeleteGuideLink && createPortal(React.createElement(DeleteConfirmModal, {
+      title: "حذف هذا الرابط؟",
+      itemName: confirmDeleteGuideLink.title || '—',
+      itemType: "الرابط",
+      mode: "delete",
+      loading: savingGuideLink,
+      onConfirm: () => handleDeleteGuideLink(confirmDeleteGuideLink),
+      onCancel: () => setConfirmDeleteGuideLink(null),
+      inputTestId: 'admin-lawyer-guide-link-delete-input',
+      confirmTestId: 'admin-lawyer-guide-link-delete-confirm',
+      cancelTestId: 'admin-lawyer-guide-link-delete-cancel'
+    }), document.body)
   );
 }
