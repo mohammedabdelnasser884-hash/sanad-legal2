@@ -178,6 +178,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
     guideLinkModalCategoryId, setGuideLinkModalCategoryId,
     confirmDeleteGuideLink, setConfirmDeleteGuideLink, savingGuideLink,
     handleSaveGuideLink, handleDeleteGuideLink,
+    reordering: reorderingGuideLink, handleReorderGuideLink,
   } = lawyerGuide;
   const { portalAccess, portalClient, setPortalClient, clientSearch, setClientSearch, showAddPortalUser, setShowAddPortalUser, savingPortal, fetchPortalAccess, handleSavePortal } = portal;
   const {
@@ -820,6 +821,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
       loadingLawyerGuide, guideCategories, guideLinks,
       setEditingGuideCategory, setShowGuideCategoryModal, setConfirmDeleteGuideCategory,
       setEditingGuideLink, setGuideLinkModalCategoryId, setShowGuideLinkModal, setConfirmDeleteGuideLink,
+      reordering: reorderingGuideLink, handleReorderGuideLink,
     }),
 
     // ══════════════════════════
