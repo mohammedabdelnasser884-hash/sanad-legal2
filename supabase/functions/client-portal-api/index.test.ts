@@ -27,7 +27,10 @@ interface FetchState {
   recordAttemptCalls: Array<{ contact: string; ip_address: string; success: boolean }>;
   clientsFindRows: ClientRow[];
   portalPinRows: Array<{ client_id: string; is_active: boolean }>;
+  mustChangePin: boolean;
   verifyPortalPinOk: boolean;
+  changePasswordCalls: Array<{ p_client_id: string; p_new_password: string }>;
+  changePasswordShouldFail: string | null;
   tenantsRows: Array<{ id: string; status: string; trial_ends_at: string | null; name?: string }>;
   casesOwnershipRows: Array<{ id: string }>;
   casesListRows: unknown[];
@@ -48,7 +51,10 @@ function freshState(): FetchState {
       { id: 'client-1', full_name: 'أحمد محمد علي', phone: '01000000000', email: 'ahmed@example.com', type: 'فرد', tenant_id: 'tenant-a' },
     ],
     portalPinRows: [{ client_id: 'client-1', is_active: true }],
+    mustChangePin: false,
     verifyPortalPinOk: true,
+    changePasswordCalls: [],
+    changePasswordShouldFail: null,
     tenantsRows: [{ id: 'tenant-a', status: 'active', trial_ends_at: null, name: 'مكتب أ' }],
     casesOwnershipRows: [{ id: CASE_ID }],
     casesListRows: [
@@ -102,7 +108,13 @@ function buildFetchMock(state: FetchState) {
       match: (url) => new URL(url).pathname === '/rest/v1/clients',
       respond: () => ({ status: 200, body: state.clientsFindRows }),
     },
-    // client_portal_pins
+    // client_portal_pins: is_active filter (filterActivePortalClients) مقابل
+    // must_change_pin لعميل واحد (بعد ما actionVerify يحدد العميل) — نفس
+    // المسار، بنفرّق بينهم بالـ select في الـ querystring.
+    {
+      match: (url) => new URL(url).pathname === '/rest/v1/client_portal_pins' && new URL(url).searchParams.get('select') === 'must_change_pin',
+      respond: () => ({ status: 200, body: [{ must_change_pin: state.mustChangePin }] }),
+    },
     {
       match: (url) => new URL(url).pathname === '/rest/v1/client_portal_pins',
       respond: () => ({ status: 200, body: state.portalPinRows }),
@@ -111,6 +123,18 @@ function buildFetchMock(state: FetchState) {
     {
       match: (url) => new URL(url).pathname === '/rest/v1/rpc/verify_portal_pin',
       respond: () => ({ status: 200, body: state.verifyPortalPinOk }),
+    },
+    // rpc/client_change_portal_password
+    {
+      match: (url) => new URL(url).pathname === '/rest/v1/rpc/client_change_portal_password',
+      respond: async (_url, init) => {
+        if (state.changePasswordShouldFail) {
+          return { status: 400, body: { message: state.changePasswordShouldFail } };
+        }
+        const args = JSON.parse((init?.body as string) ?? '{}');
+        state.changePasswordCalls.push(args);
+        return { status: 200, body: null };
+      },
     },
     // tenants
     {
@@ -405,13 +429,21 @@ describe('client-portal-api — action=verify', () => {
     expect(data.token).toBeTruthy();
   });
 
-  it('مسار النجاح الكامل → 200 + token + client، وتسجيل محاولة ناجحة', async () => {
+  it('مسار النجاح الكامل → 200 + token + client (فيها must_change_pin)، وتسجيل محاولة ناجحة', async () => {
     const res = await handler(req({ action: 'verify', contact: '01000000000', pin: '1234' }));
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(typeof data.token).toBe('string');
-    expect(data.client).toEqual(state.clientsFindRows[0]);
+    expect(data.client).toEqual({ ...state.clientsFindRows[0], must_change_pin: false });
     expect(state.recordAttemptCalls).toEqual([{ contact: '01000000000', ip_address: 'unknown', success: true }]);
+  });
+
+  it('العميل عنده must_change_pin=true (رمز مؤقت من المكتب) → بترجع true في الرد', async () => {
+    state.mustChangePin = true;
+    const res = await handler(req({ action: 'verify', contact: '01000000000', pin: '1234' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.client.must_change_pin).toBe(true);
   });
 
   // ── مشكلة 3: صفين عميل بنفس الرقم، مكتبين مختلفين ──
@@ -552,13 +584,75 @@ describe('client-portal-api — action=getCases', () => {
   });
 });
 
+describe('client-portal-api — action=changePassword', () => {
+  it('بدون token → 401 زي باقي الأكشنز المحمية', async () => {
+    const res = await handler(req({ action: 'changePassword', newPassword: 'abcd1234' }));
+    expect(res.status).toBe(401);
+  });
+
+  it('رمز أقل من 8 خانات → 400 من غير ما تنده على قاعدة البيانات', async () => {
+    const token = await getValidToken();
+    const res = await handler(req({ action: 'changePassword', token, newPassword: 'ab1' }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe('الرمز الجديد لازم يكون 8 خانات على الأقل، وفيه حروف وأرقام مع بعض');
+    expect(state.changePasswordCalls).toEqual([]);
+  });
+
+  it('رمز 8 خانات بس أرقام بس (من غير حروف) → 400', async () => {
+    const token = await getValidToken();
+    const res = await handler(req({ action: 'changePassword', token, newPassword: '12345678' }));
+    expect(res.status).toBe(400);
+    expect(state.changePasswordCalls).toEqual([]);
+  });
+
+  it('رمز 8 خانات بس حروف بس (من غير أرقام) → 400', async () => {
+    const token = await getValidToken();
+    const res = await handler(req({ action: 'changePassword', token, newPassword: 'abcdefgh' }));
+    expect(res.status).toBe(400);
+    expect(state.changePasswordCalls).toEqual([]);
+  });
+
+  it('مسار النجاح → 200 + ok:true، و client_id جاي من claims التوكن مش من جسم الطلب', async () => {
+    const token = await getValidToken();
+    const res = await handler(req({ action: 'changePassword', token, newPassword: 'abcd1234' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(state.changePasswordCalls).toEqual([{ p_client_id: 'client-1', p_new_password: 'abcd1234' }]);
+  });
+
+  it('حتى لو جسم الطلب فيه client_id مختلف، بيتجاهله ويستخدم claims.client_id', async () => {
+    const token = await getValidToken();
+    await handler(req({ action: 'changePassword', token, newPassword: 'abcd1234', client_id: 'someone-else' }));
+    expect(state.changePasswordCalls).toEqual([{ p_client_id: 'client-1', p_new_password: 'abcd1234' }]);
+  });
+
+  it('رفض من قاعدة البيانات (مثلاً نفس الرمز القديم) → 400 برسالة الخطأ الراجعة', async () => {
+    const token = await getValidToken();
+    state.changePasswordShouldFail = 'الرمز الجديد لازم يكون مختلف عن القديم';
+    const res = await handler(req({ action: 'changePassword', token, newPassword: 'abcd1234' }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe('الرمز الجديد لازم يكون مختلف عن القديم');
+  });
+});
+
 describe('client-portal-api — action=getClient', () => {
-  it('مسار النجاح → 200 + بيانات الموكل', async () => {
+  it('مسار النجاح → 200 + بيانات الموكل (فيها must_change_pin)', async () => {
     const token = await getValidToken();
     const res = await handler(req({ action: 'getClient', token }));
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.data).toEqual(state.clientsFindRows[0]);
+    expect(data.data).toEqual({ ...state.clientsFindRows[0], must_change_pin: false });
+  });
+
+  it('لو المكتب عمل reset للرمز في نفس فترة الجلسة (توكن قديم لسه سارٍ) → getClient بترجع must_change_pin=true', async () => {
+    const token = await getValidToken();
+    state.mustChangePin = true;
+    const res = await handler(req({ action: 'getClient', token }));
+    const data = await res.json();
+    expect(data.data.must_change_pin).toBe(true);
   });
 
   it('مفيش صف موكل (اتحذف بعد التوثيق مثلًا) → 200 + data:null', async () => {
