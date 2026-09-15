@@ -65,14 +65,12 @@ interface AdminPanelProps {
     nav: NavigationState;
     casesTotal: number;
     clientsTotal: number;
-    // ⚡ NEW (زرار "إدارة الموسوعة" في صفحة الموسوعة العادية): لو موجودة،
-    // بتفتح القسم ده تلقائيًا فور دخول لوحة الإدارة، من غير ما يمر
-    // المستخدم على شبكة الأقسام أصلاً (الكرت بتاعها اتشال منها عمدًا —
-    // شوف التعليق فوق مكانه القديم). القيمة الوحيدة المستخدمة فعليًا
-    // دلوقتي هي 'encyclopedia'. onInitialSectionConsumed بترجّع الحالة في
-    // App.tsx لـ null بعد أول استهلاك، عشان لو المستخدم رجع لتاب الإدارة
-    // تاني بشكل عادي (مش عن طريق الزرار) مايتفتحش القسم ده تلقائيًا تاني.
-    initialSection?: 'encyclopedia' | null;
+    // ⚡ UPDATED (خطة "الموارد القانونية"، مرحلة 4 — 15 سبتمبر 2026): بقى
+    // كمان يقبل 'lawyer_guide' — زرار "إدارة دليل المحامي" الجديد في
+    // LawyerGuideBrowseSection بيستخدم نفس الآلية بالظبط. onInitialSectionConsumed
+    // بترجّع الحالة في App.tsx لـ null بعد أول استهلاك، عشان لو المستخدم رجع
+    // لتاب الإدارة تاني بشكل عادي (مش عن طريق أي زرار) مايتفتحش القسم ده تلقائيًا تاني.
+    initialSection?: 'encyclopedia' | 'lawyer_guide' | null;
     onInitialSectionConsumed?: () => void;
 }
 
