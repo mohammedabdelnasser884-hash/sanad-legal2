@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { I } from '../../constants';
 import { useNestedModalBackButton } from '../../shared/lib/useNestedModalBackButton';
+import { matchesSearchWords } from '../../shared/lib/textSearch';
 import type { EncyclopediaCategoryRow, EncyclopediaFormRow } from '../../types';
 
 interface EncyclopediaBrowseSectionProps {
@@ -161,14 +162,15 @@ function EncyclopediaBrowseSection({
   // ── البحث: نتيجة مسطّحة عبر كل النماذج (مش مقصورة على المجلد المفتوح
   // حاليًا)، من غير أي استعلام إضافي — البيانات كلها محمّلة أصلاً
   // (fetchEncyclopedia بيجيب الكل مرة واحدة). زر رجوع الموبايل وقت
-  // البحث بيقفل البحث الأول (زي أي overlay)، قبل ما يرجع لمنطق المجلدات. ──
+  // البحث بيقفل البحث الأول (زي أي overlay)، قبل ما يرجع لمنطق المجلدات.
+  // بحث مستقل تمامًا بذاته — مش جزء من البحث العام (useUniversalSearch)
+  // ومش بيتقاطع مع بحث دليل المحامي. matchesSearchWords بتتسامح مع
+  // تنويعات الإملاء العربي الشائعة (همزات/تاء مربوطة/ياء) وبتقبل كذا
+  // كلمة منفصلة (كل الكلمات لازم تتطابق، مش بالضرورة جنب بعض). ──
   const trimmedQuery = searchQuery.trim();
   const isSearching = trimmedQuery.length > 0;
   const searchResults = isSearching
-    ? forms.filter((f) =>
-        f.title.toLowerCase().includes(trimmedQuery.toLowerCase())
-        || (f.description || '').toLowerCase().includes(trimmedQuery.toLowerCase())
-      )
+    ? forms.filter((f) => matchesSearchWords(`${f.title} ${f.description || ''}`, trimmedQuery))
     : [];
   const categoryLabelFor = (categoryId: string) => {
     const cat = categories.find((c) => c.id === categoryId);
