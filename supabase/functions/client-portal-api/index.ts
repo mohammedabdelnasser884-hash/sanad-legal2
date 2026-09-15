@@ -8,6 +8,7 @@
 //  actions:
 //   find              { contact }               → { client_name }
 //   verify            { contact, pin }          → { token, client }
+//   changePassword    { token, newPassword }    → { ok: true }
 //   getCases          { token }                 → { data: Case[] }
 //   getClient         { token }                 → { data: Client }
 //   getCaseFees       { token, caseId }         → { data: Fee[] }
@@ -327,6 +328,14 @@ async function actionVerify(body: Record<string, string>, ip: string) {
   // migration المزامنة لسه ما اتنفذتش وقت الـ deploy ده.
   client.full_name = client.full_name || client.client_name;
 
+  // 🆕 must_change_pin: هل الرمز ده لسه "مؤقت" من المكتب ولازم الموكل
+  // يغيّره أول ما يدخل؟ بنرجعها مع باقي بيانات العميل عشان الفرونت
+  // يوجّه على طول لشاشة "غيّر رمزك" من غير نداء إضافي.
+  const pinRows = await rest(
+    `client_portal_pins?client_id=eq.${client.id}&select=must_change_pin&limit=1`,
+  );
+  client.must_change_pin = pinRows[0]?.must_change_pin ?? false;
+
   // ── هل اشتراك المكتب (tenant) نفسه شغال؟ ──
   // نفس الفحص اللي تم تطبيقه في office-login — بدونه، موكلين مكتب
   // موقوف الاشتراك أو منتهي التجربة كانوا لسه يقدروا يدخلوا بوابتهم.
@@ -350,6 +359,27 @@ async function actionVerify(body: Record<string, string>, ip: string) {
   return json({ token, client });
 }
 
+/** changePassword: الموكل بيغيّر رمزه بنفسه (أول دخول أو وقت ما يحب) */
+async function actionChangePassword(claims: { client_id: string; tenant_id: string }, body: Record<string, string>) {
+  const newPassword = (body.newPassword ?? '').trim();
+
+  // نفس التحقق الموجود جوه client_change_portal_password، بنكرره هنا
+  // عشان نرجع رسالة عربية واضحة فورًا من غير ما نستنى رفض قاعدة البيانات.
+  if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+    return json({ error: 'الرمز الجديد لازم يكون 8 خانات على الأقل، وفيه حروف وأرقام مع بعض' }, 400);
+  }
+
+  // ⚠️ client_id جاي من claims الموقّعة بالتوكن، مش من جسم الطلب —
+  // عشان محدش يقدر يبعت client_id بتاع موكل تاني ويغيّر رمزه.
+  try {
+    await rpc('client_change_portal_password', { p_client_id: claims.client_id, p_new_password: newPassword });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return json({ error: msg || 'تعذّر تغيير الرمز' }, 400);
+  }
+  return json({ ok: true });
+}
+
 /** getCases: جلب قضايا الموكل */
 async function actionGetCases(claims: { client_id: string; tenant_id: string }) {
   // ⚠️ تصحيح: عمود client_name غير موجود أصلاً في جدول cases (الموكل
@@ -368,7 +398,18 @@ async function actionGetClient(claims: { client_id: string; tenant_id: string })
   );
   // ⚡ FIX: نفس fallback بتاع actionFind/actionVerify.
   const client = rows[0];
-  if (client) client.full_name = client.full_name || client.client_name;
+  if (client) {
+    client.full_name = client.full_name || client.client_name;
+    // 🆕 must_change_pin: نفس السبب الموجود في actionVerify — بس هنا كمان
+    // مهم عشان الحالة اللي جلسة الموكل (توكن) لسه سارية من قبل، والمكتب
+    // عمل reset لرمزه في الوقت ده؛ من غير السطر ده، إعادة تحميل الصفحة
+    // (اللي بتمر بـ getClient مش verify) مكانتش هتكتشف إن فيه رمز مؤقت
+    // جديد محتاج تغيير.
+    const pinRows = await rest(
+      `client_portal_pins?client_id=eq.${client.id}&select=must_change_pin&limit=1`,
+    );
+    client.must_change_pin = pinRows[0]?.must_change_pin ?? false;
+  }
   return json({ data: client ?? null });
 }
 
@@ -478,6 +519,7 @@ Deno.serve(async (req: Request) => {
     if (!claims) return json({ error: 'الجلسة منتهية، سجّل الدخول من جديد' }, 401);
 
     switch (action) {
+      case 'changePassword':    return await actionChangePassword(claims, rest_body);
       case 'getCases':          return await actionGetCases(claims);
       case 'getClient':         return await actionGetClient(claims);
       case 'getCaseFees':       return await actionGetCaseFees(claims, rest_body);
