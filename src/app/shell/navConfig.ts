@@ -56,9 +56,15 @@ export const primaryNavItems: NavItem[] = [
 export const moreNavItems: NavItem[] = [
     { tab: 'clients',   icon: I.Person, label: 'الموكلين',    testId: 'nav-more-clients' },
     { tab: 'documents', icon: I.Folder, label: 'المستندات',   testId: 'nav-more-documents' },
-    // ⚡ NEW (تصفح "الموسوعة القانونية" لكل المستخدمين، مرحلة 4): متاح
-    // للكل عمدًا (بدون adminOnly) — نفس القرار المطبّق في CommandDock.tsx.
-    { tab: 'encyclopedia', icon: I.Scale, label: 'الموسوعة القانونية', testId: 'nav-more-encyclopedia' },
+    // ⚡ UPDATED (خطة "الموارد القانونية"، مرحلة 4 — 15 سبتمبر 2026):
+    // "الموسوعة القانونية" بقت "الصيغ والنماذج" (نفس التاب 'encyclopedia'
+    // ونفس البيانات والمنطق، تغيير تسمية بس)، وأصبحت أحد قسمين تحت أب
+    // جديد "الموارد القانونية". هنا (navConfig — لسه مش مستهلَكة فعليًا
+    // إلا من DesktopSidebar المستقبلي B1) بنعرضهم كعنصرين مسطّحين بترتيب
+    // منطقي؛ CommandDock.tsx (الموبايل الفعلي) بيلفّهم جوه بوكس منبثق
+    // واحد بدل ما يظهروا مباشرة في شبكة "المزيد" — راجع تعليقه هناك.
+    { tab: 'encyclopedia', icon: I.Doc,   label: 'الصيغ والنماذج', testId: 'nav-more-encyclopedia' },
+    { tab: 'lawyerGuide',  icon: I.Scale, label: 'دليل المحامي',   testId: 'nav-more-lawyer-guide' },
     { tab: 'fees',      icon: I.Money,  label: 'الأتعاب',     testId: 'nav-more-fees', adminOnly: true },
     { tab: 'admin',     icon: I.Shield, label: 'لوحة الإدارة', testId: 'nav-more-admin', adminOnly: true },
 ];
