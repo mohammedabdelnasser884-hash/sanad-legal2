@@ -1102,6 +1102,7 @@ export interface Database {
           description: string | null
           entity_type: string | null
           last_verified_at: string | null
+          sort_order: number
           created_at: string
           updated_at: string
         }
@@ -1113,6 +1114,7 @@ export interface Database {
           description?: string | null
           entity_type?: string | null
           last_verified_at?: string | null
+          sort_order?: number
           created_at?: string
           updated_at?: string
         }
@@ -1124,6 +1126,7 @@ export interface Database {
           description?: string | null
           entity_type?: string | null
           last_verified_at?: string | null
+          sort_order?: number
           created_at?: string
           updated_at?: string
         }
