@@ -118,7 +118,15 @@ export type EncyclopediaActionPayload =
   | { action: 'deleteCategory'; id: string }
   | { action: 'uploadForm'; category_id: string; title: string; description?: string | null; file_name: string; file_type: string; file_base64: string }
   | { action: 'updateForm'; id: string; title?: string; description?: string | null; category_id?: string; file_name?: string; file_type?: string; file_base64?: string }
-  | { action: 'deleteForm'; id: string };
+  | { action: 'deleteForm'; id: string }
+  // ── دليل المحامي (مرحلة 2 من خطة "الموارد القانونية") — نفس الـEdge
+  //    Function encyclopedia-admin، بيانات بحتة (بدون Storage) ──
+  | { action: 'createLinkCategory'; name_ar: string; icon?: string | null; sort_order?: number }
+  | { action: 'updateLinkCategory'; id: string; name_ar?: string; icon?: string | null; sort_order?: number }
+  | { action: 'deleteLinkCategory'; id: string }
+  | { action: 'createLink'; category_id: string; title: string; url: string; description?: string | null; entity_type?: string | null; last_verified_at?: string | null }
+  | { action: 'updateLink'; id: string; category_id?: string; title?: string; url?: string; description?: string | null; entity_type?: string | null; last_verified_at?: string | null }
+  | { action: 'deleteLink'; id: string };
 
 // استدعاء Edge Function encyclopedia-admin — نفس نمط callAdminAction
 // بالظبط (استخراج رسالة الخطأ العربية المقصودة لو موجودة، فولباك عام
