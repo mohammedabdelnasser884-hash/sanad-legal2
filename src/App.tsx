@@ -668,6 +668,7 @@ function App() {
     }
     if (profile.onboarding_status === 'pending_setup') {
         return React.createElement(OnboardingSetupScreen, {
+            email: profile.email,
             onCompleted: () => setProfile((p) => (p ? { ...p, onboarding_status: 'completed' } : p)),
         });
     }
