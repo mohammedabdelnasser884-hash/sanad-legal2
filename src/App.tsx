@@ -21,6 +21,9 @@ import AppLoadingScreen from './app/AppLoadingScreen';
 import AppModals from './app/AppModals';
 // ⚡ NEW (تصفح "الموسوعة القانونية" لكل المستخدمين — قراءة/تحميل بس)
 import { useEncyclopediaBrowse } from './features/encyclopedia/hooks/useEncyclopediaBrowse';
+// ⚡ NEW (خطة "الموارد القانونية"، مرحلة 4 — 15 سبتمبر 2026): تصفح
+// "دليل المحامي" لكل المستخدمين — نفس فكرة useEncyclopediaBrowse فوق بالظبط.
+import { useLawyerGuideBrowse } from './features/lawyer-guide/hooks/useLawyerGuideBrowse';
 // ⚡ NEW (A4 — 14 أغسطس 2026، خطة Desktop Experience): استبدال الـ div
 // الجذري inline بـ AppShell (اتبنى هيكليًا في A3) — نفس className ونفس
 // data-testid="app-shell" بالحرف، صفر تغيير بصري.
@@ -69,6 +72,8 @@ const ArchiveTab = React.lazy(() => import('./features/dashboard/ArchiveTab'));
 // ⚡ NEW (تصفح "الموسوعة القانونية" لكل المستخدمين) — نفس نمط ArchiveTab
 // فوق بالظبط: تاب مش هيدخل عليه غالبية المستخدمين كل مرة، فـReact.lazy.
 const EncyclopediaBrowseSection = React.lazy(() => import('./features/encyclopedia/EncyclopediaBrowseSection'));
+// ⚡ NEW (خطة "الموارد القانونية"، مرحلة 4) — نفس نمط EncyclopediaBrowseSection فوق.
+const LawyerGuideBrowseSection = React.lazy(() => import('./features/lawyer-guide/LawyerGuideBrowseSection'));
 
 // ─── Dashboard Components ─────────────────
 import AppHeaderRaw from './features/dashboard/AppHeader';
@@ -150,6 +155,15 @@ function App() {
         if (tab === 'encyclopedia') fetchEncyclopediaBrowse();
     }, [tab, fetchEncyclopediaBrowse]);
 
+    // ⚡ NEW (خطة "الموارد القانونية"، مرحلة 4): تصفح "دليل المحامي" —
+    // نفس نمط الموسوعة فوق بالظبط، تاب مستقل بياناته بتتجاب وقت ما
+    // التاب بتاعه يتفتح لأول مرة.
+    const lawyerGuideBrowse = useLawyerGuideBrowse();
+    const { fetchLawyerGuide } = lawyerGuideBrowse;
+    useEffect(() => {
+        if (tab === 'lawyerGuide') fetchLawyerGuide();
+    }, [tab, fetchLawyerGuide]);
+
     // ⚡ PERF (خطة تحسين الأداء — مبني على قياس Profiler فعلي، 7 سبتمبر
     // 2026): بيتتبع مين من التلات تابات (dashboard/cases/clients) اتفتح
     // فعليًا مرة واحدة على الأقل، عشان نخليهم mounted (hidden بـCSS) بعد
@@ -221,6 +235,9 @@ function App() {
 
     // ── Local UI state ────────────────────────────────────────
     const [showMore,       setShowMore]       = useState(false);
+    // ⚡ NEW (خطة "الموارد القانونية"، مرحلة 4): بوكس منبثق فرعي جوه بوكس
+    // "المزيد" — راجع تعليق الـprop في CommandDock.tsx.
+    const [showResourcesPicker, setShowResourcesPicker] = useState(false);
     const [showHeaderMenu, setShowHeaderMenu] = useState(false);
 
     const { navRef } = useNavbarHeightVar();
@@ -250,7 +267,10 @@ function App() {
     // لوحة الإدارة نفسها). بترجع null تاني أول ما AdminPanel يستهلكها
     // (onInitialSectionConsumed) عشان رجوع عادي لتاب الإدارة مايفتحش
     // القسم ده تلقائيًا من غير الزرار.
-    const [adminInitialSection, setAdminInitialSection] = useState<'encyclopedia' | null>(null);
+    // ⚡ UPDATED (خطة "الموارد القانونية"، مرحلة 4): نفس الفكرة، بس بقت
+    // شايلة 'lawyer_guide' كمان — زرار "إدارة دليل المحامي" في
+    // LawyerGuideBrowseSection بيستخدم نفس الآلية بالظبط.
+    const [adminInitialSection, setAdminInitialSection] = useState<'encyclopedia' | 'lawyer_guide' | null>(null);
     const { dbOnline } = useDbConnectivity(profile);
 
     // ── تحميل الدولة من office_settings بعد ما الـ profile يتحمّل ──
@@ -736,6 +756,23 @@ function App() {
                 : undefined,
         })
     );
+    // ⚡ Suspense مطلوب هنا لأن LawyerGuideBrowseSection بقى React.lazy فوق —
+    // نفس نمط EncyclopediaTabContent فوق بالظبط.
+    const LawyerGuideTabContent = React.createElement(React.Suspense, {
+            fallback: React.createElement('div', { className: 'flex items-center justify-center pt-24' },
+                React.createElement(I.Spin)
+            )
+        },
+        React.createElement(LawyerGuideBrowseSection, {
+            loadingLawyerGuide: lawyerGuideBrowse.loadingLawyerGuide,
+            categories: lawyerGuideBrowse.categories,
+            links: lawyerGuideBrowse.links,
+            onOpenLink: lawyerGuideBrowse.handleOpenLink,
+            onManageLawyerGuide: isAISuperAdmin
+                ? () => { setAdminInitialSection('lawyer_guide'); nav.navigateTo('admin'); }
+                : undefined,
+        })
+    );
 
     const showMenu = showHeaderMenu;
 
@@ -965,6 +1002,7 @@ function App() {
             ),
             tab === 'documents' && DocsTab,
             tab === 'encyclopedia' && EncyclopediaTabContent,
+            tab === 'lawyerGuide' && LawyerGuideTabContent,
             tab === 'admin' && (isAdmin
                 // ⚡ FIX (8 أغسطس 2026 — البند 5 من تقرير حالة التنفيذ): clientsWithExtras
                 // بدل clients الخام — useAdminArchive بيدوّر بـ clients.find(id) عشان
@@ -1002,7 +1040,7 @@ function App() {
         // (راجع e2e/utils.ts).
         React.createElement('div', { className: 'lg:hidden' },
             React.createElement(CommandDock, {
-                tab, setTab, showMore, setShowMore, isAdmin, navRef,
+                tab, setTab, showMore, setShowMore, showResourcesPicker, setShowResourcesPicker, isAdmin, navRef,
                 setShowAI: handleAIButtonClick, setSessionsInitialTab, setRemindersInitialFilter,
             })
         ),
