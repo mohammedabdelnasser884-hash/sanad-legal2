@@ -60,7 +60,7 @@ export function useAdminLawyerGuide(profile?: ProfileRow | null) {
     try {
       const [{ data: cats }, { data: lnks }] = await Promise.all([
         db.from('lawyer_guide_categories').select('*').order('sort_order').order('name_ar'),
-        db.from('lawyer_guide_links').select('*').order('title'),
+        db.from('lawyer_guide_links').select('*').order('category_id').order('sort_order').order('title'),
       ]);
       if (cats) setCategories(cats);
       if (lnks) setLinks(lnks);
@@ -140,7 +140,14 @@ export function useAdminLawyerGuide(profile?: ProfileRow | null) {
           userName: _userName, entity_type: 'lawyer_guide_link', entity_id: editingGuideLink.id, details: form.title,
         });
       } else {
-        await callEncyclopediaAction({ action: 'createLink', ...payloadCommon });
+        // ⚡ ترتيب يدوي (قرار #1 محسوم — الأهم يفضل فوق): الرابط الجديد
+        // بيتحط في آخر ترتيب تصنيفه الحالي (max(sort_order) + 1)، عشان
+        // ميقفزش لأول القائمة من غير قصد. إعادة الترتيب الفعلية بعد كده
+        // بتتم بأزرار "لأعلى/لأسفل" في الواجهة (handleReorderGuideLink).
+        const siblingsMax = links
+          .filter((l) => l.category_id === form.category_id)
+          .reduce((max, l) => Math.max(max, l.sort_order || 0), -1);
+        await callEncyclopediaAction({ action: 'createLink', ...payloadCommon, sort_order: siblingsMax + 1 });
         toast('✅ تم إضافة الرابط');
         logActivity(db, 'إضافة رابط لدليل المحامي', {
           userName: _userName, entity_type: 'lawyer_guide_link', details: form.title,
@@ -156,6 +163,31 @@ export function useAdminLawyerGuide(profile?: ProfileRow | null) {
       showErrorToast('lawyer_guide_save_link', e, 'تعذّر حفظ الرابط. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'دليل المحامي');
     }
     setSavingGuideLink(false);
+  };
+
+  // ── إعادة ترتيب رابط (لأعلى/لأسفل) — بتبدّل sort_order مع الجار
+  // المباشر في نفس التصنيف بس (نفس مصفوفة guideLinks مرتّبة بالفعل
+  // بـsort_order من fetchLawyerGuide). عمليتين updateLink متتاليتين،
+  // صفر action جديدة في السيرفر.
+  const [reordering, setReordering] = useState(false);
+  const handleReorderGuideLink = async (link: LawyerGuideLinkRow, direction: 'up' | 'down') => {
+    const siblings = links.filter((l) => l.category_id === link.category_id);
+    const idx = siblings.findIndex((l) => l.id === link.id);
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (idx === -1 || targetIdx < 0 || targetIdx >= siblings.length) return;
+    const neighbor = siblings[targetIdx];
+    setReordering(true);
+    try {
+      await Promise.all([
+        callEncyclopediaAction({ action: 'updateLink', id: link.id, sort_order: neighbor.sort_order }),
+        callEncyclopediaAction({ action: 'updateLink', id: neighbor.id, sort_order: link.sort_order }),
+      ]);
+      fetchLawyerGuide();
+      recordSuccess('lawyer_guide_reorder_link');
+    } catch (e) {
+      showErrorToast('lawyer_guide_reorder_link', e, 'تعذّر تغيير الترتيب. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.', 'دليل المحامي');
+    }
+    setReordering(false);
   };
 
   // ── حذف رابط ──
@@ -187,5 +219,6 @@ export function useAdminLawyerGuide(profile?: ProfileRow | null) {
     guideLinkModalCategoryId, setGuideLinkModalCategoryId,
     confirmDeleteGuideLink, setConfirmDeleteGuideLink,
     savingGuideLink, handleSaveGuideLink, handleDeleteGuideLink,
+    reordering, handleReorderGuideLink,
   };
 }
