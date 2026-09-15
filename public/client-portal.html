@@ -178,7 +178,7 @@ function LoginScreen({onLogin}){
     try{
       const res=await callApi('verify',{contact:phone.trim(),pin:pin.trim(),...(selectedTenant?{tenant_id:selectedTenant.tenant_id}:{})});
       saveSession(res.token);
-      onLogin(res.client,res.token);
+      onLogin(res.client,res.token,!!res.client?.must_change_pin);
     } catch(e) {
       setErr(e.message||'رمز الدخول غير صحيح ❌');
       setPin('');
@@ -498,6 +498,65 @@ function Portal({client,token}){
 }
 
 // ════════════════════════
+//  شاشة إجبار تغيير الرمز (أول دخول برمز مؤقت من المكتب، أو بعد reset)
+// ════════════════════════
+function ForceChangePasswordScreen({token,onDone}){
+  const [p1,setP1]=useState('');
+  const [p2,setP2]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState('');
+  const [show,setShow]=useState(false);
+
+  const isValidFormat=v=>v.length>=8 && /[A-Za-z]/.test(v) && /[0-9]/.test(v);
+
+  const submit=async()=>{
+    setErr('');
+    if(!isValidFormat(p1)){setErr('الرمز الجديد لازم يكون 8 خانات على الأقل، وفيه حروف وأرقام مع بعض');return;}
+    if(p1!==p2){setErr('الرمزين مش متطابقين');return;}
+    setLoading(true);
+    try{
+      await callApi('changePassword',{token,newPassword:p1});
+      toast('تم تغيير رمز دخولك بنجاح ✅');
+      onDone();
+    }catch(e){
+      setErr(e.message||'تعذّر تغيير الرمز');
+    }
+    setLoading(false);
+  };
+
+  return React.createElement('div',{style:{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'24px'}},
+    React.createElement('div',{className:"fu",style:{textAlign:'center',marginBottom:'24px'}},
+      React.createElement(Ic.Shield,{s:34}),
+      React.createElement('p',{style:{fontSize:'16px',fontWeight:900,color:'var(--t1)',margin:'10px 0 4px'}},'أمّن حسابك'),
+      React.createElement('p',{style:{fontSize:'11px',color:'var(--t2)',maxWidth:'280px'}},'دخلت برمز مؤقت من المكتب — اختار رمز دخول خاص بيك قبل ما تكمل')
+    ),
+    React.createElement('div',{className:"fu s1",style:{width:'100%',maxWidth:'320px',background:'var(--card)',border:'1px solid var(--b2)',borderRadius:'20px',padding:'24px',boxShadow:'0 20px 60px rgba(0,0,0,.5)'}},
+      React.createElement('label',{style:{display:'block',fontSize:'11px',fontWeight:700,color:'var(--t2)',marginBottom:'8px'}},'الرمز الجديد (8 خانات على الأقل، حروف وأرقام)'),
+      React.createElement('div',{style:{position:'relative',marginBottom:'12px'}},
+        React.createElement('input',{
+          type:show?'text':'password',value:p1,onChange:e=>setP1(e.target.value),
+          placeholder:'الرمز الجديد...',autoFocus:true,
+          style:{width:'100%',padding:'13px 44px 13px 14px',fontSize:'16px',background:'var(--bg2)',border:'1px solid var(--b2)',borderRadius:'12px',color:'var(--t1)',direction:'ltr',textAlign:'left'}
+        }),
+        React.createElement('button',{onClick:()=>setShow(!show),style:{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:'var(--t3)',fontSize:'16px',padding:'4px'}},show?'🙈':'👁')
+      ),
+      React.createElement('label',{style:{display:'block',fontSize:'11px',fontWeight:700,color:'var(--t2)',marginBottom:'8px'}},'أكّد الرمز الجديد'),
+      React.createElement('input',{
+        type:show?'text':'password',value:p2,onChange:e=>setP2(e.target.value),
+        onKeyDown:e=>e.key==='Enter'&&submit(),
+        placeholder:'اكتب الرمز تاني...',
+        style:{width:'100%',padding:'13px 14px',fontSize:'16px',background:'var(--bg2)',border:'1px solid var(--b2)',borderRadius:'12px',color:'var(--t1)',direction:'ltr',textAlign:'left'}
+      }),
+      err&&React.createElement('p',{style:{fontSize:'11px',color:'#f87171',marginTop:'8px',textAlign:'center'}},err),
+      React.createElement('button',{
+        onClick:submit,disabled:loading,
+        style:{width:'100%',padding:'13px',marginTop:'14px',borderRadius:'12px',border:'none',cursor:'pointer',background:'linear-gradient(135deg,#D4AF37,#E8C84A)',color:'#070d1a',fontSize:'14px',fontWeight:900,fontFamily:'Cairo,sans-serif',opacity:loading?.6:1,display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}
+      },loading?React.createElement(Ic.Spin):'تأكيد الرمز الجديد')
+    )
+  );
+}
+
+// ════════════════════════
 //  App
 // ════════════════════════
 function App(){
@@ -508,7 +567,7 @@ function App(){
     const s=loadSession();
     if(s){
       callApi('getClient',{token:s.token}).then(({data})=>{
-        if(data){setClient(data);setToken(s.token);setState('portal');}
+        if(data){setClient(data);setToken(s.token);setState(data.must_change_pin?'forceChange':'portal');}
         else{clearSession();setState('login');}
       }).catch(()=>{clearSession();setState('login');});
     } else setState('login');
@@ -526,7 +585,10 @@ function App(){
     React.createElement(Ic.Spin),
     React.createElement('p',{style:{fontSize:'11px',color:'var(--t3)'}},'جاري التحقق...')
   );
-  if(state==='login')return React.createElement(LoginScreen,{onLogin:(cl,tok)=>{setClient(cl);setToken(tok);setState('portal');}});
+  if(state==='login')return React.createElement(LoginScreen,{onLogin:(cl,tok,mustChange)=>{setClient(cl);setToken(tok);setState(mustChange?'forceChange':'portal');}});
+  // ⚠️ شاشة إجبارية بدون زرار رجوع أو تخطي — لازم الموكل يغيّر رمزه
+  // قبل ما يوصل لأي حاجة تانية في البوابة.
+  if(state==='forceChange')return React.createElement(ForceChangePasswordScreen,{token,onDone:()=>setState('portal')});
   return React.createElement(Portal,{client,token});
 }
 
