@@ -144,24 +144,41 @@ function LoginScreen({onLogin}){
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState('');
   const [found,setFound]=useState(null);
+  const [tenants,setTenants]=useState([]);
+  const [selectedTenant,setSelectedTenant]=useState(null);
 
   const findClient=async()=>{
     if(!phone.trim()){setErr('أدخل رقم هاتفك');return;}
     setLoading(true);setErr('');
     try{
       const res=await callApi('find',{contact:phone.trim()});
-      setFound({client_name:res.client_name});
-      setStep('pin');
+      // ⚡ FIX (مشكلة 3): نفس الرقم ممكن يكون مسجّل لأكتر من مكتب —
+      // السيرفر بيرجّع multi_tenant:true في الحالة النادرة دي، فبنعرض
+      // خطوة وسيطة لاختيار المكتب قبل ما نكمل لخطوة الـ PIN.
+      if(res.multi_tenant){
+        setTenants(res.tenants||[]);
+        setSelectedTenant(null);
+        setStep('tenant');
+      }else{
+        setFound({client_name:res.client_name});
+        setStep('pin');
+      }
     }catch(e){
       setErr(e.message||'لم يُعثر على حساب بهذا الرقم');
     }
     setLoading(false);
   };
 
+  const pickTenant=(t)=>{
+    setSelectedTenant(t);
+    setFound({client_name:t.tenant_name});
+    setStep('pin');
+  };
+
   const checkPin=async()=>{
-    if(!found||!pin.trim())return;
+    if(!pin.trim())return;
     try{
-      const res=await callApi('verify',{contact:phone.trim(),pin:pin.trim()});
+      const res=await callApi('verify',{contact:phone.trim(),pin:pin.trim(),...(selectedTenant?{tenant_id:selectedTenant.tenant_id}:{})});
       saveSession(res.token);
       onLogin(res.client,res.token);
     } catch(e) {
@@ -172,6 +189,22 @@ function LoginScreen({onLogin}){
   };
 
   const [showPin,setShowPin]=useState(false);
+
+  // ── شاشة اختيار المكتب (حالة نادرة: نفس الرقم مسجّل بأكتر من مكتب) ──
+  if(step==='tenant')return React.createElement('div',{style:{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'24px'}},
+    React.createElement('div',{className:"fu",style:{textAlign:'center',marginBottom:'24px'}},
+      React.createElement('p',{style:{fontSize:'16px',fontWeight:900,color:'var(--t1)',marginBottom:'4px'}},'رقمك مسجّل في أكتر من مكتب'),
+      React.createElement('p',{style:{fontSize:'11px',color:'var(--t2)'}},'اختر المكتب اللي عايز تدخل بوابته')
+    ),
+    React.createElement('div',{className:"fu s1",style:{width:'100%',maxWidth:'320px',display:'flex',flexDirection:'column',gap:'10px'}},
+      tenants.map(t=>React.createElement('button',{
+        key:t.tenant_id,
+        onClick:()=>pickTenant(t),
+        style:{width:'100%',padding:'16px',borderRadius:'14px',border:'1px solid var(--b2)',background:'var(--card)',color:'var(--t1)',fontSize:'14px',fontWeight:800,fontFamily:'Cairo,sans-serif',cursor:'pointer',textAlign:'center'}
+      },t.tenant_name))
+    ),
+    React.createElement('button',{onClick:()=>{setStep('phone');setTenants([]);setSelectedTenant(null);setErr('');},style:{marginTop:'18px',fontSize:'11px',color:'var(--t3)',background:'none',border:'none',cursor:'pointer',fontFamily:'Cairo,sans-serif'}},'← تغيير الرقم')
+  );
 
   // ── شاشة رمز الدخول ──
   if(step==='pin')return React.createElement('div',{style:{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'24px'}},
@@ -212,7 +245,7 @@ function LoginScreen({onLogin}){
         style:{width:'100%',padding:'13px',marginTop:'14px',borderRadius:'12px',border:'none',cursor:'pointer',background:'linear-gradient(135deg,#D4AF37,#E8C84A)',color:'#070d1a',fontSize:'14px',fontWeight:900,fontFamily:'Cairo,sans-serif',opacity:pin.trim()?1:.5,transition:'opacity .2s'}
       },'دخول ←')
     ),
-    React.createElement('button',{onClick:()=>{setStep('phone');setPin('');setErr('');setFound(null);setShowPin(false);},style:{marginTop:'18px',fontSize:'11px',color:'var(--t3)',background:'none',border:'none',cursor:'pointer',fontFamily:'Cairo,sans-serif'}},'← تغيير الرقم')
+    React.createElement('button',{onClick:()=>{setStep('phone');setPin('');setErr('');setFound(null);setShowPin(false);setSelectedTenant(null);setTenants([]);},style:{marginTop:'18px',fontSize:'11px',color:'var(--t3)',background:'none',border:'none',cursor:'pointer',fontFamily:'Cairo,sans-serif'}},'← تغيير الرقم')
   );
 
   // ── شاشة رقم الهاتف ──
