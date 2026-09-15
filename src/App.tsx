@@ -109,6 +109,8 @@ import { useClientActions } from '@/features/clients/hooks/useClientActions';
 import type { ClientModalContext } from '@/features/clients/hooks/useClientActions';
 import type { OpenCreateClientForParty, OpenCreateClientForSessionParty } from '@/features/calendar/hooks/useClientLinking';
 import { useAutoLogout } from './hooks/useAutoLogout';
+import LockScreen from './pages/Login/LockScreen';
+import { hasLocalUnlockPassword } from './lib/localAuthLock';
 import { useAuthProfile } from './hooks/useAuthProfile';
 import { useThemeMode } from './hooks/useThemeMode';
 import { useNavbarHeightVar } from './hooks/useNavbarHeightVar';
@@ -570,11 +572,32 @@ function App() {
         });
     }, [openNewClientModal, fetchTodaySessions, fetchUpcomingSessions, fetchClients, clientSearch]);
 
-    const handleAutoLogout = useCallback(() => {
-        setCases([]); setLawyers([]); setClients([]);
-        setProfile(null); setAuthUser(null);
-    }, [setCases, setLawyers, setClients, setProfile, setAuthUser]);
-    useAutoLogout(profile, handleAutoLogout);
+    // 🔒 FIX (خطة قفل الشاشة بدل تسجيل الخروج التلقائي، 15 سبتمبر 2026):
+    // useAutoLogout كان بيعمل signOut حقيقي بعد 30 دقيقة عدم نشاط، وده
+    // كان بيسيب المستخدم عالق لو كان أوف لاين (تسجيل الدخول تاني محتاج
+    // نت). دلوقتي بننادي onLock بدل onLogout — بنعرض LockScreen (تحقق
+    // محلي بالكامل، لا شبكة) فوق نفس الـsession الشغالة، من غير أي
+    // signOut. handleAutoLogout القديم اتشال؛ مش مستخدم تاني.
+    const [isLocked, setIsLocked] = useState(false);
+    // ⚠️ handleLogout (من useCaseActions فوق) بيتبنى من جديد كل render —
+    // لو استخدمناه مباشرة في dependency array بتاعة handleLock تحت، الـ
+    // useEffect جوه useAutoLogout كان هيعيد تسجيل نفسه (ويصفّر المؤقّت
+    // بلا داعي) مع أي render، مش بس مع نشاط حقيقي من المستخدم. بنحطه في
+    // ref بدل كده عشان handleLock يفضل مرجع ثابت.
+    const handleLogoutRef = useRef(handleLogout);
+    useEffect(() => { handleLogoutRef.current = handleLogout; }, [handleLogout]);
+    const handleLock = useCallback(() => {
+        // لو معندوش هاش قفل محلي محفوظ أصلًا (نادر جدًا: أول قفل بعد نشر
+        // هذا التحديث قبل ما يعمل تسجيل دخول جديد مرة واحدة)، مفيش مرجع
+        // نتحقق منه في LockScreen — نرجع للسلوك القديم (تسجيل خروج حقيقي)
+        // بدل قفل بلا فايدة.
+        if (authUser && hasLocalUnlockPassword(authUser.id)) {
+            setIsLocked(true);
+        } else {
+            handleLogoutRef.current();
+        }
+    }, [authUser]);
+    useAutoLogout(profile, handleLock);
 
     // 🆕 (بند 6) — بدل التكرار الحرفي؛ نفس المنطق في useAppData.ts الآن
     // مستورد من مصدر واحد (shared/lib/permissions.ts).
@@ -614,6 +637,21 @@ function App() {
     if (isPasswordRecovery) return React.createElement(ResetPasswordScreen);
 
     if (!authUser || !profile) return React.createElement(LoginScreen, { onLogin: (u) => loadProfile(u) });
+
+    // 🆕 (خطة قفل الشاشة، 15 سبتمبر 2026): لازم تتفحص فورًا بعد بوابة
+    // authUser/profile فوق — القفل مستقل عن onboarding/شروط/اشتراك، وممكن
+    // يحصل بعد ما المستخدم عدّى كل البوابات دي بزمن طويل. لو معندوش هاش
+    // قفل محلي محفوظ أصلًا (نادر: أول قفل بعد نشر التحديث ده قبل ما يعمل
+    // تسجيل دخول جديد)، منعرضش LockScreen بلا فايدة — نعمل تسجيل خروج
+    // حقيقي فورًا بدله (نفس سلوك زر "تسجيل خروج" جوه LockScreen).
+    if (isLocked) {
+        return React.createElement(LockScreen, {
+            userId: authUser.id,
+            email: profile.email,
+            onUnlock: () => setIsLocked(false),
+            onLogout: () => { setIsLocked(false); handleLogout(); },
+        });
+    }
 
     // ⚡ NEW (خطة onboarding مكتب جديد، مرحلة 4.3 — 6 سبتمبر 2026): لازم
     // تتفحص قبل بوابة إقرار الشروط تحت — مكتب جديد لسه ما اتحقّقش من
