@@ -15,6 +15,7 @@ import { runDuplicateCheckOfflineAware } from '../../../../shared/lib/offlineGua
 import { db } from '../../../../supabaseClient';
 import { validateParties } from '../../../../shared/lib/casePartiesValidation';
 import { checkPermission } from '../../../../shared/lib/permissions';
+import { clearLocalUnlockPassword } from '../../../../lib/localAuthLock';
 import type { MappedCase } from '../../../../hooks/useAppData';
 import type { CaseActionsParams, CaseFormSubmitData } from './types';
 import { buildPartiesDiff } from './partiesDiff';
@@ -49,6 +50,10 @@ export function createCaseCrudActions(
     const handleLogout = async () => {
         // نسجّل الخروج قبل signOut عشان الـ session لسه شغّالة
         logActivity(db, 'تسجيل خروج', { userName: _userName, entity_type: 'user', details: profile?.email || null });
+        // 🆕 (خطة قفل الشاشة، 15 سبتمبر 2026): تسجيل خروج حقيقي (فرق عن
+        // القفل التلقائي) — بنمسح هاش القفل المحلي بتاع المستخدم ده من
+        // الجهاز، عشان مايفضلش سايح لو الجهاز مشترك بين أكتر من حد.
+        clearLocalUnlockPassword(profile?.user_id);
         await db.auth.signOut();
         setCases([]); setLawyers([]); setClients([]); setProfile(null); setAuthUser(null);
     };
