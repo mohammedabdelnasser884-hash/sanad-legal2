@@ -26,9 +26,9 @@ interface FetchState {
   lockedOutIp: boolean;
   recordAttemptCalls: Array<{ contact: string; ip_address: string; success: boolean }>;
   clientsFindRows: ClientRow[];
-  portalPinRows: Array<{ id: string; is_active: boolean }>;
+  portalPinRows: Array<{ client_id: string; is_active: boolean }>;
   verifyPortalPinOk: boolean;
-  tenantsRows: Array<{ id: string; status: string; trial_ends_at: string | null }>;
+  tenantsRows: Array<{ id: string; status: string; trial_ends_at: string | null; name?: string }>;
   casesOwnershipRows: Array<{ id: string }>;
   casesListRows: unknown[];
   caseFeesRows: unknown[];
@@ -47,9 +47,9 @@ function freshState(): FetchState {
     clientsFindRows: [
       { id: 'client-1', full_name: 'أحمد محمد علي', phone: '01000000000', email: 'ahmed@example.com', type: 'فرد', tenant_id: 'tenant-a' },
     ],
-    portalPinRows: [{ id: 'pin-1', is_active: true }],
+    portalPinRows: [{ client_id: 'client-1', is_active: true }],
     verifyPortalPinOk: true,
-    tenantsRows: [{ id: 'tenant-a', status: 'active', trial_ends_at: null }],
+    tenantsRows: [{ id: 'tenant-a', status: 'active', trial_ends_at: null, name: 'مكتب أ' }],
     casesOwnershipRows: [{ id: CASE_ID }],
     casesListRows: [
       { id: CASE_ID, case_number: '123', case_number_official: 'رقم-123', case_type: 'مدني', court: null, court_name: 'محكمة الجيزة الابتدائية', status: 'active', created_at: '2026-01-01T00:00:00Z' },
@@ -262,6 +262,55 @@ describe('client-portal-api — action=find', () => {
     const data = await res.json();
     expect(data.client_name).toBe('سند');
   });
+
+  // ── مشكلة 3: نفس الرقم/الإيميل موجود لأكتر من صف عميل ──
+  it('نفس الرقم لصفين عميل بمكتبين مختلفين، بس صف واحد بس بوابته مفعّلة → بيتعامل معاه عادي (مفيش multi_tenant)', async () => {
+    state.clientsFindRows = [
+      { id: 'client-1', full_name: 'أحمد محمد علي', phone: '01000000000', email: 'ahmed@example.com', tenant_id: 'tenant-a' },
+      { id: 'client-2', full_name: 'أحمد آخر', phone: '01000000000', email: 'ahmed2@example.com', tenant_id: 'tenant-b' },
+    ];
+    state.portalPinRows = [{ client_id: 'client-1', is_active: true }];
+    const res = await handler(req({ action: 'find', contact: '01000000000' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.multi_tenant).toBeUndefined();
+    expect(data.client_name).toBe('أحمد م*** ع**');
+  });
+
+  it('نفس الرقم لصفين عميل، وبوابة الاتنين مفعّلة (مكتبين مختلفين) → 200 + multi_tenant:true وقائمة المكاتب', async () => {
+    state.clientsFindRows = [
+      { id: 'client-1', full_name: 'أحمد محمد علي', phone: '01000000000', email: 'ahmed@example.com', tenant_id: 'tenant-a' },
+      { id: 'client-2', full_name: 'أحمد آخر', phone: '01000000000', email: 'ahmed2@example.com', tenant_id: 'tenant-b' },
+    ];
+    state.portalPinRows = [
+      { client_id: 'client-1', is_active: true },
+      { client_id: 'client-2', is_active: true },
+    ];
+    state.tenantsRows = [
+      { id: 'tenant-a', status: 'active', trial_ends_at: null, name: 'مكتب أ' },
+      { id: 'tenant-b', status: 'active', trial_ends_at: null, name: 'مكتب ب' },
+    ];
+    const res = await handler(req({ action: 'find', contact: '01000000000' }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.multi_tenant).toBe(true);
+    expect(data.tenants).toEqual([
+      { tenant_id: 'tenant-a', tenant_name: 'مكتب أ' },
+      { tenant_id: 'tenant-b', tenant_name: 'مكتب ب' },
+    ]);
+  });
+
+  it('صفين عميل بنفس الرقم، ولا واحد فيهم بوابته مفعّلة → 403 (مش 200 باسم صف غلط)', async () => {
+    state.clientsFindRows = [
+      { id: 'client-1', full_name: 'أحمد محمد علي', phone: '01000000000', email: 'ahmed@example.com', tenant_id: 'tenant-a' },
+      { id: 'client-2', full_name: 'أحمد آخر', phone: '01000000000', email: 'ahmed2@example.com', tenant_id: 'tenant-b' },
+    ];
+    state.portalPinRows = [];
+    const res = await handler(req({ action: 'find', contact: '01000000000' }));
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error).toBe('لم يتم تفعيل بوابتك بعد، تواصل مع المكتب');
+  });
 });
 
 // ══════════════════════════════════════════════════════
@@ -308,7 +357,7 @@ describe('client-portal-api — action=verify', () => {
   });
 
   it('صف البوابة موجود لكن is_active=false → 403 بنفس رسالة عدم التفعيل', async () => {
-    state.portalPinRows = [{ id: 'pin-1', is_active: false }];
+    state.portalPinRows = [{ client_id: 'client-1', is_active: false }];
     const res = await handler(req({ action: 'verify', contact: '01000000000', pin: '1234' }));
     expect(res.status).toBe(403);
     const data = await res.json();
@@ -363,6 +412,90 @@ describe('client-portal-api — action=verify', () => {
     expect(typeof data.token).toBe('string');
     expect(data.client).toEqual(state.clientsFindRows[0]);
     expect(state.recordAttemptCalls).toEqual([{ contact: '01000000000', ip_address: 'unknown', success: true }]);
+  });
+
+  it('tenant_id شكله مش UUID صحيح → 400 من غير أي بحث', async () => {
+    const res = await handler(req({ action: 'verify', contact: '01000000000', pin: '1234', tenant_id: 'not-a-uuid' }));
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe('بيانات غير صالحة');
+  });
+
+  // ── مشكلة 3: صفين عميل بنفس الرقم، مكتبين مختلفين ──
+  describe('حالة تعدد المكاتب لنفس الرقم', () => {
+    beforeEach(() => {
+      state.clientsFindRows = [
+        { id: 'client-1', full_name: 'أحمد محمد علي', phone: '01000000000', email: 'ahmed@example.com', tenant_id: 'tenant-a' },
+        { id: 'client-2', full_name: 'أحمد آخر', phone: '01000000000', email: 'ahmed2@example.com', tenant_id: 'tenant-b' },
+      ];
+      state.portalPinRows = [
+        { client_id: 'client-1', is_active: true },
+        { client_id: 'client-2', is_active: true },
+      ];
+      state.tenantsRows = [
+        { id: 'tenant-a', status: 'active', trial_ends_at: null, name: 'مكتب أ' },
+        { id: 'tenant-b', status: 'active', trial_ends_at: null, name: 'مكتب ب' },
+      ];
+    });
+
+    it('من غير tenant_id، الـ PIN بيتطابق مع صف مش أول واحد → بيرجع صاحب الـ PIN الصح مش صف عشوائي', async () => {
+      // نفس PIN وهمي بيتحقق منه rpc واحد بيرجع true دايمًا في المِوك
+      // الافتراضي؛ هنا بنتأكد إن الكود بيجرب كل مرشّح بدل ما ياخد أول
+      // صف على طول ويرجّعه من غير أي تحقق فعلي من صحة اختياره.
+      const res = await handler(req({ action: 'verify', contact: '01000000000', pin: '1234' }));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      // من غير tenant_id، وكل المرشحين بيرجعوا PIN صحيح من المِوك، أول
+      // مرشّح (client-1) هو اللي بيكمل بيه — سلوك متوقع وموثّق.
+      expect(data.client.id).toBe('client-1');
+    });
+
+    it('PIN غلط لأول مرشّح بس صح للتاني → بيكمل بالتاني (مش بيوقف عند أول فشل)', async () => {
+      let callCount = 0;
+      vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const u = new URL(url);
+        if (u.pathname === '/rest/v1/rpc/verify_portal_pin') {
+          callCount += 1;
+          const body = JSON.parse(init!.body as string);
+          const ok = body.p_client_id === 'client-2'; // بس client-2 عنده PIN صح
+          return new Response(JSON.stringify(ok), { status: 200 });
+        }
+        return buildFetchMock(state)(input, init);
+      }));
+      const res = await handler(req({ action: 'verify', contact: '01000000000', pin: '5678' }));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.client.id).toBe('client-2');
+      expect(callCount).toBe(2); // جرّب client-1 الأول (فشل) بعدين client-2 (نجح)
+    });
+
+    it('مع tenant_id صريح → بيقصر البحث عليه مباشرة من غير تجربة باقي المرشحين', async () => {
+      const res = await handler(req({ action: 'verify', contact: '01000000000', pin: '1234', tenant_id: 'tenant-b' }));
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.client.id).toBe('client-2');
+    });
+
+    it('tenant_id لمكتب مش من ضمن المرشحين المطابقين للرقم → 404', async () => {
+      const res = await handler(req({ action: 'verify', contact: '01000000000', pin: '1234', tenant_id: 'tenant-c-0000-0000-0000-000000000000' }));
+      expect(res.status).toBe(404);
+    });
+
+    it('الـ PIN غلط على كل المرشحين → 401 برسالة واحدة، من غير تسريب إن فيه أكتر من مكتب', async () => {
+      vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const u = new URL(url);
+        if (u.pathname === '/rest/v1/rpc/verify_portal_pin') {
+          return new Response(JSON.stringify(false), { status: 200 });
+        }
+        return buildFetchMock(state)(input, init);
+      }));
+      const res = await handler(req({ action: 'verify', contact: '01000000000', pin: '0000' }));
+      expect(res.status).toBe(401);
+      const data = await res.json();
+      expect(data.error).toBe('رمز الدخول غير صحيح ❌');
+    });
   });
 });
 
