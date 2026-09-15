@@ -178,7 +178,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
     handleSaveGuideLink, handleDeleteGuideLink,
     reordering: reorderingGuideLink, handleReorderGuideLink,
   } = lawyerGuide;
-  const { portalAccess, portalClient, setPortalClient, clientSearch, setClientSearch, showAddPortalUser, setShowAddPortalUser, savingPortal, fetchPortalAccess, handleSavePortal } = portal;
+  const { portalAccess, portalClient, setPortalClient, clientSearch, setClientSearch, showAddPortalUser, setShowAddPortalUser, savingPortal, portalClients, fetchPortalClients, fetchPortalAccess, handleSavePortal } = portal;
   const {
     archivedCases, archivedCasesTotal, loadingArchivedCases,
     archivedCasesPage, setArchivedCasesPage,
@@ -246,7 +246,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
     //  client_portal_pins من غير أي داعي. دلوقتي زي باقيهم بالظبط —
     //  بيتنادى بس لما تفتح قسم "بوابة الموكلين" فعليًا.
     // ══════════════════════════════════════════════════════════
-    if (section === 'portal')   fetchPortalAccess();
+    if (section === 'portal') { fetchPortalAccess(); fetchPortalClients(); }
     // ملاحظة: قسم activity يُعاد جلبه من useEffect منفصل (يراقب الفلاتر والصفحة)
     // عشان نتجنب double-fetch لما المستخدم يفتح القسم لأول مرة
     if (section === 'backup')   fetchBackups();
@@ -298,7 +298,12 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
   };
 
   // ── قائمة الموكلين المفلترة لبوابة الموكل ──
-  const filteredClients = clients.filter((c: ClientRow) =>
+  // 🐛 FIX (16 سبتمبر 2026): بقت بتستخدم portalClients (القايمة الكاملة
+  // المستقلة اللي بتتجاب لوحدها لما القسم يتفتح) بدل `clients` — دي
+  // كانت قايمة تاب "الموكلين" المرقّمة (15 بالصفحة + عرض المزيد)، فلو
+  // المستخدم لسه ما حمّلش كل الصفحات، بوابة الموكل كانت بتعرض جزء بسيط
+  // بس من إجمالي الموكلين الفعلي.
+  const filteredClients = portalClients.filter((c: ClientRow) =>
     !clientSearch.trim() || (c.full_name || c.client_name || '').includes(clientSearch.trim())
   );
 
@@ -743,7 +748,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
     // ══════════════════════════
     //  SECTION: بوابة الموكل
     // ══════════════════════════
-    section === 'portal' && React.createElement(PortalSection, { clientSearch, setClientSearch, filteredClients, portalAccess, setPortalClient }),
+    section === 'portal' && React.createElement(PortalSection, { clientSearch, setClientSearch, filteredClients, portalAccess, setPortalClient, loading: portal.portalClientsLoading }),
 
     // ══════════════════════════
     //  SECTION: سجل النشاط
@@ -821,7 +826,7 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
     React.createElement(AdminPanelModals, {
       editUser, setEditUser, handleEditUser, saving, profile,
       showAddUser, setShowAddUser, handleAddUser,
-      showAddPortalUser, setShowAddPortalUser, clients, portalAccess, handleSavePortal, savingPortal,
+      showAddPortalUser, setShowAddPortalUser, clients: portalClients, portalAccess, handleSavePortal, savingPortal,
       portalClient, setPortalClient,
       changePassUser, setChangePassUser, handleChangePassword,
       showLawModal, setShowLawModal, legalCategories, editingLaw, setEditingLaw, savingLaw, handleSaveLaw,
