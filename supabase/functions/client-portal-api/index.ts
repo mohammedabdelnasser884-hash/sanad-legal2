@@ -213,6 +213,22 @@ function maskName(fullName: string | null | undefined): string {
   return [first, ...maskedRest].join(' ');
 }
 
+/** من قائمة صفوف clients مرشّحة، رجّع بس اللي عندها بوابة مفعّلة فعليًا
+ * (client_portal_pins.is_active = true). بديل لأخذ أول صف عشوائي بـ
+ * limit=1 — لو نفس الرقم/الإيميل موجود لأكتر من صف (مكتبين مختلفين، أو
+ * تكرار)، هنا بنحدد فعليًا مين منهم عنده بوابة شغالة. */
+async function filterActivePortalClients<T extends { id: string }>(clients: T[]): Promise<T[]> {
+  if (!clients.length) return [];
+  const ids = clients.map(c => c.id).join(',');
+  const pins = await rest(`client_portal_pins?client_id=in.(${ids})&select=client_id,is_active`);
+  const activeIds = new Set(
+    pins
+      .filter((p: Record<string, unknown>) => p.is_active)
+      .map((p: Record<string, unknown>) => p.client_id as string),
+  );
+  return clients.filter(c => activeIds.has(c.id));
+}
+
 /** find: ابحث عن موكل بالهاتف أو الإيميل */
 async function actionFind(body: Record<string, string>, ip: string) {
   const contact = (body.contact ?? '').trim();
@@ -224,64 +240,93 @@ async function actionFind(body: Record<string, string>, ip: string) {
     return json({ error: 'محاولات كثيرة، حاول مرة أخرى بعد بعض الوقت' }, 429);
   }
 
-  // ابحث في clients بـ phone أو email
+  // ⚡ FIX (مشكلة 3 — بحث بدون عزل tenant): نفس الرقم/الإيميل ممكن يكون
+  // مسجّل لأكتر من صف عميل (نفس الشخص عميل في مكتبين مختلفين، أو تكرار
+  // غلط). بدل ما ناخد أول صف عشوائي (limit=1)، نجيب كل الصفوف المطابقة
+  // ونحدد الصح منها بناءً على مين عنده بوابة مفعّلة فعليًا.
   const rows = await rest(
-    `clients?or=(phone.eq.${encodeURIComponent(contact)},email.eq.${encodeURIComponent(contact)})&select=id,full_name,client_name,phone,email,tenant_id&limit=1`,
+    `clients?or=(phone.eq.${encodeURIComponent(contact)},email.eq.${encodeURIComponent(contact)})&select=id,full_name,client_name,phone,email,tenant_id`,
   );
   if (!rows.length) {
     await recordAttempt(`find:${contact}`, ip, false);
     return json({ error: 'لم يُعثر على حساب بهذا الرقم' }, 404);
   }
+
+  const activeClients = await filterActivePortalClients(rows);
+  if (!activeClients.length) {
+    // فيه صف/صفوف بالرقم ده، بس مفيش ولا واحد منهم بوابته مفعّلة
+    await recordAttempt(`find:${contact}`, ip, false);
+    return json({ error: 'لم يتم تفعيل بوابتك بعد، تواصل مع المكتب' }, 403);
+  }
+
+  if (activeClients.length > 1) {
+    // حالة نادرة: نفس الرقم عنده بوابة مفعّلة في أكتر من مكتب — لازم
+    // الموكل يحدد هو قاصد أنهي مكتب قبل ما نكمل لخطوة الـ PIN.
+    const tenantIds = [...new Set(activeClients.map(c => c.tenant_id as string))];
+    const tenantRows = await rest(`tenants?id=in.(${tenantIds.join(',')})&select=id,name`);
+    return json({
+      multi_tenant: true,
+      tenants: tenantRows.map((t: Record<string, unknown>) => ({ tenant_id: t.id, tenant_name: t.name })),
+    });
+  }
+
   // لا نُرجع الاسم كاملًا بدون تسجيل دخول — جزء من الاسم فقط
   // كافٍ لتأكيد الحساب الصحيح للمستخدم الشرعي.
   // ⚡ FIX: fallback على client_name (العمود المضمون امتلاؤه دايمًا) لو
   // full_name لسه فاضي على أي صف قديم قبل ما migration المزامنة تتنفذ.
-  return json({ client_name: maskName(rows[0].full_name || rows[0].client_name) });
+  return json({ client_name: maskName(activeClients[0].full_name || activeClients[0].client_name) });
 }
 
 /** verify: تحقق من PIN وأعد token */
 async function actionVerify(body: Record<string, string>, ip: string) {
-  const contact = (body.contact ?? '').trim();
-  const pin     = (body.pin ?? '').trim();
+  const contact  = (body.contact ?? '').trim();
+  const pin      = (body.pin ?? '').trim();
+  const tenantId = (body.tenant_id ?? '').trim();
   if (!contact || !pin) return json({ error: 'بيانات ناقصة' }, 400);
+  if (tenantId && !isValidUuid(tenantId)) return json({ error: 'بيانات غير صالحة' }, 400);
 
   if (await isLockedOut(contact, ip)) {
     return json({ error: `محاولات كثيرة فاشلة، حاول مرة أخرى بعد ${LOCKOUT_MINUTES} دقيقة` }, 429);
   }
 
-  const rows = await rest(
-    `clients?or=(phone.eq.${encodeURIComponent(contact)},email.eq.${encodeURIComponent(contact)})&select=id,full_name,client_name,phone,email,type,tenant_id&limit=1`,
+  // ⚡ FIX (مشكلة 3): نفس تصحيح actionFind — نجيب كل الصفوف المطابقة
+  // للرقم/الإيميل بدل limit=1. لو الفرونت بعت tenant_id (بعد ما الموكل
+  // اختار مكتبه في حالة التعدد) بنقصر البحث عليه مباشرة.
+  let rows = await rest(
+    `clients?or=(phone.eq.${encodeURIComponent(contact)},email.eq.${encodeURIComponent(contact)})&select=id,full_name,client_name,phone,email,type,tenant_id`,
   );
+  if (tenantId) rows = rows.filter((r: Record<string, unknown>) => r.tenant_id === tenantId);
   if (!rows.length) {
     await recordAttempt(contact, ip, false);
     return json({ error: 'لم يُعثر على الحساب' }, 404);
   }
 
-  const client = rows[0];
-  // ⚡ FIX: نفس fallback بتاع actionFind — full_name ممكن يكون لسه NULL لو
-  // migration المزامنة لسه ما اتنفذتش وقت الـ deploy ده.
-  client.full_name = client.full_name || client.client_name;
-
   // ⚠️ مصدر الـ PIN الحقيقي هو جدول client_portal_pins (اللي بتكتب فيه
   // لوحة الإدارة عبر useAdminPortal.ts) — وليس عمود clients.portal_pin
   // اللي مكانش بيتحدث من أي مكان في الكود.
-  // الـ PIN نفسه بقى مخزّن كـ hash (pgcrypto)، فبنتحقق منه عن طريق
-  // verify_portal_pin() جوه قاعدة البيانات بدل قراءة أي نص صريح هنا.
-  const pinRows = await rest(
-    `client_portal_pins?client_id=eq.${client.id}&select=id,is_active&limit=1`,
-  );
-  const portalAccess = pinRows[0];
-
-  if (!portalAccess || !portalAccess.is_active) {
+  const activeClients = await filterActivePortalClients(rows);
+  if (!activeClients.length) {
     await recordAttempt(contact, ip, false);
     return json({ error: 'لم يتم تفعيل بوابتك بعد، تواصل مع المكتب' }, 403);
   }
 
-  const isValidPin = await rpc('verify_portal_pin', { p_client_id: client.id, p_pin: pin });
-  if (!isValidPin) {
+  // ⚡ FIX (مشكلة 3): بدل التحقق من صف واحد بس، نجرب الـ PIN على كل صف
+  // فعّال لحد ما نلاقي تطابق صحيح — أول تطابق هو اللي بيكمل بيه الدخول.
+  // الـ PIN نفسه مخزّن كـ hash (pgcrypto)، بنتحقق منه عن طريق
+  // verify_portal_pin() جوه قاعدة البيانات بدل قراءة أي نص صريح هنا.
+  let client: Record<string, unknown> | null = null;
+  for (const candidate of activeClients) {
+    const isValidPin = await rpc('verify_portal_pin', { p_client_id: candidate.id, p_pin: pin });
+    if (isValidPin) { client = candidate; break; }
+  }
+
+  if (!client) {
     await recordAttempt(contact, ip, false);
     return json({ error: 'رمز الدخول غير صحيح ❌' }, 401);
   }
+  // ⚡ FIX: نفس fallback بتاع actionFind — full_name ممكن يكون لسه NULL لو
+  // migration المزامنة لسه ما اتنفذتش وقت الـ deploy ده.
+  client.full_name = client.full_name || client.client_name;
 
   // ── هل اشتراك المكتب (tenant) نفسه شغال؟ ──
   // نفس الفحص اللي تم تطبيقه في office-login — بدونه، موكلين مكتب
