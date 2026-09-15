@@ -29,6 +29,8 @@ export type BackupRow = Tables<'backups'>;
 // ⚡ NEW (قسم "الموسوعة القانونية" — مرحلة 3، 13 سبتمبر 2026)
 export type EncyclopediaCategoryRow = Tables<'encyclopedia_categories'>;
 export type EncyclopediaFormRow = Tables<'encyclopedia_forms'>;
+export type LawyerGuideCategoryRow = Tables<'lawyer_guide_categories'>;
+export type LawyerGuideLinkRow = Tables<'lawyer_guide_links'>;
 
 // دفعات مجمّعة حسب fee_id — الشكل اللي بيترجع من fetchFees في useFeesActions
 export type PaymentsByFeeId = Record<string, FeePaymentRow[]>;
