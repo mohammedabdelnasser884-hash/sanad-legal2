@@ -559,48 +559,6 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
           background:'#2dd4bf', boxShadow:'0 0 8px rgba(45,212,191,0.8)',
         }})
       ),
-      // صف 5.5: دليل المحامي — عريض (مقصور على السوبر أدمن فقط، مرحلة 3
-      // من خطة "الموارد القانونية" — راجع تقرير الخطة)
-      isSuperAdminUser && React.createElement('button',{
-        key:'lawyer_guide',
-        onClick:()=>setSection('lawyer_guide'),
-        'data-testid': 'admin-section-lawyer_guide',
-        className:'active:scale-[0.97] transition-all text-right',
-        style:{
-          gridColumn:'span 2',
-          background: section==='lawyer_guide' ? 'rgba(251,191,36,0.06)' : 'rgba(255,255,255,0.02)',
-          border:`1px solid ${section==='lawyer_guide' ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.04)'}`,
-          borderRadius:'16px', padding:'14px',
-          display:'flex', flexDirection:'row', alignItems:'center', gap:'14px',
-          height:'78px', position:'relative', overflow:'hidden', cursor:'pointer',
-        }
-      },
-        React.createElement('div',{style:{
-          position:'absolute', top:0, right:0, left:0,
-          height:'2px', background:'#fbbf24', opacity: section==='lawyer_guide' ? 1 : 0.5,
-        }}),
-        React.createElement('div',{style:{
-          width:'34px', height:'34px', borderRadius:'12px', flexShrink:0,
-          display:'flex', alignItems:'center', justifyContent:'center',
-          background:'rgba(251,191,36,0.12)', color:'#fbbf24',
-        }},
-          React.createElement('div',{className:'w-5 h-5'}, React.createElement(I.ExternalLink))
-        ),
-        React.createElement('div',{style:{flex:1}},
-          React.createElement('p',{className:'text-xs font-black text-white leading-tight'},'دليل المحامي'),
-          React.createElement('p',{className:'text-[9.5px] text-slate-500 mt-0.5 font-medium'},'دليل خدمات رسمية قابل للبحث والتصنيف')
-        ),
-        React.createElement('span',{
-          className:'text-[11px] font-black px-2 py-0.5 rounded-lg',
-          style:{background:'rgba(251,191,36,0.12)', color:'#fbbf24'}
-        }, String(guideLinks.length)),
-        section==='lawyer_guide' && React.createElement('div',{style:{
-          position:'absolute', bottom:'10px', left:'12px',
-          width:'5px', height:'5px', borderRadius:'50%',
-          background:'#fbbf24', boxShadow:'0 0 8px rgba(251,191,36,0.8)',
-        }})
-      ),
-
       // ⚡ REMOVED (فصل إدارة الموسوعة عن شبكة أقسام لوحة الإدارة — طلب
       // Gemy): كرت "الموسوعة القانونية" اتشال من هنا بالكامل. القسم نفسه
       // (EncyclopediaSection + الهوك + كل المودالز) لسه موجود بالأسفل بلا
@@ -610,6 +568,18 @@ export default function AdminPanel({ profile, lawyers, clients, fetchLawyers, co
       // في الرندر الفعلي للقسم (تحت) وفي الـ useEffect اللي بيقفل القسم
       // لغير السوبر أدمن (فوق) لسه هما نفس خط الدفاع الحقيقي، زي ما كانوا
       // بالظبط قبل الحذف ده.
+
+      // ⚡ REMOVED (نفس فكرة الموسوعة بالظبط — طلب Gemy): كرت "دليل المحامي"
+      // اتشال من هنا بالكامل. القسم نفسه (LawyerGuideSection + الهوك + كل
+      // المودالز) لسه موجود بالأسفل بلا أي تغيير، ودلوقتي بيتفتح بس عن
+      // طريق زرار "إدارة دليل المحامي" في صفحة دليل المحامي العادية
+      // (LawyerGuideBrowseSection → onManageLawyerGuide → initialSection
+      // prop تحت) — مش من كرت هنا. guideLinks.length (كان بيتعرض كـbadge
+      // على الكرت) بقى مستخدم بس في تمرير الداتا لـLawyerGuideSection تحت،
+      // مفيش أي استخدام تاني اتشال معاه. isSuperAdminUser guard في الرندر
+      // الفعلي للقسم (تحت) وفي الـ useEffect اللي بيقفل القسم لغير السوبر
+      // أدمن (فوق) لسه هما نفس خط الدفاع الحقيقي، زي ما كانوا بالظبط قبل
+      // الحذف ده.
     ),
 
     // ── بوابة إدارة المكاتب المشتركة (مقصورة على السوبر أدمن فقط) ──
