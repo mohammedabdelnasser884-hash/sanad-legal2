@@ -64,7 +64,7 @@ export const moreNavItems: NavItem[] = [
     // منطقي؛ CommandDock.tsx (الموبايل الفعلي) بيلفّهم جوه بوكس منبثق
     // واحد بدل ما يظهروا مباشرة في شبكة "المزيد" — راجع تعليقه هناك.
     { tab: 'encyclopedia', icon: I.Doc,   label: 'الصيغ والنماذج', testId: 'nav-more-encyclopedia' },
-    { tab: 'lawyerGuide',  icon: I.Scale, label: 'دليل المحامي',   testId: 'nav-more-lawyer-guide' },
+    { tab: 'lawyerGuide',  icon: I.Scale, label: 'دليل المحامي',   testId: 'nav-more-lawyerGuide' },
     { tab: 'fees',      icon: I.Money,  label: 'الأتعاب',     testId: 'nav-more-fees', adminOnly: true },
     { tab: 'admin',     icon: I.Shield, label: 'لوحة الإدارة', testId: 'nav-more-admin', adminOnly: true },
 ];
