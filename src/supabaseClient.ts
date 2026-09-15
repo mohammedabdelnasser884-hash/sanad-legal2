@@ -108,10 +108,12 @@ export async function callEncyclopediaDownload(
   return data;
 }
 
-// شكل الـ payload لعمليات قسم "الموسوعة القانونية" (Edge Function
-// encyclopedia-admin) — راجع تقرير التنفيذ (مرحلة 2). نفس فكرة
-// AdminActionPayload فوق: union صريح بدل Record<string, any> عشان أي
-// نوع عملية جديد يتضاف هنا بالاسم لو حصل.
+// شكل الـ payload لعمليات Edge Function encyclopedia-admin — بيغطي
+// قسمين شقيقين بيشاركوا نفس الـfunction: "الصيغ والنماذج" (أول 6
+// actions، قديمة من مرحلة 2) و"دليل المحامي" (باقي الـactions، جديدة
+// من خطة "الموارد القانونية"، مرحلة 2). راجع تقرير التنفيذ لتفاصيل كل
+// مرحلة. نفس فكرة AdminActionPayload فوق: union صريح بدل
+// Record<string, any> عشان أي نوع عملية جديد يتضاف هنا بالاسم لو حصل.
 export type EncyclopediaActionPayload =
   | { action: 'createCategory'; name_ar: string; parent_id?: string | null }
   | { action: 'updateCategory'; id: string; name_ar?: string; parent_id?: string | null }
@@ -131,10 +133,28 @@ export type EncyclopediaActionPayload =
 // استدعاء Edge Function encyclopedia-admin — نفس نمط callAdminAction
 // بالظبط (استخراج رسالة الخطأ العربية المقصودة لو موجودة، فولباك عام
 // لو مش موجودة)، بس مستقلة تمامًا عنها عشان الـpayload شكله مختلف كليًا.
+// ⚡ FIX (تصحيح رسائل الخطأ العامة — 15 سبتمبر 2026): الفانكشن دي
+// بتخدم قسمين مختلفين ("الصيغ والنماذج" و"دليل المحامي") بنفس
+// الـEdge Function. كانت رسالة/label الخطأ العام ثابتة على "الموسوعة
+// القانونية" دايمًا، فلو حصل error عام (مش عربي) وأنت بتدير "دليل
+// المحامي"، كنت هتشوف رسالة غلط بتتكلم عن الموسوعة. resolveActionMeta
+// تحت بتحدد القسم الصح من نوع الـaction نفسه.
+const ENCYCLOPEDIA_ACTIONS = new Set<EncyclopediaActionPayload['action']>([
+  'createCategory', 'updateCategory', 'deleteCategory',
+  'uploadForm', 'updateForm', 'deleteForm',
+]);
 const ENCYCLOPEDIA_GENERIC_MSG = 'حصلت مشكلة أثناء تنفيذ العملية على الموسوعة القانونية. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.';
+const LAWYER_GUIDE_GENERIC_MSG = 'حصلت مشكلة أثناء تنفيذ العملية على دليل المحامي. حاول مرة أخرى. لو المشكلة استمرت، تواصل مع الدعم.';
+
+function resolveEncyclopediaActionMeta(action: EncyclopediaActionPayload['action']): { label: string; genericMessage: string } {
+  return ENCYCLOPEDIA_ACTIONS.has(action)
+    ? { label: 'الموسوعة القانونية', genericMessage: ENCYCLOPEDIA_GENERIC_MSG }
+    : { label: 'دليل المحامي', genericMessage: LAWYER_GUIDE_GENERIC_MSG };
+}
 
 export async function callEncyclopediaAction(payload: EncyclopediaActionPayload) {
   const { data, error } = await db.functions.invoke('encyclopedia-admin', { body: payload });
+  const { label, genericMessage } = resolveEncyclopediaActionMeta(payload.action);
   if (error) {
     const serverMessage = await getEdgeFunctionErrorMessage(error as EdgeFunctionError);
     const errorForTracking = {
@@ -143,16 +163,16 @@ export async function callEncyclopediaAction(payload: EncyclopediaActionPayload)
     };
     if (looksArabicUserMessage(serverMessage)) {
       await trackQueryOutcome('generic_operation', errorForTracking, {
-        label: 'الموسوعة القانونية',
+        label,
         message: serverMessage as string,
       });
       throw new Error(serverMessage as string);
     }
     await trackQueryOutcome('generic_operation', errorForTracking, {
-      label: 'الموسوعة القانونية',
-      message: ENCYCLOPEDIA_GENERIC_MSG,
+      label,
+      message: genericMessage,
     });
-    throw new Error(ENCYCLOPEDIA_GENERIC_MSG);
+    throw new Error(genericMessage);
   }
   if (data?.error) throw new Error(data.error);
   recordSuccess('generic_operation');
