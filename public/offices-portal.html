@@ -1690,6 +1690,17 @@ function openMessageModal(tenantId, presetTemplateId) {
   document.getElementById('message-send-btn').style.opacity = waPhone ? '1' : '0.4';
   renderMessageTemplateList();
   if (presetTemplateId) selectMessageTemplate(presetTemplateId);
+  // 🐛 FIX (المودال ده طويل — 15 قالب + textarea — أطول من الشاشة على
+  // الموبايل غالبًا): كان بيستخدم items-center زي باقي المودالات، لكن
+  // توسيط عنصر أطول من الحاوية مع overflow-y:auto بيخلي جزء من فوق
+  // المودال (عنوانه وأول القوالب) غير قابل للوصول بالسكرول خالص —
+  // بيبان "متاكل"/متداخل مع هيدر الصفحة الثابت. الحل: alignment للأعلى
+  // (items-start فى الكلاس) + padding-top بيتحسب فعليًا من ارتفاع
+  // الهيدر الحقيقي (زي أسلوب #header-spacer الموجود فعلاً فى الملف)
+  // عشان يفضل المودال تحت الهيدر تمامًا مهما اختلف ارتفاعه بين الأجهزة.
+  const headerEl = document.getElementById('app-header');
+  const modalEl = document.getElementById('message-modal');
+  modalEl.style.paddingTop = ((headerEl ? headerEl.offsetHeight : 0) + 16) + 'px';
   showModal('message-modal');
 }
 
