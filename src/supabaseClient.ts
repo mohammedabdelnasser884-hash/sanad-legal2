@@ -124,8 +124,8 @@ export type EncyclopediaActionPayload =
   | { action: 'createLinkCategory'; name_ar: string; icon?: string | null; sort_order?: number }
   | { action: 'updateLinkCategory'; id: string; name_ar?: string; icon?: string | null; sort_order?: number }
   | { action: 'deleteLinkCategory'; id: string }
-  | { action: 'createLink'; category_id: string; title: string; url: string; description?: string | null; entity_type?: string | null; last_verified_at?: string | null }
-  | { action: 'updateLink'; id: string; category_id?: string; title?: string; url?: string; description?: string | null; entity_type?: string | null; last_verified_at?: string | null }
+  | { action: 'createLink'; category_id: string; title: string; url: string; description?: string | null; entity_type?: string | null; last_verified_at?: string | null; sort_order?: number }
+  | { action: 'updateLink'; id: string; category_id?: string; title?: string; url?: string; description?: string | null; entity_type?: string | null; last_verified_at?: string | null; sort_order?: number }
   | { action: 'deleteLink'; id: string };
 
 // استدعاء Edge Function encyclopedia-admin — نفس نمط callAdminAction
