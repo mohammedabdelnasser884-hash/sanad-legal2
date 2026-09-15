@@ -217,7 +217,7 @@ function maskName(fullName: string | null | undefined): string {
  * (client_portal_pins.is_active = true). بديل لأخذ أول صف عشوائي بـ
  * limit=1 — لو نفس الرقم/الإيميل موجود لأكتر من صف (مكتبين مختلفين، أو
  * تكرار)، هنا بنحدد فعليًا مين منهم عنده بوابة شغالة. */
-async function filterActivePortalClients<T extends { id: string }>(clients: T[]): Promise<T[]> {
+async function filterActivePortalClients<T extends { id: string; [key: string]: unknown }>(clients: T[]): Promise<T[]> {
   if (!clients.length) return [];
   const ids = clients.map(c => c.id).join(',');
   const pins = await rest(`client_portal_pins?client_id=in.(${ids})&select=client_id,is_active`);
@@ -274,7 +274,7 @@ async function actionFind(body: Record<string, string>, ip: string) {
   // كافٍ لتأكيد الحساب الصحيح للمستخدم الشرعي.
   // ⚡ FIX: fallback على client_name (العمود المضمون امتلاؤه دايمًا) لو
   // full_name لسه فاضي على أي صف قديم قبل ما migration المزامنة تتنفذ.
-  return json({ client_name: maskName(activeClients[0].full_name || activeClients[0].client_name) });
+  return json({ client_name: maskName((activeClients[0].full_name || activeClients[0].client_name) as string) });
 }
 
 /** verify: تحقق من PIN وأعد token */
@@ -283,7 +283,6 @@ async function actionVerify(body: Record<string, string>, ip: string) {
   const pin      = (body.pin ?? '').trim();
   const tenantId = (body.tenant_id ?? '').trim();
   if (!contact || !pin) return json({ error: 'بيانات ناقصة' }, 400);
-  if (tenantId && !isValidUuid(tenantId)) return json({ error: 'بيانات غير صالحة' }, 400);
 
   if (await isLockedOut(contact, ip)) {
     return json({ error: `محاولات كثيرة فاشلة، حاول مرة أخرى بعد ${LOCKOUT_MINUTES} دقيقة` }, 429);
