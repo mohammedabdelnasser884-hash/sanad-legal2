@@ -80,23 +80,42 @@
         /* ── Light: Clean Gray & Blue ── */
         html.light {
             /* Neutral light gray — NOT warm ivory */
-            --bg:            #f5f6f8;
-            --bg-secondary:  #eef0f3;
+            /* ⚡ FIX (تقرير تحليل النهاري/الليلي — بند 1+2+3+4+6، تنفيذ):
+               1) --bg اتغمّق من #f5f6f8 لـ#e7e9ee عشان يفصل بصريًا عن --card
+                  الأبيض النقي (كان الاتنين قريبين جدًا من بعض)؛ --bg-secondary
+                  اتغمّق بنفس النسبة.
+               2) --border و--border-strong اترفعوا (0.08→0.12 و0.14→0.22) —
+                  الشفافية القديمة كانت محتاجة قيمة أعلى بكتير عشان تتقرأ فوق
+                  خلفية بيضا بنفس قوة حدود شفافة فوق خلفية غامقة.
+               3) --text-muted اتغيّر من #64748b (تباين 4.4:1 على الخلفية
+                  القديمة — تحت حد WCAG AA 4.5:1) لـ#5b6577 (تباين ~4.8:1 على
+                  الخلفية الجديدة الأغمق، ~5.9:1 على الكارت) — تم فحصه رقميًا.
+               4) --text-faint (مستخدم دلوقتي لـplaceholder بس) اتفتح من
+                  #cbd5e1 (تباين ~1.5:1 — شبه مختفي) لـ#8996ac (تباين ~3:1 —
+                  مقروء كـ"باهت مقصود" بدل مختفي تمامًا).
+               --text-primary و--text-secondary كانوا بالفعل فوق حد الـ AA
+               (17.9:1 و7.6:1 على الكارت) فاتسابوا زي ما هم. ── */
+            --bg:            #e7e9ee;
+            --bg-secondary:  #dfe2e8;
             --card:          #ffffff;
             --card-hover:    #fbfcfd;
-            --border:        rgba(15,23,42,0.08);
-            --border-strong: rgba(15,23,42,0.14);
+            --border:        rgba(15,23,42,0.12);
+            --border-strong: rgba(15,23,42,0.22);
             --text-primary:  #0f172a;
             --text-secondary:#475569;
-            --text-muted:    #64748b;
-            --text-faint:    #cbd5e1;
-            --input-bg:      #f8fafc;
-            --input-border:  rgba(15,23,42,0.12);
+            --text-muted:    #5b6577;
+            --text-faint:    #8996ac;
+            --input-bg:      #f1f3f6;
+            --input-border:  rgba(15,23,42,0.18);
             --gold:          #2563eb;   /* renamed in spirit only — this is now the blue accent */
             --gold-dim:      rgba(37,99,235,0.10);
             --gold-glow:     rgba(37,99,235,0.20);
             --overlay:       rgba(15,23,42,0.55);
-            --shadow-card:   0 4px 20px rgba(15,23,42,0.08), 0 1px 3px rgba(15,23,42,0.05);
+            /* ⚡ FIX (بند 1 — تقرير تحليل النهاري/الليلي، أعلى أولوية):
+               فرق الشفافية بين ظل الليلي (0.6) والنهاري القديم (0.08) كان
+               هائل، وهو السبب الرئيسي لإحساس "المايعة" وعدم ظهور الكروت.
+               اترفعت الشفافية بشكل جوهري + طبقة ثانية أقرب للسطح. ── */
+            --shadow-card:   0 8px 24px rgba(15,23,42,0.15), 0 2px 6px rgba(15,23,42,0.08);
             --shadow-gold:   0 0 20px rgba(37,99,235,0.16);
             --nav-blur:      rgba(245,246,248,0.97);
             --header-blur:   rgba(255,255,255,0.94);
