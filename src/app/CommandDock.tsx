@@ -42,7 +42,13 @@ function CommandDock({
         // محل بوكس "المزيد" مؤقتًا (مش فوقه) طول ما هو مفتوح. ──
         showResourcesPicker && React.createElement('div', {
             className: 'pointer-events-auto w-full max-w-sm mb-2 rounded-2xl overflow-hidden relative z-50',
-            style: { background: 'rgba(6,12,26,0.97)', border: '1px solid rgba(212,175,55,0.18)', backdropFilter: 'blur(24px)', boxShadow: '0 -8px 40px rgba(0,0,0,0.7)', animation: 'slideUp 0.22s ease' }
+            // ⚡ FIX (تقرير النهاري/الليلي — شريط "أقسام إضافية"، 16 سبتمبر
+            // 2026): كانت القيم rgba ثابتة بلا أي وعي بالثيم، فكانت فاضلة
+            // كارت غامق حتى في النهاري. بقت دلوقتي متغيرات CSS (--sheet-*)
+            // معرّفة في index.css لكل ثيم على حدة — الليلي زي ما كان
+            // بالظبط (صفر تغيير بصري)، النهاري بقى أبيض شبه-شفاف + حد
+            // دهبي + ظل مزدوج بدل الاعتماد على فرق الخلفية عن الصفحة.
+            style: { background: 'var(--sheet-bg)', border: '1px solid var(--sheet-border)', backdropFilter: 'blur(24px)', boxShadow: 'var(--sheet-shadow)', animation: 'slideUp 0.22s ease' }
         },
             React.createElement('div', { className: 'px-3 pt-3 pb-1 flex items-center gap-2' },
                 React.createElement('button', {
@@ -79,7 +85,9 @@ function CommandDock({
 
         showMore && !showResourcesPicker && React.createElement('div', {
             className: 'pointer-events-auto w-full max-w-sm mb-2 rounded-2xl overflow-hidden relative z-50',
-            style: { background: 'rgba(6,12,26,0.97)', border: '1px solid rgba(212,175,55,0.18)', backdropFilter: 'blur(24px)', boxShadow: '0 -8px 40px rgba(0,0,0,0.7)', animation: 'slideUp 0.22s ease' }
+            // ⚡ FIX (تقرير النهاري/الليلي — شريط "أقسام إضافية"، 16 سبتمبر
+            // 2026): نفس فيكس بوكس "الموارد القانونية" فوق — شوف الكومنت هناك.
+            style: { background: 'var(--sheet-bg)', border: '1px solid var(--sheet-border)', backdropFilter: 'blur(24px)', boxShadow: 'var(--sheet-shadow)', animation: 'slideUp 0.22s ease' }
         },
             React.createElement('div', { className: 'px-3 pt-3 pb-1' },
                 React.createElement('p', { className: 'text-[10px] font-black text-slate-500 mb-2 text-right' }, 'أقسام إضافية')
@@ -140,10 +148,13 @@ function CommandDock({
         React.createElement('nav', {
             ref: navRef,
             className: 'cmd-dock-nav pointer-events-auto relative z-50 w-full max-w-sm h-[62px] flex items-center px-2 gap-0',
+            // ⚡ FIX (تقرير النهاري/الليلي — الدوك السفلي الرئيسي، 16 سبتمبر
+            // 2026): نفس فيكس بوكس "أقسام إضافية" فوق (--dock-* بدل قيم
+            // ثابتة) — الليلي صفر تغيير بصري.
             style: {
-                background: 'rgba(15,25,50,0.97)', backdropFilter: 'blur(28px) saturate(180%)',
-                border: '1px solid rgba(212,175,55,0.25)', borderRadius: '24px',
-                boxShadow: '0 0 0 1px rgba(255,255,255,0.06) inset, 0 -4px 24px rgba(212,175,55,0.08), 0 20px 60px rgba(0,0,0,0.9)',
+                background: 'var(--dock-bg)', backdropFilter: 'blur(28px) saturate(180%)',
+                border: '1px solid var(--dock-border)', borderRadius: '24px',
+                boxShadow: 'var(--dock-shadow)',
             }
         },
             // الرئيسية
