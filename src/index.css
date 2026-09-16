@@ -216,6 +216,15 @@
         html.light [class*="text-orange-300"], html.light [class*="text-orange-400"]   { color: #ea580c !important; }
         html.light [class*="text-indigo-300"], html.light [class*="text-indigo-400"]   { color: #4f46e5 !important; }
         html.light [class*="text-fuchsia-300"], html.light [class*="text-fuchsia-400"] { color: #c026d3 !important; }
+        /* ── FIX (تقوية درجة الألوان وثباتها — 16 سبتمبر 2026): جرد فعلي
+           لكل كلاسات Tailwind الفاتحة (-300/-400) المستخدمة في src/ مقابل
+           الـpatch list — 3 عائلات مستخدمة فعليًا في الكود بس مش مغطاة هنا:
+           text-green-400 (زي text-emerald)، text-red-300/400 (زي text-rose)،
+           text-yellow-300/400 (زي text-amber). بدون التغطية دي كانت هتفضل
+           بلون Tailwind الافتراضي الفاتح — ضعيف جدًا فوق خلفية بيضا. ── */
+        html.light [class*="text-green-400"]                                     { color: #059669 !important; }
+        html.light [class*="text-red-300"], html.light [class*="text-red-400"]   { color: #dc2626 !important; }
+        html.light [class*="text-yellow-300"], html.light [class*="text-yellow-400"] { color: #b45309 !important; }
         /* ── FIX (تقرير تشخيص الديسكتوب، Phase 4، بند 2 — تحذير CSS syntax
            وقت الـ build): السطور دي كانت بتستخدم "\/" (باك سلاش قبل الشرطة
            المائلة) جوه قيمة نصية بين علامتي تنصيص ([class*="..."]). الإسكيب ده
