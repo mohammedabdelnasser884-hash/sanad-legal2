@@ -107,21 +107,27 @@
             --text-faint:    #8996ac;
             --input-bg:      #f1f3f6;
             --input-border:  rgba(15,23,42,0.18);
-            --gold:          #2563eb;   /* renamed in spirit only — this is now the blue accent */
-            --gold-dim:      rgba(37,99,235,0.10);
-            --gold-glow:     rgba(37,99,235,0.20);
+            /* ⚡ FIX (بند 5 — تقرير النهاري/الليلي، القرار النهائي 16 سبتمبر
+               2026): الدهبي بقى تابت كلون مميز في الوضعين، مش تحويل لأزرق —
+               الحفاظ على هوية Sanad (navy + gold) بين الوضعين. الدرجة دي
+               (نفس Hue/Saturation الدهبي الأصلي #D4AF37 بس Lightness أقل)
+               مُختارة عشان تدي تباين ~5:1 فوق خلفية بيضا (كانت هتبان باهتة
+               جدًا لو استخدمنا الدهبي الفاتح الأصلي زي ما هو). */
+            --gold:          #866D1D;
+            --gold-dim:      rgba(134,109,29,0.10);
+            --gold-glow:     rgba(134,109,29,0.25);
             --overlay:       rgba(15,23,42,0.55);
             /* ⚡ FIX (بند 1 — تقرير تحليل النهاري/الليلي، أعلى أولوية):
                فرق الشفافية بين ظل الليلي (0.6) والنهاري القديم (0.08) كان
                هائل، وهو السبب الرئيسي لإحساس "المايعة" وعدم ظهور الكروت.
                اترفعت الشفافية بشكل جوهري + طبقة ثانية أقرب للسطح. ── */
             --shadow-card:   0 8px 24px rgba(15,23,42,0.15), 0 2px 6px rgba(15,23,42,0.08);
-            --shadow-gold:   0 0 20px rgba(37,99,235,0.16);
+            --shadow-gold:   0 0 20px rgba(134,109,29,0.16);
             --nav-blur:      rgba(245,246,248,0.97);
             --header-blur:   rgba(255,255,255,0.94);
-            --surface-tint:  rgba(37,99,235,0.04);
-            --surface-mid:   rgba(37,99,235,0.07);
-            --surface-high:  rgba(37,99,235,0.12);
+            --surface-tint:  rgba(134,109,29,0.04);
+            --surface-mid:   rgba(134,109,29,0.07);
+            --surface-high:  rgba(134,109,29,0.12);
             --danger-bg:     rgba(185,28,28,0.07);
             --danger-border: rgba(185,28,28,0.18);
         }
@@ -143,7 +149,7 @@
         /* Backgrounds */
         html.light .bg-premium-bg    { background: var(--bg) !important; }
         html.light .bg-premium-card  { background: var(--card) !important; }
-        html.light .bg-black\/30     { background: rgba(37,99,235,0.05) !important; }
+        html.light .bg-black\/30     { background: rgba(134,109,29,0.05) !important; }
         html.light .bg-black\/80     { background: var(--overlay) !important; }
         html.light .bg-white\/3      { background: var(--surface-tint) !important; }
         html.light .bg-white\/5      { background: var(--surface-mid) !important; }
@@ -196,8 +202,8 @@
         html.light .text-premium-gold { color: var(--gold) !important; }
         html.light .bg-premium-gold   { background: var(--gold) !important; }
         html.light .border-premium-gold { border-color: var(--gold) !important; }
-        html.light [class*="text-amber-300"]  { color: #1d4ed8 !important; }
-        html.light [class*="text-amber-400"]  { color: #2563eb !important; }
+        html.light [class*="text-amber-300"]  { color: #544412 !important; }
+        html.light [class*="text-amber-400"]  { color: #866D1D !important; }
         /* ── FIX (مراجعة تباين الوضع النهاري — تصفح الصور المرفقة، 30
            أغسطس 2026): مجموعة كبيرة من الشارات/الأيقونات/رؤوس القضايا
            بتستخدم درجات "-300/-400" الفاتحة (مصممة أصلاً لتقرأ فوق خلفية
@@ -233,12 +239,12 @@
            بين تنصيص — أقوى مرشح لقيته لتحذير "Expected identifier but found
            "-"" اللي ظهر وقت minify الـ CSS. اتشالت الإسكيب الزيادة؛ المطابقة
            بتفضل شغالة زي ما هي لأنها substring match عادي. ── */
-        html.light [class*="bg-amber-500/10"]{ background: rgba(37,99,235,0.09) !important; }
-        html.light [class*="bg-amber-500/8"] { background: rgba(37,99,235,0.07) !important; }
-        html.light [class*="border-amber-500"]{ border-color: rgba(37,99,235,0.22) !important; }
-        html.light [class*="bg-premium-gold/10"]  { background: rgba(37,99,235,0.09) !important; }
-        html.light [class*="bg-premium-gold/8"]   { background: rgba(37,99,235,0.07) !important; }
-        html.light [class*="border-premium-gold/"] { border-color: rgba(37,99,235,0.22) !important; }
+        html.light [class*="bg-amber-500/10"]{ background: rgba(134,109,29,0.09) !important; }
+        html.light [class*="bg-amber-500/8"] { background: rgba(134,109,29,0.07) !important; }
+        html.light [class*="border-amber-500"]{ border-color: rgba(134,109,29,0.22) !important; }
+        html.light [class*="bg-premium-gold/10"]  { background: rgba(134,109,29,0.09) !important; }
+        html.light [class*="bg-premium-gold/8"]   { background: rgba(134,109,29,0.07) !important; }
+        html.light [class*="border-premium-gold/"] { border-color: rgba(134,109,29,0.22) !important; }
 
         /* Danger / rose */
         html.light .bg-rose-500\/10   { background: var(--danger-bg) !important; }
@@ -290,15 +296,15 @@
         /* Scrollbar in light mode */
         html.light ::-webkit-scrollbar { width: 4px; }
         html.light ::-webkit-scrollbar-track { background: var(--bg-secondary); }
-        html.light ::-webkit-scrollbar-thumb { background: rgba(37,99,235,0.25); border-radius: 4px; }
+        html.light ::-webkit-scrollbar-thumb { background: rgba(134,109,29,0.25); border-radius: 4px; }
 
-        /* Background texture: subtle cool grain (replaces old warm-gold grain) */
+        /* Background texture: subtle warm-gold grain (بند 5 — رجوع للدهبي بدل الأزرق) */
         html.light body::before {
             content: '';
             position: fixed; inset: 0; z-index: 0;
             pointer-events: none;
             background-image:
-                radial-gradient(ellipse 80% 50% at 15% 0%, rgba(37,99,235,0.05) 0%, transparent 60%),
-                radial-gradient(ellipse 60% 40% at 85% 100%, rgba(37,99,235,0.04) 0%, transparent 55%);
+                radial-gradient(ellipse 80% 50% at 15% 0%, rgba(134,109,29,0.05) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 40% at 85% 100%, rgba(134,109,29,0.04) 0%, transparent 55%);
         }
         html.light #root { position: relative; z-index: 1; }
