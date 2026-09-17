@@ -30,24 +30,58 @@ const logError = async (action: string, details: string, tenantId: string | null
   });
 };
 
-// إرسال رسالة تليجرام لبوت/مجموعة محددة (بتاعة مكتب معين)
-const sendTg = async (token: string, chat: string, msg: string, tenantId: string | null): Promise<boolean> => {
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chat, text: msg, parse_mode: "HTML" }),
-    });
-    const data = await res.json();
-    if (!data.ok) {
-      await logError("فشل إرسال تيليجرام", `الخطأ: ${data.description}`, tenantId);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    await logError("فشل إرسال تيليجرام", `استثناء: ${String(err)}`, tenantId);
-    return false;
+// ─────────────────────────────────────────────────────────────────────────
+// 🆕 Retry قبل التسجيل في سجل النشاط (بي — 17 سبتمبر 2026)
+// ─────────────────────────────────────────────────────────────────────────
+// المشكلة: أي فشل شبكي/timeout عابر (لحظي بطبيعته) في استعلامات
+// Postgres أو نداء تيليجرام كان بيتسجّل فورًا في activity_log — نفس
+// مشكلة الـ69 recordError القديمة في الداشبورد (خطة إعادة تصميم رسائل
+// الأخطاء)، بس هنا مباشرة في سجل دائم بدل بانر بيتصفّى. الحل: محاولتين
+// إضافيتين (3 محاولات إجمالي) بفاصل 3 ثواني قبل ما نعتبره فشل حقيقي
+// يستاهل يتسجل — فشل لحظي بيتصلّح لوحده جوه المحاولات ومبيوصلش للسجل
+// خالص.
+const RETRY_ATTEMPTS = 2; // محاولات إضافية بعد المحاولة الأولى
+const RETRY_DELAY_MS = 3000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// يلف أي استعلام Supabase بيرجع {data, error} (from().select()، أو .rpc())
+// ويعيد المحاولة عند الفشل، ويرجع نتيجة آخر محاولة بعد استنفاد الكل.
+async function withRetry<T>(
+  runQuery: () => PromiseLike<{ data: T | null; error: any }>
+): Promise<{ data: T | null; error: any }> {
+  let result = await runQuery();
+  let attempt = 0;
+  while (result.error && attempt < RETRY_ATTEMPTS) {
+    await sleep(RETRY_DELAY_MS);
+    result = await runQuery();
+    attempt++;
   }
+  return result;
+}
+
+// إرسال رسالة تليجرام لبوت/مجموعة محددة (بتاعة مكتب معين) — بمحاولتين
+// إضافيتين عند الفشل (شبكة/استثناء أو رد ok:false من تيليجرام) قبل ما
+// نسجّل الفشل في activity_log.
+const sendTg = async (token: string, chat: string, msg: string, tenantId: string | null): Promise<boolean> => {
+  let lastError: string = "";
+  for (let attempt = 0; attempt <= RETRY_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chat, text: msg, parse_mode: "HTML" }),
+      });
+      const data = await res.json();
+      if (data.ok) return true;
+      lastError = `الخطأ: ${data.description}`;
+    } catch (err) {
+      lastError = `استثناء: ${String(err)}`;
+    }
+    if (attempt < RETRY_ATTEMPTS) await sleep(RETRY_DELAY_MS);
+  }
+  await logError("فشل إرسال تيليجرام", lastError, tenantId);
+  return false;
 };
 
 const fmt = (d: Date) => d.toISOString().split("T")[0];
@@ -331,11 +365,13 @@ const runForTenant = async (office: any, type: string) => {
   if (type === "morning") {
 
     // ── جلسات ──
-    const { data: sessions, error: sErr } = await supabase
-      .from("case_sessions")
-      .select(SESSION_COLS)
-      .eq("tenant_id", tenantId)
-      .in("session_date", [tmrwStr, day2Str]);
+    const { data: sessions, error: sErr } = await withRetry(() =>
+      supabase
+        .from("case_sessions")
+        .select(SESSION_COLS)
+        .eq("tenant_id", tenantId)
+        .in("session_date", [tmrwStr, day2Str])
+    );
 
     if (sErr) await logError("خطأ جلب جلسات الصبح", sErr.message, tenantId);
 
@@ -355,12 +391,14 @@ const runForTenant = async (office: any, type: string) => {
     }
 
     // ── مهام ──
-    const { data: reminders, error: rErr } = await supabase
-      .from("reminders")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .in("due_date", [tmrwStr, day2Str])
-      .eq("done", false);
+    const { data: reminders, error: rErr } = await withRetry(() =>
+      supabase
+        .from("reminders")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .in("due_date", [tmrwStr, day2Str])
+        .eq("done", false)
+    );
 
     if (rErr) await logError("خطأ جلب مهام الصبح", rErr.message, tenantId);
 
@@ -398,11 +436,13 @@ const runForTenant = async (office: any, type: string) => {
   if (type === "evening") {
 
     // ── جلسات الغد ──
-    const { data: tmrwSessions, error: tsErr } = await supabase
-      .from("case_sessions")
-      .select(SESSION_COLS)
-      .eq("tenant_id", tenantId)
-      .eq("session_date", tmrwStr);
+    const { data: tmrwSessions, error: tsErr } = await withRetry(() =>
+      supabase
+        .from("case_sessions")
+        .select(SESSION_COLS)
+        .eq("tenant_id", tenantId)
+        .eq("session_date", tmrwStr)
+    );
 
     if (tsErr) await logError("خطأ جلب جلسات المساء", tsErr.message, tenantId);
 
@@ -413,12 +453,14 @@ const runForTenant = async (office: any, type: string) => {
     }
 
     // ── مهام الغد ──
-    const { data: tmrwReminders, error: trErr } = await supabase
-      .from("reminders")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .eq("due_date", tmrwStr)
-      .eq("done", false);
+    const { data: tmrwReminders, error: trErr } = await withRetry(() =>
+      supabase
+        .from("reminders")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("due_date", tmrwStr)
+        .eq("done", false)
+    );
 
     if (trErr) await logError("خطأ جلب مهام المساء", trErr.message, tenantId);
 
@@ -436,11 +478,13 @@ const runForTenant = async (office: any, type: string) => {
     }
 
     // ── جلسات فائتة بدون نتيجة ──
-    const { data: allPastSessions, error: osErr } = await supabase
-      .from("case_sessions")
-      .select(SESSION_COLS)
-      .eq("tenant_id", tenantId)
-      .lt("session_date", todayStr);
+    const { data: allPastSessions, error: osErr } = await withRetry(() =>
+      supabase
+        .from("case_sessions")
+        .select(SESSION_COLS)
+        .eq("tenant_id", tenantId)
+        .lt("session_date", todayStr)
+    );
 
     if (osErr) await logError("خطأ جلب جلسات فائتة", osErr.message, tenantId);
 
@@ -502,12 +546,14 @@ const runForTenant = async (office: any, type: string) => {
     }
 
     // ── مهام فائتة ──
-    const { data: overdueReminders, error: orErr } = await supabase
-      .from("reminders")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .lt("due_date", todayStr)
-      .eq("done", false);
+    const { data: overdueReminders, error: orErr } = await withRetry(() =>
+      supabase
+        .from("reminders")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .lt("due_date", todayStr)
+        .eq("done", false)
+    );
 
     if (orErr) await logError("خطأ جلب مهام فائتة", orErr.message, tenantId);
 
@@ -548,7 +594,9 @@ Deno.serve(async (req) => {
     // التوكن دلوقتي في Vault، فبنستخدم دالة دفعية بترجّع tenant_id +
     // التوكن مفكوك التشفير + الـ chat في نداء واحد بدل قراءة عمود
     // tg_daily_token الصريح مباشرة (راجع 09-telegram-token-vault-migration.sql).
-    const { data: offices, error: offErr } = await supabase.rpc("get_all_daily_tg_configs");
+    const { data: offices, error: offErr } = await withRetry(() =>
+      supabase.rpc("get_all_daily_tg_configs")
+    );
 
     if (offErr) {
       await logError("خطأ جلب بيانات المكاتب", offErr.message);
