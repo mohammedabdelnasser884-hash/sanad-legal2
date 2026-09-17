@@ -155,17 +155,34 @@ describe('session-alerts — التحقق من CRON_SECRET', () => {
 });
 
 describe('session-alerts — جلب المكاتب (RPC get_all_daily_tg_configs)', () => {
-  it('فشل RPC → تسجيل خطأ في activity_log وإرجاع 500 برسالة الخطأ', async () => {
+  it('فشل RPC → تسجيل خطأ في activity_log وإرجاع 500 برسالة الخطأ (بعد استنفاد كل محاولات الـretry)', async () => {
     await importHandler();
+    // 🆕 retry: 3 محاولات إجمالي (الأولى + محاولتين) — لازم رد فاشل مجهّز
+    // لكل واحدة، وإلا الموك هيرمي "لا يوجد رد مجهّز" بدل ما يختبر الـretry فعليًا.
+    supabaseMock.queueRpc('get_all_daily_tg_configs', { data: null, error: new Error('rpc-fail') });
+    supabaseMock.queueRpc('get_all_daily_tg_configs', { data: null, error: new Error('rpc-fail') });
     supabaseMock.queueRpc('get_all_daily_tg_configs', { data: null, error: new Error('rpc-fail') });
     queueActivityLogOk();
-    const res = await handler(correctReq());
+    const resPromise = handler(correctReq());
+    await vi.runAllTimersAsync(); // يقدّم فترات الانتظار (3 ثواني) بين المحاولات
+    const res = await resPromise;
     expect(res.status).toBe(500);
     expect((await res.json()).error).toBe('rpc-fail');
     const logCall = supabaseMock.calls.find((c) => c.table === 'activity_log');
     const insertArg = logCall!.ops.find((o) => o.method === 'insert')!.args[0] as Record<string, unknown>;
     expect(insertArg.action).toBe('خطأ جلب بيانات المكاتب');
     expect(insertArg.details).toBe('rpc-fail');
+  });
+
+  it('🆕 فشل RPC مرة واحدة بس (transient) وينجح في المحاولة التانية → مفيش أي تسجيل في activity_log خالص', async () => {
+    await importHandler();
+    supabaseMock.queueRpc('get_all_daily_tg_configs', { data: null, error: new Error('timeout-transient') });
+    supabaseMock.queueRpc('get_all_daily_tg_configs', { data: [], error: null });
+    const resPromise = handler(correctReq());
+    await vi.runAllTimersAsync();
+    const res = await resPromise;
+    expect(res.status).toBe(200);
+    expect(supabaseMock.calls.find((c) => c.table === 'activity_log')).toBeUndefined();
   });
 
   it('مفيش أي مكتب ضابط بوت → 200 برسالة نصية ومن غير أي محاولة إرسال', async () => {
@@ -320,18 +337,23 @@ describe('session-alerts — مسار "morning"', () => {
     expect(inOp.args).toEqual(['id', ['c2']]);
   });
 
-  it('فشل جلب جلسات الصبح (sErr) → تسجيل خطأ في activity_log ويكمل بمصفوفة فاضية', async () => {
+  it('فشل جلب جلسات الصبح (sErr) → تسجيل خطأ في activity_log ويكمل بمصفوفة فاضية (بعد استنفاد الـretry)', async () => {
     await importHandler();
     supabaseMock.queueRpc('get_all_daily_tg_configs', {
       data: [{ tenant_id: 't1', token: 'tok1', chat: 'chat1' }],
       error: null,
     });
     queueClaimOk();
+    // 🆕 retry: 3 محاولات إجمالي لنفس نداء case_sessions قبل ما يتسجل فشل
+    supabaseMock.queueTable('case_sessions', { data: null, error: new Error('session-fetch-fail') });
+    supabaseMock.queueTable('case_sessions', { data: null, error: new Error('session-fetch-fail') });
     supabaseMock.queueTable('case_sessions', { data: null, error: new Error('session-fetch-fail') });
     supabaseMock.queueTable('reminders', { data: [], error: null });
     queueActivityLogOk();
 
-    const res = await handler(correctReq({ type: 'morning' }));
+    const resPromise = handler(correctReq({ type: 'morning' }));
+    await vi.runAllTimersAsync();
+    const res = await resPromise;
     expect(res.status).toBe(200);
 
     const logCall = supabaseMock.calls.find((c) => c.table === 'activity_log');
@@ -446,7 +468,11 @@ describe('session-alerts — فشل إرسال تيليجرام نفسه', () =>
     queueEmptyMorning();
     queueActivityLogOk();
 
-    const res = await handler(correctReq({ type: 'morning' }));
+    // 🆕 retry: fetchState.tgOk=false ثابتة على كل محاولات fetch (مش طابور
+    // one-shot)، فمفيش داعي لأي إعداد إضافي غير تقديم فترات الانتظار.
+    const resPromise = handler(correctReq({ type: 'morning' }));
+    await vi.runAllTimersAsync();
+    const res = await resPromise;
     expect(res.status).toBe(200);
 
     const logCall = supabaseMock.calls.find((c) => c.table === 'activity_log');
@@ -466,12 +492,41 @@ describe('session-alerts — فشل إرسال تيليجرام نفسه', () =>
     queueEmptyMorning();
     queueActivityLogOk();
 
-    const res = await handler(correctReq({ type: 'morning' }));
+    const resPromise = handler(correctReq({ type: 'morning' }));
+    await vi.runAllTimersAsync();
+    const res = await resPromise;
     expect(res.status).toBe(200);
 
     const logCall = supabaseMock.calls.find((c) => c.table === 'activity_log');
     const insertArg = logCall!.ops.find((o) => o.method === 'insert')!.args[0] as Record<string, unknown>;
     expect(insertArg.action).toBe('فشل إرسال تيليجرام');
     expect(insertArg.details).toContain('استثناء');
+  });
+
+  it('🆕 فشل تيليجرام مرة واحدة بس (شبكة) وينجح في المحاولة التانية → الرسالة اتبعتت ومفيش أي تسجيل فشل', async () => {
+    await importHandler();
+    let callCount = 0;
+    vi.stubGlobal('fetch', vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      callCount++;
+      if (callCount === 1) throw new Error('شبكة معطوبة لحظيًا');
+      void init;
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+    supabaseMock.queueRpc('get_all_daily_tg_configs', {
+      data: [{ tenant_id: 't1', token: 'tok1', chat: 'chat1' }],
+      error: null,
+    });
+    queueClaimOk();
+    queueEmptyMorning();
+
+    const resPromise = handler(correctReq({ type: 'morning' }));
+    await vi.runAllTimersAsync();
+    const res = await resPromise;
+    expect(res.status).toBe(200);
+    expect(callCount).toBeGreaterThanOrEqual(2);
+    expect(supabaseMock.calls.find((c) => c.table === 'activity_log')).toBeUndefined();
   });
 });
